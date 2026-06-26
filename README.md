@@ -100,8 +100,14 @@ huggingface-cli download mlx-community/gemma-4-e4b-it-4bit \
 python3.12 -m venv .venv && .venv/bin/pip install mlx-vlm
 ```
 
-**4. launchd agents** — four agents in `~/Library/LaunchAgents/` drive the loop.
-They're machine-specific (absolute paths) so they aren't tracked here. Schedule:
+**4. launchd agents** — four agents drive the loop. The templates live in
+`launchd/` with `__LOOP_DIR__`/`__HOME__` placeholders; the installer rewrites
+them for this machine and bootstraps each:
+
+```bash
+launchd/install.sh             # install / refresh all four
+launchd/install.sh uninstall   # boot out + remove
+```
 
 | Agent | Runs | Cadence |
 |-------|------|---------|
@@ -109,8 +115,6 @@ They're machine-specific (absolute paths) so they aren't tracked here. Schedule:
 | `com.plasmie.dev-summarize` | `summarize.sh` | hourly at **:15** |
 | `com.plasmie.dev-promote` | `promote.sh` | nightly at **02:30** |
 | `com.plasmie.mlx-server` | `mlx_serve.py` | on-demand (started by `mlx-ctl.sh`) |
-
-Load with `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.plasmie.dev-*.plist`.
 
 ---
 
@@ -167,5 +171,6 @@ cc-local.sh        point Claude Code at the local endpoint
 mlx_serve.py       MLX Gemma server + wire logging
 mlx-ctl.sh         on-demand server control + guard
 mon.sh             impact dashboard
+launchd/           agent templates + install.sh (path-rewriting installer)
 models/            weights (gitignored) + setup notes
 ```

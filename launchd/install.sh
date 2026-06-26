@@ -1,0 +1,37 @@
+#!/bin/bash
+# Install / refresh the plasmie launchd agents.
+# Rewrites the __LOOP_DIR__ / __HOME__ tokens in each template to this machine,
+# writes them to ~/Library/LaunchAgents/, and (re)bootstraps each into your GUI
+# domain. Safe to re-run: each agent is booted out first.
+#
+#   launchd/install.sh            # install all four
+#   launchd/install.sh uninstall  # boot out + remove all four
+set -euo pipefail
+SELF="$(cd "$(dirname "$0")" && pwd)"
+LOOP_DIR="$(cd "$SELF/.." && pwd)"
+DEST="$HOME/Library/LaunchAgents"
+DOMAIN="gui/$(id -u)"
+
+mkdir -p "$DEST" "$LOOP_DIR/logs"
+
+if [ "${1:-}" = uninstall ]; then
+  for tpl in "$SELF"/*.plist; do
+    label="$(basename "$tpl" .plist)"
+    launchctl bootout "$DOMAIN/$label" 2>/dev/null || true
+    rm -f "$DEST/$label.plist"
+    echo "removed $label"
+  done
+  exit 0
+fi
+
+for tpl in "$SELF"/*.plist; do
+  label="$(basename "$tpl" .plist)"
+  out="$DEST/$label.plist"
+  sed -e "s|__LOOP_DIR__|$LOOP_DIR|g" -e "s|__HOME__|$HOME|g" "$tpl" > "$out"
+  launchctl bootout "$DOMAIN/$label" 2>/dev/null || true   # ignore "not loaded"
+  launchctl bootstrap "$DOMAIN" "$out"
+  launchctl enable "$DOMAIN/$label"
+  echo "installed $label"
+done
+
+echo "done. ingest :07 hourly · summarize :15 hourly · promote 02:30 · mlx-server on-demand"

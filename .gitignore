@@ -1,0 +1,11 @@
+# Runtime data — contains your Slack/journal/session content. Never commit.
+logs/
+feed.log
+*.log
+*.err
+.loop-state.json
+
+# Python
+.venv/
+__pycache__/
+*.pyc

@@ -1,0 +1,4 @@
+# Model weights are downloaded on demand, never committed (13+ GB).
+*
+!.gitignore
+!README.md

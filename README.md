@@ -1,0 +1,171 @@
+# plasmie
+
+A privacy-first, fully-local pipeline that turns your day's activity into a
+curated knowledge vault — **without sending any of it to the cloud.**
+
+Every hour it ingests your recent Slack and Claude Code sessions into an
+Obsidian journal, condenses each batch into a few bullets, and once a night
+drafts durable notes worth promoting into your permanent vault. All
+summarization runs on a **local Gemma model** served on `127.0.0.1` — the only
+network call is reading your own Slack messages.
+
+---
+
+## The loop
+
+```
+            ┌──────────── hourly :07 ────────────┐
+   Slack ──▶│  ingest   │  raw activity ──────────┼──▶ journal/YYYY-MM-DD.md
+ sessions ─▶│ (Python)  │  (secret-scrubbed)      │      (Obsidian vault)
+            └───────────┘                         │
+            ┌──────────── hourly :15 ────────────┐│
+            │ summarize │  newest block ──▶ local ││
+            │  (Gemma)  │  Gemma ──▶ 4-8 bullets ─┼┘  appended to same note
+            └───────────┘
+            ┌──────────── nightly 02:30 ─────────┐
+            │  promote  │  last 2 days of journal │
+            │  (Gemma)  │  ──▶ promotion-draft.md │  you review, then file
+            └───────────┘
+```
+
+The local model is **loaded on demand** (~5 GB) only while a job runs, then
+freed — and every job is gated behind a thermal/load/RAM **guard** so it never
+fights you for the machine.
+
+---
+
+## Why local
+
+The journal contains your Slack DMs, channel chatter, and the full text of your
+Claude Code sessions. Sending that to a hosted LLM to summarize would defeat the
+point. Instead:
+
+- **Summarize / promote** run against a local Gemma-4 (MLX) via an
+  Anthropic-compatible endpoint — Claude Code is pointed at `127.0.0.1:8080`
+  for these jobs only; your interactive sessions keep using the real Claude.
+- **Ingest** touches the network only to read *your own* Slack via your user
+  token. A [secret scrubber](#privacy--security) strips credentials before
+  anything is written to disk.
+- Nothing leaves the Mac. Logs are owner-only (`0600`) and gitignored.
+
+---
+
+## Components
+
+| File | Role |
+|------|------|
+| `loop-ingest.py` | Pulls recent Slack + updated Claude sessions, scrubs secrets, appends a timestamped digest to today's journal note. Tracks a high-water mark in `.loop-state.json`. |
+| `run-ingest.sh` | launchd wrapper for the ingest: loads `.env`, splits full detail → per-run log, one summary line → `feed.log`. |
+| `summarize.sh` | Condenses the newest raw ingest block into bullets via the local model. Idempotent per hour. |
+| `promote.sh` | Nightly: drafts durable, promotable knowledge from recent journal entries into a review note. Never edits the vault directly. |
+| `gen.sh` | The "don't disturb the user" wrapper around a local-model call: guard → load → run-with-hard-timeout → free. Logs the exact prompt+response. |
+| `cc-local.sh` | Thin shim that points Claude Code at the local Gemma endpoint, isolated to that process. |
+| `mlx_serve.py` | Serves Gemma-4 via mlx-vlm's Anthropic-compatible server, with byte-exact wire logging for audit. |
+| `mlx-ctl.sh` | On-demand server control: `up` / `down` / `guard`. |
+| `mon.sh` | One-shot dashboard: model state, RAM/swap/load/thermal, guard verdict, last ingest, today's job audit. |
+| `models/` | Local model weights (gitignored; see `models/README.md`). |
+
+---
+
+## Requirements
+
+- macOS on Apple Silicon (the guard uses `pmset`/`memory_pressure`; MLX needs an
+  M-series GPU).
+- Python 3.12, with `mlx-vlm` installed in `.venv/`.
+- [Claude Code](https://claude.com/claude-code) on `PATH`.
+- A Slack **user** token (`xoxp-…`) with `search:read` and `users:read`.
+- A Hugging Face token for the gated Gemma weights.
+
+---
+
+## Setup
+
+**1. Secrets** — put your Slack token in `~/.claude/.env` (never committed):
+
+```bash
+SLACK_USER_TOKEN=xoxp-…
+```
+
+**2. Model** — download the 4-bit Gemma-4 (see `models/README.md`):
+
+```bash
+huggingface-cli login
+huggingface-cli download mlx-community/gemma-4-e4b-it-4bit \
+  --local-dir models/gemma-4-e4b
+```
+
+**3. Python env**:
+
+```bash
+python3.12 -m venv .venv && .venv/bin/pip install mlx-vlm
+```
+
+**4. launchd agents** — four agents in `~/Library/LaunchAgents/` drive the loop.
+They're machine-specific (absolute paths) so they aren't tracked here. Schedule:
+
+| Agent | Runs | Cadence |
+|-------|------|---------|
+| `com.plasmie.dev-ingest` | `run-ingest.sh` | hourly at **:07** |
+| `com.plasmie.dev-summarize` | `summarize.sh` | hourly at **:15** |
+| `com.plasmie.dev-promote` | `promote.sh` | nightly at **02:30** |
+| `com.plasmie.mlx-server` | `mlx_serve.py` | on-demand (started by `mlx-ctl.sh`) |
+
+Load with `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.plasmie.dev-*.plist`.
+
+---
+
+## Monitoring
+
+```bash
+./mon.sh                 # live dashboard — RAM, thermal, guard, last run
+tail -f feed.log         # one summary line per ingest
+tail -f logs/audit-$(date +%F).log   # summarize/promote outcomes
+```
+
+`mlx-ctl.sh guard` prints `ok` (safe to run) or `busy` (machine hot/loaded —
+jobs skip and retry next cycle).
+
+---
+
+## Privacy & security
+
+- **Secret scrubber** (`loop-ingest.py`): regex passes redact GitHub/Slack/AWS/API
+  tokens, bearer headers, connection-string passwords, and PEM private keys before
+  anything is written. A label-gated entropy pass catches bare passwords trailing
+  a credential word (e.g. `WiFi: … abc123XY`).
+- **Owner-only files**: scripts `umask 077`; wire/transcript logs are `0600`.
+- **On-demand RAM**: the ~5 GB model is loaded only while a job runs, then freed.
+- **The guard**: defers on thermal warnings, 1-min load ≥ core count, or <30% free RAM.
+- **gitignored**: all runtime data (`logs/`, `feed.log`, `.loop-state.json`), the
+  `.venv`, and model weights. Only code + docs are tracked.
+- **Audit trail**: `gen.sh` and `mlx_serve.py` log the exact context sent to the
+  local model and what came back, so you can verify precisely what crossed in.
+
+---
+
+## Logs & retention
+
+| Path | Contents | Kept |
+|------|----------|------|
+| `feed.log` | One summary line per ingest | last 2000 lines |
+| `logs/ingest-*.log` | Full per-run ingest detail | 14 days |
+| `logs/transcript-*.log` | Exact prompt+response to local model | 30 days |
+| `logs/wire-*.log` | Byte-exact `/v1/messages` request+response | 30 days |
+| `logs/audit-*.log` | summarize/promote outcomes | 90 days |
+
+---
+
+## Repo layout
+
+```
+loop-ingest.py     ingest (Slack + Claude sessions → journal)
+run-ingest.sh      launchd wrapper for ingest
+summarize.sh       hourly condense (local Gemma)
+promote.sh         nightly promotion drafts (local Gemma)
+gen.sh             guard + load + timeout + free wrapper
+cc-local.sh        point Claude Code at the local endpoint
+mlx_serve.py       MLX Gemma server + wire logging
+mlx-ctl.sh         on-demand server control + guard
+mon.sh             impact dashboard
+models/            weights (gitignored) + setup notes
+```

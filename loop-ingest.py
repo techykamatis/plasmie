@@ -49,7 +49,6 @@ JOURNAL_DIR = os.path.join(VAULT, "02 Areas", "journal")
 SESS_ROOT = os.path.expanduser("~/.claude/projects")
 NOW = time.time()
 TOKEN = os.environ.get("SLACK_USER_TOKEN", "")
-MY_ID = os.environ.get("SLACK_MY_USER_ID", "")
 
 # ---- state ----
 try:

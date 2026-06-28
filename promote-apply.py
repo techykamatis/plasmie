@@ -35,7 +35,11 @@ from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # find sibling scrub.py however we're loaded
-from scrub import redact
+from scrub import redact as _scrub
+
+
+def redact(s):
+    return _scrub(s, emails=True)  # promote path also strips emails (PII in durable notes)
 
 TYPE_BY_DIR = {"concepts": "reference", "people": "person", "01 Projects": "project"}
 

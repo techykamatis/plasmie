@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Emit the menu-bar app's state as JSON. Pure stdlib, runs on system python3.9.
-Read-only — the same state the SwiftBar plugin computes, for the native app."""
+"""Emit the menu-bar app's state as JSON for the native app. Pure stdlib (python3.9), read-only."""
 import datetime
 import glob
 import json
 import os
 import re
 import subprocess
-import time
 
 H = os.path.expanduser("~")
 VAULT = f"{H}/knowledge"
@@ -36,28 +34,18 @@ except (subprocess.CalledProcessError, OSError):
 m = re.search(r"(\d+) atomic notes", read(f"{VAULT}/index.md"))
 notes = m.group(1) if m else "?"
 feed = [l for l in read(f"{LOOP}/feed.log").splitlines() if l.strip()]
-audit = read(f"{LOOP}/logs/audit-{datetime.date.today()}.log")
-promote_lines = [l for l in audit.splitlines() if " promote " in l]
-last_promote = promote_lines[-1].split("| ")[-1].strip() if promote_lines else ""
 journal = f"{VAULT}/02 Areas/journal/{datetime.date.today()}.md"
 
 # live heartbeat written by the running step ("<epoch>|<message>")
 st = read(f"{LOOP}/.status")
-activity, activity_age = "", 999999
-if "|" in st:
-    ts_str, _, msg = st.partition("|")
-    try:
-        activity_age = int(time.time()) - int(ts_str)
-        activity = msg.strip()
-    except ValueError:
-        pass
+activity = st.partition("|")[2].strip() if "|" in st else ""
 
 state = "healthy"
 if is_running:
     state = "running"
 elif pending:
     state = "pending"
-elif "skipped" in last_promote:
+elif "skipped" in activity.lower():
     state = "error"
 
 print(json.dumps({
@@ -68,9 +56,7 @@ print(json.dumps({
     "pendingItems": pitems,
     "notes": notes,
     "recent": [l.replace("|", "·") for l in feed[-3:][::-1]],
-    "lastPromote": last_promote,
     "activity": activity,
-    "activityAge": activity_age,
     "journal": journal if os.path.exists(journal) else "",
     "vault": VAULT,
     "loop": LOOP,

@@ -184,10 +184,17 @@ def main(real_vault):
         (concepts / "index.md").write_text(idx2)
         RI.reindex(V, write=True)
         final = (concepts / "index.md").read_text()
-        assert "## Unfiled" not in final, "Unfiled not cleared after curation"
-        assert final.count("zzz-battletest-orphan.md") == 1, "curated link lost/duplicated"
-        # dead-link detection
-        (concepts / "index.md").write_text(final + "\n* [ghost](nonexistent-xyz123.md) - dead\n")
+        # curated note must drop OUT of Unfiled → appears exactly once total
+        # (robust to the vault having other pre-existing orphans)
+        assert final.count("zzz-battletest-orphan.md") == 1, "curated link lost or still duplicated in Unfiled"
+        # dead-link detection — insert into a curated section (not after the Unfiled
+        # block, which strip_unfiled would swallow before the check)
+        lines = final.splitlines(keepends=True)
+        for i, ln in enumerate(lines):
+            if ln.startswith("## "):
+                lines.insert(i + 1, "* [ghost](nonexistent-xyz123.md) - dead\n")
+                break
+        (concepts / "index.md").write_text("".join(lines))
         _, _, dead2 = RI.reindex(V, write=False)
         assert "nonexistent-xyz123.md" in dead2, "dead link not detected"
     check("C6 reindex (count==ls|wc, orphan round-trip, Unfiled no-dup, dead-link detect)", c6)

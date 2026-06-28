@@ -62,7 +62,6 @@ point. Instead:
 | `cc-local.sh` | Thin shim that points Claude Code at the local Gemma endpoint, isolated to that process. |
 | `mlx_serve.py` | Serves Gemma-4 via mlx-vlm's Anthropic-compatible server, with byte-exact wire logging for audit. |
 | `mlx-ctl.sh` | On-demand server control: `up` / `down` / `guard`. |
-| `mon.sh` | One-shot dashboard: model state, RAM/swap/load/thermal, guard verdict, last ingest, today's job audit. |
 | `models/` | Local model weights (gitignored; see `models/README.md`). |
 
 ---
@@ -121,7 +120,6 @@ launchd/install.sh uninstall   # boot out + remove
 ## Monitoring
 
 ```bash
-./mon.sh                 # live dashboard — RAM, thermal, guard, last run
 tail -f feed.log         # one summary line per ingest
 tail -f logs/audit-$(date +%F).log   # summarize/promote outcomes
 ```
@@ -170,7 +168,6 @@ gen.sh             guard + load + timeout + free wrapper
 cc-local.sh        point Claude Code at the local endpoint
 mlx_serve.py       MLX Gemma server + wire logging
 mlx-ctl.sh         on-demand server control + guard
-mon.sh             impact dashboard
 launchd/           agent templates + install.sh (path-rewriting installer)
 models/            weights (gitignored) + setup notes
 ```

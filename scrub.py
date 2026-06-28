@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Secret/PII redactor — canonical copy for the promote path (promote-apply.py).
+"""Secret/PII redactor — the single source for both the ingest and promote paths.
 
-The patterns are duplicated verbatim from loop-ingest.py because that module runs
-Slack fetches at import time (no __main__ guard), so it can't be imported safely.
-If loop-ingest.py is ever refactored, have it import from here instead. stdlib only.
-
-  redact(text) -> text with gh/AWS/Slack tokens, sk-/Bearer keys, connection-string
-  passwords, labelled secrets, and PEM private keys replaced by «redacted:…».
+  redact(text, emails=False) -> gh/AWS/Slack tokens, sk-/Bearer keys, connection-string
+  passwords, labelled secrets, and PEM private keys -> «redacted:…».
+  emails=True also redacts email addresses (promote path: durable notes minimise PII).
+  The journal/ingest path uses the default, keeping emails for attribution. stdlib only.
 """
 import re
 
@@ -23,20 +21,19 @@ _SECRET_PATTERNS = [
      r'\1\2«redacted»'),
     (re.compile(r'-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----'),
      '«redacted:private-key»'),
-    # email — redacted on the PROMOTE path only (durable notes minimise PII). The
-    # ingest/journal path keeps its own redact() without this, so attribution
-    # ("who said what") survives in the transient journal. Deliberate divergence.
-    (re.compile(r'[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}'), '«redacted:email»'),
 ]
 _CRED_LABEL = re.compile(r'(?i)\b(passwords?|passwd|pwd|passphrase|secret|api[_-]?key|token|ssid|wifi|otp|pin|credentials?|login)\b')
 _SECRETISH = re.compile(r'(?<![\w@./-])(?=[A-Za-z0-9!@#$%^&*_-]*[A-Za-z])(?=[A-Za-z0-9!@#$%^&*_-]*\d)[A-Za-z0-9!@#$%^&*_-]{8,}(?![\w@./-])')
+_EMAIL = re.compile(r'[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}')
 
 
-def redact(s):
+def redact(s, emails=False):
     if not s:
         return s
     for pat, repl in _SECRET_PATTERNS:
         s = pat.sub(repl, s)
+    if emails:
+        s = _EMAIL.sub('«redacted:email»', s)
     if _CRED_LABEL.search(s):
         s = _SECRETISH.sub('«redacted:credential»', s)
     return s
@@ -47,7 +44,8 @@ def selfcheck():
     assert "«redacted" in redact("Authorization: Bearer abcdefghijklmnopqrstuvwxyz123")
     assert "«redacted" in redact("token sk-abcdefghijklmnopqrstuvwxyz")
     assert "«redacted" in redact("postgres://user:hunter2spelled@db.host/x")
-    assert redact("ping me at jane.doe@example.com please") == "ping me at «redacted:email» please"
+    assert redact("ping me at jane.doe@example.com please") == "ping me at jane.doe@example.com please"   # default keeps emails
+    assert redact("ping me at jane.doe@example.com please", emails=True) == "ping me at «redacted:email» please"
     assert redact("just a normal sentence about EKS clusters") == "just a normal sentence about EKS clusters"
     print("scrub selfcheck OK")
 

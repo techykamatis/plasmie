@@ -14,9 +14,7 @@ struct Status: Codable {
     var pendingItems = 0
     var notes = "?"
     var recent: [String] = []
-    var lastPromote = ""
     var activity = ""
-    var activityAge = 0
     var journal = ""
     var vault = ""
     var loop = ""
@@ -234,22 +232,28 @@ struct StatusPill: View {
     }
 }
 
-/// A menu-style row: SF Symbol + label, full-width, with hover highlight.
+/// A menu-style row: SF Symbol + label + a small gray caption (what it does / when),
+/// full-width, with hover highlight. The caption makes each action self-explanatory.
 struct ActionRow: View {
     let title: String
     let symbol: String
+    var detail: String = ""
     var tint: Color = .primary
     let action: () -> Void
     @State private var hover = false
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 9) {
+            HStack(alignment: .firstTextBaseline, spacing: 9) {
                 Image(systemName: symbol).frame(width: 16).foregroundStyle(tint == .primary ? .secondary : tint)
-                Text(title).foregroundStyle(.primary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.system(size: 13)).foregroundStyle(.primary)
+                    if !detail.isEmpty {
+                        Text(detail).font(.system(size: 10.5)).foregroundStyle(.secondary)
+                    }
+                }
                 Spacer(minLength: 0)
             }
-            .font(.system(size: 13))
-            .padding(.horizontal, 12).padding(.vertical, 5)
+            .padding(.horizontal, 12).padding(.vertical, 6)
             .contentShape(Rectangle())
             .background(hover ? Color.primary.opacity(0.08) : .clear)
             .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -305,9 +309,12 @@ struct Panel: View {
                         .font(.caption).foregroundStyle(.secondary)
                     HStack(spacing: 8) {
                         Button { openInObsidian(m.s.pendingFile) } label: { Label("Review", systemImage: "pencil") }
+                            .help("Open the held items in Obsidian to inspect or change their action before applying.")
                         Button { m.approveHeld() } label: { Label("Approve all", systemImage: "checkmark.circle.fill") }
                             .tint(.orange)
+                            .help("File all held items using the suggested merge/create, then clear them.")
                         Button { m.dismissHeld() } label: { Label("Dismiss", systemImage: "xmark.circle") }
+                            .help("Discard the held items without filing anything.")
                     }
                     .controlSize(.small).buttonStyle(.bordered)
                 }
@@ -333,15 +340,22 @@ struct Panel: View {
 
             // actions
             VStack(spacing: 1) {
-                ActionRow(title: "Run promote now", symbol: "arrow.triangle.2.circlepath") { m.kick("com.plasmie.dev-promote", "Promote") }
-                ActionRow(title: "Run ingest now", symbol: "tray.and.arrow.down") { m.kick("com.plasmie.dev-ingest", "Ingest") }
-                ActionRow(title: "Open vault in Obsidian", symbol: "folder") { openInObsidian(m.s.vault) }
+                ActionRow(title: "Run promote now", symbol: "arrow.triangle.2.circlepath",
+                          detail: "Find new knowledge & auto-file it · runs nightly") { m.kick("com.plasmie.dev-promote", "Promote") }
+                ActionRow(title: "Run ingest now", symbol: "tray.and.arrow.down",
+                          detail: "Capture latest Slack & sessions · runs hourly") { m.kick("com.plasmie.dev-ingest", "Ingest") }
+                ActionRow(title: "Open vault in Obsidian", symbol: "folder",
+                          detail: "Browse & edit all your notes") { openInObsidian(m.s.vault) }
                 if !m.s.journal.isEmpty {
-                    ActionRow(title: "Open today's journal", symbol: "book.closed") { openInObsidian(m.s.journal) }
+                    ActionRow(title: "Open today's journal", symbol: "book.closed",
+                              detail: "Today's raw captured activity") { openInObsidian(m.s.journal) }
                 }
-                ActionRow(title: "Reindex check", symbol: "magnifyingglass") { m.reindexCheck() }
-                ActionRow(title: "Open activity log", symbol: "doc.plaintext") { openExternal("\(m.s.loop)/feed.log") }
-                ActionRow(title: "Refresh", symbol: "arrow.clockwise") { m.refresh() }
+                ActionRow(title: "Reindex check", symbol: "magnifyingglass",
+                          detail: "Recount & flag orphans · changes nothing") { m.reindexCheck() }
+                ActionRow(title: "Open activity log", symbol: "doc.plaintext",
+                          detail: "History of every ingest & promote run") { openExternal("\(m.s.loop)/feed.log") }
+                ActionRow(title: "Refresh", symbol: "arrow.clockwise",
+                          detail: "Re-read status now · auto every 60s") { m.refresh() }
             }
             .padding(.horizontal, 6).padding(.vertical, 4)
 

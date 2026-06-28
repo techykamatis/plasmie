@@ -12,7 +12,8 @@ audit(){ printf '%s | promote | %s\n' "$(date '+%F %T')" "$1" >> "$SELF/logs/aud
          find "$SELF/logs" -name 'audit-*.log' -mtime +90 -delete 2>/dev/null || true; }
 # live one-line heartbeat the menu-bar app reads: "<epoch>|<message>"
 status(){ printf '%s|%s' "$(date +%s)" "$1" > "$SELF/.status"; }
-VAULT="$HOME/knowledge"
+[ -f "$SELF/config.env" ] && . "$SELF/config.env"
+VAULT="${VAULT_DIR:-$HOME/knowledge}"
 JDIR="$VAULT/02 Areas/journal"
 TODAY="$(date +%F)"
 YEST="$(date -v-1d +%F 2>/dev/null || date -d 'yesterday' +%F)"

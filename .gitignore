@@ -13,6 +13,9 @@ __pycache__/
 # Secrets (sourced from ~/.claude/.env at runtime — never in the repo)
 .env
 
+# Machine-specific config written by install.sh (vault location etc.)
+config.env
+
 # Runtime heartbeat + macOS cruft
 .status
 .DS_Store

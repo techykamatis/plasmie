@@ -9,7 +9,8 @@ mkdir -p "$SELF/logs"
 # one audit line per run -> logs/audit-YYYY-MM-DD.log (one file per day; pruned after 90d)
 audit(){ printf '%s | summarize | %s\n' "$(date '+%F %T')" "$1" >> "$SELF/logs/audit-$(date +%F).log"
          find "$SELF/logs" -name 'audit-*.log' -mtime +90 -delete 2>/dev/null || true; }
-VAULT="$HOME/knowledge"
+[ -f "$SELF/config.env" ] && . "$SELF/config.env"
+VAULT="${VAULT_DIR:-$HOME/knowledge}"
 JPATH="$VAULT/02 Areas/journal/$(date +%F).md"
 [ -f "$JPATH" ] || { echo "no journal for today: $JPATH"; exit 0; }
 

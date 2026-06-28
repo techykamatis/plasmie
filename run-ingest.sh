@@ -8,6 +8,10 @@ set -a
 [ -f "$HOME/.claude/.env" ] && . "$HOME/.claude/.env"
 set +a
 
+SELF="$(cd "$(dirname "$0")" && pwd)"
+[ -f "$SELF/config.env" ] && . "$SELF/config.env"
+export PLASMIE_VAULT="${VAULT_DIR:-$HOME/knowledge}"
+
 LOGDIR="$HOME/.plasmie/logs"
 FEED="$HOME/.plasmie/feed.log"
 mkdir -p "$LOGDIR"

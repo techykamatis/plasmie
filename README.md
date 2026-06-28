@@ -23,14 +23,39 @@ network call is reading your own Slack messages.
             │  (Gemma)  │  Gemma ──▶ 4-8 bullets ─┼┘  appended to same note
             └───────────┘
             ┌──────────── nightly 02:30 ─────────┐
-            │  promote  │  last 2 days of journal │
-            │  (Gemma)  │  ──▶ promotion-draft.md │  you review, then file
+            │  promote  │  draft ──▶ dedupe ──▶   │  confident items auto-filed
+            │  (Gemma)  │  auto-apply ──▶ reindex │  into PARA; unsure ones held
             └───────────┘
 ```
 
 The local model is **loaded on demand** (~5 GB) only while a job runs, then
 freed — and every job is gated behind a thermal/load/RAM **guard** so it never
 fights you for the machine.
+
+---
+
+## Install
+
+```bash
+git clone git@github.com:example-user/plasmie.git ~/.plasmie
+cd ~/.plasmie
+./install.sh        # interactive wizard
+```
+
+The wizard walks 8 steps, each idempotent and skippable, so it's safe to re-run:
+
+1. **Preflight** — Homebrew, `python@3.12`, git, Obsidian, claude CLI, free disk.
+2. **Vault location** — where the vault lives (default `~/knowledge`); saved to `config.env`.
+3. **Scaffold** — creates a fresh PARA vault from `vault-template/` (never overwrites an existing one).
+4. **Secrets** — your `SLACK_USER_TOKEN` → `~/.claude/.env` (chmod 600).
+5. **Python env** — a `.venv` with `mlx-vlm` for the local model server.
+6. **Model** — downloads Gemma-4 E4B (~4.9 GB, Hugging Face login; resumable).
+7. **Loops** — installs the launchd agents (ingest/summarize/promote).
+8. **App** — builds the menu-bar app, installs to `/Applications`, optional launch-at-login.
+
+Nothing is hard-coded to one path: the vault location lives in `config.env`
+(scripts fall back to `~/knowledge` if it's absent), and the tooling runs from
+wherever you cloned it. Just want a starter vault? `./scaffold-vault.sh [dir]`.
 
 ---
 

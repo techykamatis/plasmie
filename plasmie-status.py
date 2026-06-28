@@ -8,8 +8,20 @@ import re
 import subprocess
 
 H = os.path.expanduser("~")
-VAULT = f"{H}/knowledge"
 LOOP = f"{H}/.plasmie"
+
+
+def _vault():
+    try:
+        for line in open(f"{LOOP}/config.env"):
+            if line.strip().startswith("VAULT_DIR"):
+                return os.path.expanduser(line.split("=", 1)[1].strip().strip('"').strip("'"))
+    except OSError:
+        pass
+    return f"{H}/knowledge"
+
+
+VAULT = _vault()
 DRAFTS = f"{VAULT}/99 Meta/promotion-drafts"
 
 

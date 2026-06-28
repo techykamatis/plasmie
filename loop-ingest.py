@@ -12,7 +12,7 @@ import os, json, time, glob, re, urllib.request, urllib.parse, datetime
 
 from scrub import redact  # shared redactor — default keeps emails (journal attribution)
 
-VAULT = os.path.expanduser("~/knowledge")
+VAULT = os.environ.get("PLASMIE_VAULT") or os.path.expanduser("~/knowledge")
 STATE = os.path.expanduser("~/.plasmie/.loop-state.json")
 JOURNAL_DIR = os.path.join(VAULT, "02 Areas", "journal")
 SESS_ROOT = os.path.expanduser("~/.claude/projects")

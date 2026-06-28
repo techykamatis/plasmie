@@ -13,7 +13,9 @@ FEED="$HOME/.plasmie/feed.log"
 mkdir -p "$LOGDIR"
 LOG="$LOGDIR/ingest-$(date '+%Y%m%d-%H%M%S').log"
 TS="$(date '+%Y-%m-%d %H:%M:%S')"
+status(){ printf '%s|%s' "$(date +%s)" "$1" > "$HOME/.plasmie/.status"; }
 
+status "Ingesting Slack + Claude sessions…"
 out="$(/opt/homebrew/opt/python@3.12/bin/python3.12 "$HOME/.plasmie/loop-ingest.py" 2>&1)"
 rc=$?
 
@@ -27,6 +29,7 @@ rc=$?
 # one summary line → rolling feed
 summary="$(printf '%s\n' "$out" | sed -n 's/^SUMMARY: //p' | head -1)"
 echo "$TS | exit $rc | ${summary:-(no summary)}" >> "$FEED"
+status "Ingested · ${summary:-done}"
 
 # retention: per-run logs 14d; feed capped at 2000 lines
 find "$LOGDIR" -name 'ingest-*.log' -type f -mtime +14 -delete

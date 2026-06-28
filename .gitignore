@@ -9,3 +9,14 @@ feed.log
 .venv/
 __pycache__/
 *.pyc
+
+# Secrets (sourced from ~/.claude/.env at runtime — never in the repo)
+.env
+
+# Runtime heartbeat + macOS cruft
+.status
+.DS_Store
+
+# Build artifacts (the compiled .app / .dmg — rebuild with app/make-app.sh)
+app/build/
+app/*.iconset

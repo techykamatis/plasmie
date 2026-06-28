@@ -13,17 +13,38 @@ ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$1"; }
 ask()  { local a; read -r -p "  $1 [$2]: " a; printf '%s' "${a:-$2}"; }
 yes()  { local a; read -r -p "  $1 [y/N]: " a; [[ "$a" =~ ^[Yy] ]]; }
+have() { command -v "$1" >/dev/null 2>&1; }
 
-# 1) preflight ----------------------------------------------------------------
-say "1/8 · Preflight"
+install_app() {
+  "$SELF/app/make-app.sh" >/dev/null 2>&1 || { warn "app build failed (need Xcode CLT: xcode-select --install)"; return 1; }
+  rm -rf "/Applications/Plasmie.app"
+  cp -R "$SELF/app/build/Plasmie.app" /Applications/ && ok "installed to /Applications"
+  yes "Launch at login?" && osascript -e 'tell application "System Events" to make login item at end with properties {path:"/Applications/Plasmie.app", hidden:true}' >/dev/null 2>&1 && ok "added login item"
+  open "/Applications/Plasmie.app"
+}
+
+# 1) preflight — detect what's already here; only offer to install what's missing
+say "1/8 · Preflight — checking prerequisites"
 [ "$(uname)" = Darwin ] || { warn "macOS only."; exit 1; }
 [ "$(uname -m)" = arm64 ] && ok "Apple Silicon" || warn "Intel Mac — the local MLX model won't run; the loops still work."
-command -v brew >/dev/null && ok "Homebrew" || { warn "Homebrew required → https://brew.sh"; exit 1; }
-if [ -x "$PY312" ]; then ok "python3.12"; else warn "installing python@3.12…"; brew install python@3.12; PY312="$(command -v python3.12)"; fi
-command -v git  >/dev/null && ok "git" || brew install git
-[ -d /Applications/Obsidian.app ] && ok "Obsidian" || warn "Obsidian not found (required to view the vault) → https://obsidian.md"
-command -v claude >/dev/null && ok "claude CLI" || warn "claude CLI not found — needed for local-model summaries; install Claude Code first."
+
+if have brew; then ok "Homebrew ($(brew --version 2>/dev/null | awk 'NR==1{print $2}'))"
+else warn "Homebrew missing (required) — install from https://brew.sh, then re-run."; exit 1; fi
+
+missing=()   # brew-installable prereqs that aren't here yet
+if [ -x "$PY312" ] || have python3.12; then ok "python3.12 ($("$PY312" -V 2>&1 | awk '{print $2}'))"; else warn "python3.12 — missing"; missing+=("python@3.12"); fi
+if have git; then ok "git"; else warn "git — missing"; missing+=("git"); fi
+if [ -d /Applications/Obsidian.app ]; then ok "Obsidian"; else warn "Obsidian — missing (required to view the vault)"; missing+=("--cask obsidian"); fi
+if have claude; then ok "claude CLI"; else warn "claude CLI — missing (needed for local-model summaries; install Claude Code separately, not via brew)"; fi
 avail="$(df -g "$HOME" 2>/dev/null | awk 'NR==2{print $4}')"; [ "${avail:-0}" -ge 8 ] && ok "${avail} GB free" || warn "low disk (${avail:-?} GB) — the model needs ~5 GB."
+
+if [ ${#missing[@]} -gt 0 ]; then
+  warn "missing & brew-installable: ${missing[*]}"
+  if yes "Install these now with Homebrew?"; then
+    for pkg in "${missing[@]}"; do brew install $pkg && ok "installed $pkg" || warn "failed: $pkg"; done
+    PY312="$(command -v python3.12 || echo "$PY312")"
+  else warn "skipped — install them before the vault/model steps will fully work."; fi
+else ok "all prerequisites present"; fi
 
 # 2) vault location -----------------------------------------------------------
 say "2/8 · Vault location"
@@ -68,20 +89,26 @@ else
   warn "skipped — promote/summarize skip until the model is present (see models/README.md)"
 fi
 
-# 7) background loops ---------------------------------------------------------
+# 7) background loops — detect already-installed agents -----------------------
 say "7/8 · Background loops (launchd)"
-if yes "Install the hourly ingest + summarize and nightly promote agents?"; then
+DOMAIN="gui/$(id -u)"; loaded=0
+for l in com.plasmie.dev-ingest com.plasmie.dev-summarize com.plasmie.dev-promote com.plasmie.mlx-server; do
+  launchctl print "$DOMAIN/$l" >/dev/null 2>&1 && loaded=$((loaded + 1))
+done
+if [ "$loaded" -ge 4 ]; then
+  ok "agents already installed ($loaded/4 loaded)"
+  yes "Refresh them (re-point to this install)?" && { "$SELF/launchd/install.sh" && ok "refreshed"; }
+elif yes "Install the ingest + summarize + promote agents${loaded:+ ($loaded/4 currently loaded)}?"; then
   "$SELF/launchd/install.sh" && ok "agents installed"
 else warn "skipped — run launchd/install.sh later"; fi
 
-# 8) menu-bar app -------------------------------------------------------------
+# 8) menu-bar app — detect existing install -----------------------------------
 say "8/8 · Menu-bar app"
-if yes "Build & install the Plasmie menu-bar app?"; then
-  if "$SELF/app/make-app.sh" >/dev/null 2>&1; then
-    rm -rf "/Applications/Plasmie.app"; cp -R "$SELF/app/build/Plasmie.app" /Applications/ && ok "installed to /Applications"
-    yes "Launch at login?" && osascript -e 'tell application "System Events" to make login item at end with properties {path:"/Applications/Plasmie.app", hidden:true}' >/dev/null 2>&1 && ok "added login item"
-    open "/Applications/Plasmie.app"
-  else warn "app build failed (needs Xcode Command Line Tools: xcode-select --install)"; fi
+if [ -d "/Applications/Plasmie.app" ]; then
+  pgrep -x Plasmie >/dev/null && ok "app already installed (running)" || ok "app already installed"
+  yes "Rebuild & reinstall (pick up the latest)?" && install_app
+elif yes "Build & install the Plasmie menu-bar app?"; then
+  install_app
 else warn "skipped — build later with app/make-app.sh"; fi
 
 say "Done"

@@ -10,7 +10,11 @@ UID_N="$(id -u)"
 
 case "${1:-}" in
   up)
-    launchctl kickstart -k "gui/$UID_N/$LABEL" 2>/dev/null || launchctl start "$LABEL"
+    # Bootstrap the agent if it isn't loaded (kickstart only works once loaded —
+    # after a logout/reboot or a manual bootout it isn't, and kickstart returns 3).
+    launchctl print "gui/$UID_N/$LABEL" >/dev/null 2>&1 || \
+      launchctl bootstrap "gui/$UID_N" "$HOME/Library/LaunchAgents/$LABEL.plist" 2>/dev/null || true
+    launchctl kickstart -k "gui/$UID_N/$LABEL" 2>/dev/null || launchctl start "$LABEL" 2>/dev/null || true
     for i in $(seq 1 40); do
       curl -s -o /dev/null --max-time 2 http://127.0.0.1:8080/v1/models 2>/dev/null && exit 0
       sleep 2

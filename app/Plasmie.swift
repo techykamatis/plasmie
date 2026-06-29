@@ -325,7 +325,6 @@ struct ActionRow: View {
 
 struct Panel: View {
     @ObservedObject var m: Model
-    @State private var query = ""
     private var working: Bool { m.s.state == "running" || m.busy }
 
     var body: some View {
@@ -359,20 +358,22 @@ struct Panel: View {
                 }
             }
 
-            // ask-anything command palette — local RAG over the vault
+            // ask-anything — not an inline field; opens the Knowledge spotlight overlay
             Divider().padding(.horizontal, 12)
-            HStack(spacing: 7) {
-                Image(systemName: "sparkle.magnifyingglass").foregroundStyle(.secondary).font(.system(size: 12))
-                TextField("Ask anything in the vault…", text: $query)
-                    .textFieldStyle(.plain).font(.system(size: 12))
-                    .onSubmit { m.ask(query) }
-                if m.busy && m.note.hasPrefix("Asking") {
-                    ProgressView().controlSize(.small).scaleEffect(0.7)
-                } else if !query.isEmpty {
-                    Button { m.ask(query) } label: { Image(systemName: "arrow.up.circle.fill") }
-                        .buttonStyle(.plain).foregroundStyle(.blue)
+            Button { OverlayController.shared.toggle() } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "sparkle.magnifyingglass").foregroundStyle(.secondary).font(.system(size: 12))
+                    Text("Ask anything in the vault…").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Text("⌃⌥⌘K").font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
                 }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .help("Open the Knowledge spotlight to ask anything in your vault (⌃⌥⌘K)")
             .padding(.horizontal, 12).padding(.vertical, 9)
 
             // held-for-review (the uncertain minority; everything confident was auto-applied)
@@ -525,6 +526,7 @@ final class OverlayPanel: NSPanel {
 
 /// Owns the overlay panel; toggles it open/closed and centers it on the active screen.
 final class OverlayController {
+    static let shared = OverlayController()   // also reachable from the menu-bar panel
     private var panel: OverlayPanel?
 
     func toggle() {
@@ -744,7 +746,7 @@ struct AskOverlay: View {
 
 /// Wires the global hotkey to the overlay at launch (the MenuBarExtra scene stays).
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let overlay = OverlayController()
+    private let overlay = OverlayController.shared
     private var hotKey: HotKey?
     func applicationDidFinishLaunching(_ notification: Notification) {
         hotKey = HotKey { [weak self] in self?.overlay.toggle() }

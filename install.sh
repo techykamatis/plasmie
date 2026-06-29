@@ -142,7 +142,10 @@ elif yes "Build & install the Plasmie menu-bar app?"; then
   install_app
 else warn "skipped — build later with app/make-app.sh"; fi
 
-say "Done"
-echo "  Vault:    $VAULT   →  open in Obsidian (File ▸ Open folder as vault)"
-echo "  Menu bar: look for 🧠"
-echo "  Re-run this wizard any time — every step is idempotent."
+say "You're all set"
+echo "  Ask anything:  press ⌃⌥⌘K, type a question about your notes."
+echo "  Menu bar:      look for the brain icon at the top of your screen."
+echo "  Your notes:    $VAULT  (open it in Obsidian: File ▸ Open folder as vault)"
+echo
+echo "  Slack ingest is optional — add a token to ~/.claude/.env any time to turn it on."
+echo "  Run this wizard again whenever you like; it only does what's still needed."

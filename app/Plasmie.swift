@@ -781,26 +781,37 @@ struct SetupView: View {
     @State private var msg = "Preparing…"
     @State private var failed: String?
     @State private var running = false
+    @State private var done = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
                 Image(nsImage: kLogo)
-                Text("Setting up Plasmie").font(.system(size: 16, weight: .semibold))
+                Text(done ? "You're all set" : "Setting up Plasmie")
+                    .font(.system(size: 16, weight: .semibold))
             }
-            Text("One-time setup: this installs the local AI and creates your notes vault. "
-                 + "It can take several minutes (a large download) — you can keep using your Mac.")
-                .font(.system(size: 12)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            if let f = failed {
-                Text(f).font(.system(size: 12)).foregroundStyle(.red)
+            if done {
+                Text("Plasmie is ready. Press ⌃⌥⌘K anywhere to ask a question about "
+                     + "your notes — look for the brain icon in your menu bar at the top of the screen.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Button("Try again") { run() }
+                Spacer()
+                HStack { Spacer(); Button("Done") { onDone() }.keyboardShortcut(.defaultAction) }
             } else {
-                ProgressView(value: pct, total: 100)
-                Text(msg).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                Text("One-time setup: this installs the local AI and creates your notes vault. "
+                     + "It can take several minutes (a large download) — you can keep using your Mac.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let f = failed {
+                    Text(f).font(.system(size: 12)).foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Try again") { run() }
+                } else {
+                    ProgressView(value: pct, total: 100)
+                    Text(msg).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer()
             }
-            Spacer()
         }
         .padding(20).frame(width: 460, height: 250)
         .onAppear { if !running { run() } }
@@ -823,7 +834,7 @@ struct SetupView: View {
             },
             onDone: {
                 running = false
-                if failed == nil && pct >= 100 { onDone() }
+                if failed == nil && pct >= 100 { done = true }   // show success, let the user dismiss
                 else if failed == nil { failed = "Setup ended early. Tap Try again." }
             })
     }

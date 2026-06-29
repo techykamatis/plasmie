@@ -23,4 +23,5 @@ config.env
 
 # Build artifacts (the compiled .app / .dmg — rebuild with app/make-app.sh)
 app/build/
+app/build-cache/
 app/*.iconset

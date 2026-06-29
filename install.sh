@@ -98,10 +98,10 @@ say "6/8 · Local models (generation + search)"
 MODEL="$SELF/models/gemma-4-e4b"
 if [ -f "$MODEL/config.json" ]; then
   ok "generation model already present"
-elif yes "Download the generation model now? (~4.9 GB; needs a Hugging Face login)"; then
+elif yes "Download the generation model now? (~4.9 GB, no account needed)"; then
+  # mlx-community reupload is ungated — anonymous download, no HF login.
   "$SELF/.venv/bin/pip" -q install -U "huggingface_hub[cli]"
-  "$SELF/.venv/bin/huggingface-cli" whoami >/dev/null 2>&1 || "$SELF/.venv/bin/huggingface-cli" login
-  "$SELF/.venv/bin/huggingface-cli" download mlx-community/gemma-4-e4b-it-4bit --local-dir "$MODEL" \
+  "$SELF/.venv/bin/hf" download mlx-community/gemma-4-e4b-it-4bit --local-dir "$MODEL" \
     && ok "model downloaded" || warn "download interrupted — re-run install.sh to resume (HF resumes partials)"
 else
   warn "skipped — promote/summarize skip until the model is present (see models/README.md)"

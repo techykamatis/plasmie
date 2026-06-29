@@ -49,7 +49,7 @@ The wizard walks 8 steps, each idempotent and skippable, so it's safe to re-run:
 3. **Scaffold** — creates a fresh PARA vault from `vault-template/` (never overwrites an existing one).
 4. **Secrets** — your `SLACK_USER_TOKEN` → `~/.claude/.env` (chmod 600).
 5. **Python env** — a `.venv` with `mlx-vlm` for the local model server.
-6. **Model** — downloads Gemma-4 E4B (~4.9 GB, Hugging Face login; resumable).
+6. **Models** — downloads Gemma-4 E4B for generation (~4.9 GB, no account needed; resumable) and pulls `embeddinggemma` on Ollama for semantic search (~620 MB).
 7. **Loops** — installs the launchd agents (ingest/summarize/promote).
 8. **App** — builds the menu-bar app, installs to `/Applications`, optional launch-at-login.
 
@@ -98,7 +98,7 @@ point. Instead:
 - Python 3.12, with `mlx-vlm` installed in `.venv/`.
 - [Claude Code](https://claude.com/claude-code) on `PATH`.
 - A Slack **user** token (`xoxp-…`) with `search:read` and `users:read`.
-- A Hugging Face token for the gated Gemma weights.
+- [Ollama](https://ollama.com) for semantic search (`embeddinggemma`, ~620 MB).
 
 ---
 
@@ -110,12 +110,11 @@ point. Instead:
 SLACK_USER_TOKEN=xoxp-…
 ```
 
-**2. Model** — download the 4-bit Gemma-4 (see `models/README.md`):
+**2. Models** — download the 4-bit Gemma-4 (ungated, no login) and pull the search model:
 
 ```bash
-huggingface-cli login
-huggingface-cli download mlx-community/gemma-4-e4b-it-4bit \
-  --local-dir models/gemma-4-e4b
+hf download mlx-community/gemma-4-e4b-it-4bit --local-dir models/gemma-4-e4b
+ollama pull embeddinggemma
 ```
 
 **3. Python env**:

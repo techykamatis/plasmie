@@ -19,10 +19,10 @@ Each subdirectory is one MLX-converted Gemma-4 E-series model from
 
 ## Download
 
-Weights are gated — needs a Hugging Face token (`huggingface-cli login`):
+The mlx-community reupload is **ungated** — anonymous download, no HF account:
 
 ```bash
-huggingface-cli download mlx-community/gemma-4-e4b-it-4bit --local-dir gemma-4-e4b
+hf download mlx-community/gemma-4-e4b-it-4bit --local-dir gemma-4-e4b
 ```
 
 ## Serve
@@ -41,6 +41,6 @@ Point Claude Code at the endpoint with `../cc-local.sh`.
 
 ## Adding a model
 
-1. `huggingface-cli download <repo> --local-dir models/<name>`.
+1. `hf download <repo> --local-dir models/<name>`.
 2. Add a row to the table above.
 3. Nothing else to ignore — `.gitignore` already excludes everything but docs.

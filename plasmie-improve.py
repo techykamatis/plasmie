@@ -28,6 +28,15 @@ import reindex
 
 MEMORY = "99 Meta/improvement-loop.md"
 DRAFTS = "99 Meta/promotion-drafts"
+GAPS = "99 Meta/coverage-gaps.md"   # questions ask.py couldn't answer — the fill backlog
+
+
+def count_gaps(vault):
+    """How many coverage gaps are pending (questions with no good note yet)."""
+    g = Path(vault) / GAPS
+    if not g.exists():
+        return 0
+    return sum(1 for ln in g.read_text(errors="replace").splitlines() if ln.startswith("- "))
 
 
 def archive_resolved(vault, write=True):
@@ -72,6 +81,7 @@ def run(vault="~/knowledge", write=True):
     vault = str(Path(vault).expanduser())
     count, orphans, dead = reindex.reindex(vault, write=write)
     moved = archive_resolved(vault, write=write)
+    gaps = count_gaps(vault)
 
     # Memory logs vault-changing events only; orphan count is steady-state context.
     events = []
@@ -83,7 +93,7 @@ def run(vault="~/knowledge", write=True):
         remember(vault, "; ".join(events) + f" — {count} concept notes, {len(orphans)} unfiled", write=write)
 
     print(f"{count} concept notes · {len(orphans)} unfiled · {len(dead)} dead links · "
-          f"{len(moved)} archived" + (" · (dry)" if not write else ""))
+          f"{len(moved)} archived · {gaps} coverage gaps" + (" · (dry)" if not write else ""))
     return count, orphans, dead, moved
 
 
@@ -102,6 +112,11 @@ def selfcheck():
         (drafts / "2026-06-25.md").write_text("# draft\n✅ auto-applied\n## CREATE: x\n")   # resolved, old
         (drafts / "2026-06-26.md").write_text("# draft\n## CREATE: y\n")                     # unresolved
         (drafts / f"{date.today().isoformat()}.md").write_text("# draft\n✅ done\n")          # resolved but today
+
+        (v / GAPS).write_text("# Coverage gaps\n\nintro\n\n"
+                              '- 2026-06-29 · (0.28) "q one" — closest: a.md\n'
+                              '- 2026-06-29 · (0.31) "q two" — closest: b.md\n')
+        assert count_gaps(str(v)) == 2, count_gaps(str(v))
 
         count, orphans, dead, moved = run(str(v), write=True)
         assert count == 2, count

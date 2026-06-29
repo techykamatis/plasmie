@@ -47,6 +47,11 @@ NUM_PREDICT = 600     # cap answer length so a runaway model can't hang the ask
 JOURNAL = "02 Areas/journal"   # dated daily notes: YYYY-MM-DD.md
 # Whole vault except scaffolding/drafts — ask anything that's actually filed.
 SKIP_DIRS = {"00 Inbox", "99 Meta", ".git", ".obsidian"}
+# Coverage: EmbeddingGemma cosine of the top hit. Measured in-vault hits land
+# 0.51–0.72, out-of-vault 0.11–0.35 — 0.40 splits them with margin. Below this,
+# nothing in the vault really answers the question: log it as a gap to fill.
+COVERAGE_MIN = 0.40
+GAPS = "99 Meta/coverage-gaps.md"
 
 
 def _say(msg):
@@ -124,13 +129,37 @@ def expand_links(hits, corpus, cap=2):
     return hits + extra
 
 
-def build_prompt(question, hits):
+def log_gap(vault, question, score, closest):
+    """Record a question the vault couldn't answer well, so coverage can grow.
+
+    Dedup on the question text — asking the same thing twice shouldn't spam the
+    log. The file is the backlog: write/promote a note and the gap drops off.
+    """
+    q = " ".join(question.split())
+    path = Path(vault).expanduser() / GAPS
+    existing = path.read_text(errors="replace") if path.exists() else ""
+    if f'"{q}"' in existing:
+        return False
+    if not existing:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        existing = ("# Coverage gaps\n\nQuestions asked that the vault couldn't answer well "
+                    "(top similarity below threshold). Fill each by writing or promoting a "
+                    "concept note, then it drops off.\n\n")
+    line = f'- {datetime.date.today().isoformat()} · ({score:.2f}) "{q}" — closest: {closest}\n'
+    path.write_text(existing + line)
+    return True
+
+
+def build_prompt(question, hits, weak=False):
     ctx = "\n\n".join(
         f"--- NOTE: {doc['path']} ---\n{doc['text'][:PER_NOTE]}" for _, doc in hits)
+    warn = ("These notes are only weakly related to the question — they may not "
+            "answer it. If they don't, say the vault doesn't cover this yet rather "
+            "than forcing an answer.\n\n") if weak else ""
     return (
         "Answer the question using ONLY the notes below. Cite the note path(s) you "
         "used. If the notes don't contain the answer, say so plainly — do not guess.\n\n"
-        f"{ctx}\n\n=== QUESTION ===\n{question}\n\n=== ANSWER ===\n")
+        f"{warn}{ctx}\n\n=== QUESTION ===\n{question}\n\n=== ANSWER ===\n")
 
 
 def ensure_up():
@@ -259,16 +288,22 @@ def ask(question, vault="~/knowledge", on_chunk=None):
     corpus, idf = build_corpus(vault)
     if not corpus:
         return done("Vault is empty — nothing to search yet.", [])
-    hits = embed_hits(question, corpus) or nearest(question, corpus, idf)
+    embedded = embed_hits(question, corpus)
+    hits = embedded or nearest(question, corpus, idf)
     if not hits:
         return done("No matching notes found in the vault.", [])
+    # Coverage: a low top cosine means nothing really matches (gap). Only the
+    # embed path gives a query-comparable score; skip the check on TF-IDF fallback.
+    weak = bool(embedded) and embedded[0][0] < COVERAGE_MIN
+    if weak and log_gap(vault, question, embedded[0][0], embedded[0][1]["path"]):
+        _say("No strong match — answering tentatively and logging a coverage gap.")
     hits = expand_links(hits, corpus)        # OKF: pull in linked neighbors
     titles = ", ".join(doc["title"] for _, doc in hits[:3])
     _say(f"Found {len(hits)} relevant notes: {titles}")
     if not ensure_up():
         return done(unavailable, hits)
     _say("Asking Gemma…")
-    answer = stream_model(build_prompt(question, hits), on_chunk)
+    answer = stream_model(build_prompt(question, hits, weak=weak), on_chunk)
     if not answer:  # model off/unreachable/timed out — fall back to the retrieved notes
         return done(unavailable, hits)
     return answer, hits
@@ -301,6 +336,12 @@ def selfcheck():
         h2 = nearest("how do I shrink RDS storage", corpus2, idf2, k=1)
         exp = expand_links(h2, corpus2)
         assert len(exp) == 2 and any(d["path"].endswith("slack.md") for _, d in exp), exp
+
+        # coverage gap log: writes once, dedups the same question, records score+closest
+        assert log_gap(v, "how do I bake bread?", 0.21, "rds.md") is True
+        assert log_gap(v, "how do I  bake   bread?", 0.21, "rds.md") is False  # normalized dup
+        g = (v / GAPS).read_text()
+        assert '(0.21) "how do I bake bread?"' in g and "closest: rds.md" in g, g
 
         # stream_model parses SSE, assembles chunks in order, fires on_chunk live
         def _sse(c): return b'data: {"choices":[{"delta":{"content":"%s"}}]}' % c

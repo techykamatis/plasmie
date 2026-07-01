@@ -48,8 +48,8 @@ The wizard walks 8 steps, each idempotent and skippable, so it's safe to re-run:
 2. **Vault location** — where the vault lives (default `~/knowledge`); saved to `config.env`.
 3. **Scaffold** — creates a fresh PARA vault from `vault-template/` (never overwrites an existing one).
 4. **Secrets** — your `SLACK_USER_TOKEN` → `~/.claude/.env` (chmod 600).
-5. **Python env** — a `.venv` with `mlx-vlm` for the local model server.
-6. **Models** — downloads Gemma-4 E4B for generation (~4.9 GB, no account needed; resumable) and pulls `embeddinggemma` on Ollama for semantic search (~620 MB).
+5. **Python env** — a `.venv` with `mlx-vlm` (generation) and `mlx-embeddings` (search).
+6. **Models** — downloads Gemma-4 E4B for generation (~4.9 GB, no account needed; resumable) and `embeddinggemma` for semantic search (~600 MB), both run in-process via MLX.
 7. **Loops** — installs the launchd agents (ingest/summarize/promote).
 8. **App** — builds the menu-bar app, installs to `/Applications`, optional launch-at-login.
 
@@ -98,7 +98,7 @@ point. Instead:
 - Python 3.12, with `mlx-vlm` installed in `.venv/`.
 - [Claude Code](https://claude.com/claude-code) on `PATH`.
 - A Slack **user** token (`xoxp-…`) with `search:read` and `users:read`.
-- [Ollama](https://ollama.com) for semantic search (`embeddinggemma`, ~620 MB).
+- `mlx-embeddings` for semantic search (`embeddinggemma`, ~600 MB) — runs in-process, no extra server.
 
 ---
 
@@ -110,17 +110,18 @@ point. Instead:
 SLACK_USER_TOKEN=xoxp-…
 ```
 
-**2. Models** — download the 4-bit Gemma-4 (ungated, no login) and pull the search model:
+**2. Models** — download the 4-bit Gemma-4 (ungated, no login); the search model
+auto-downloads on first ask (or pre-warm it as below):
 
 ```bash
 hf download mlx-community/gemma-4-e4b-it-4bit --local-dir models/gemma-4-e4b
-ollama pull embeddinggemma
+.venv/bin/python3 -c "from mlx_embeddings.utils import load; load('mlx-community/embeddinggemma-300m-bf16')"
 ```
 
 **3. Python env**:
 
 ```bash
-python3.12 -m venv .venv && .venv/bin/pip install mlx-vlm
+python3.12 -m venv .venv && .venv/bin/pip install mlx-vlm mlx-embeddings
 ```
 
 **4. launchd agents** — four agents drive the loop. The templates live in

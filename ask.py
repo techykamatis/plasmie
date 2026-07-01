@@ -93,17 +93,17 @@ def nearest(query, corpus, idf, k=TOP_K):
 
 
 def embed_hits(question, corpus, k=TOP_K):
-    """EmbeddingGemma semantic ranking (Google on-device, via Ollama).
+    """EmbeddingGemma semantic ranking (Google on-device, in-process MLX).
 
     Returns [(score, doc), ...] like nearest(), or None if embeddings are
-    unavailable (Ollama down) so the caller falls back to lexical TF-IDF.
+    unavailable (model not downloaded) so the caller falls back to lexical TF-IDF.
     Eval: pure embed scores 1.00 hit@1 / MRR 1.0 vs TF-IDF's 0.81 — see eval.py.
     """
     try:
         import retrieve                       # lazy: retrieve imports ask
         vecs = retrieve.embed_corpus(corpus)
         qv = retrieve.embed_query(question)
-    except Exception:                          # ollama down / model missing / net
+    except Exception:                          # model missing / load failed
         return None
     scored = sorted(((retrieve._dot(qv, vecs[d["path"]]), d)
                      for d in corpus if d["path"] in vecs), key=lambda s: -s[0])

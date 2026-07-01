@@ -7,9 +7,9 @@
 #   app-setup.sh <RESOURCES_DIR> [VAULT_DIR]
 #     RESOURCES_DIR contains backend/ (the scripts) and python/ (standalone 3.12)
 #
-# ponytail: bundles a BARE standalone python and pip-installs mlx-vlm on first
-# run — keeps the .app small and gets the right arch, at the cost of one network
-# install the user already needs network for (Ollama + the 5 GB model anyway).
+# ponytail: bundles a BARE standalone python and pip-installs the model libs on
+# first run — keeps the .app small and gets the right arch, at the cost of one
+# network install the user already needs network for (the 5 GB model anyway).
 set -uo pipefail
 
 RES="${1:?usage: app-setup.sh <RESOURCES_DIR> [VAULT]}"
@@ -18,7 +18,7 @@ LOOP="$HOME/.plasmie"
 VENV="$LOOP/.venv"
 PY="$VENV/bin/python3"
 MODEL_DIR="$LOOP/models/gemma-4-e4b"
-OLLAMA_URL="https://ollama.com/download/Ollama-darwin.zip"
+EMBED_MODEL="mlx-community/embeddinggemma-300m-bf16"
 
 p()   { printf 'PROGRESS:%s:%s\n' "$1" "$2"; }
 fail(){ printf 'ERROR:%s\n' "$1"; exit 1; }
@@ -43,40 +43,19 @@ else
   fi
   p 15 "Installing model libraries (one-time)…"
   "$VENV/bin/python3" -m pip -q install --upgrade pip >/dev/null 2>&1
-  "$VENV/bin/python3" -m pip -q install mlx-vlm "huggingface_hub[cli]" \
-    || fail "could not install mlx-vlm"
+  "$VENV/bin/python3" -m pip -q install mlx-vlm mlx-embeddings "huggingface_hub[cli]" \
+    || fail "could not install model libraries"
   p 25 "Python runtime ready"
 fi
 
-# 3) Ollama (semantic search) ------------------------------------------------
-if ! curl -s -o /dev/null --max-time 2 http://127.0.0.1:11434/api/tags 2>/dev/null; then
-  if [ ! -d /Applications/Ollama.app ] && [ ! -d "$HOME/Applications/Ollama.app" ]; then
-    p 30 "Downloading Ollama…"
-    tmp="$(mktemp -d)"
-    curl -sL "$OLLAMA_URL" -o "$tmp/Ollama.zip" || fail "Ollama download failed"
-    /usr/bin/unzip -q "$tmp/Ollama.zip" -d "$tmp" || fail "Ollama unzip failed"
-    cp -R "$tmp/Ollama.app" /Applications/ 2>/dev/null \
-      || cp -R "$tmp/Ollama.app" "$HOME/Applications/" \
-      || fail "couldn't install Ollama.app"
-    rm -rf "$tmp"
-  fi
-  p 38 "Starting Ollama…"
-  open -a Ollama 2>/dev/null || true
-  for _ in $(seq 1 30); do
-    curl -s -o /dev/null --max-time 2 http://127.0.0.1:11434/api/tags 2>/dev/null && break
-    sleep 1
-  done
-fi
-curl -s -o /dev/null --max-time 2 http://127.0.0.1:11434/api/tags 2>/dev/null \
-  || fail "Ollama isn't responding"
-
-# pull the embedding model over the HTTP API (no admin-requiring CLI symlink)
-if curl -s http://127.0.0.1:11434/api/tags | grep -q '"embeddinggemma'; then
+# 3) search model — EmbeddingGemma in-process (MLX, no extra server) ----------
+# Cached in the HF hub cache; pre-warm it so the first ask is instant & offline.
+if "$PY" -c "from mlx_embeddings.utils import load; load('$EMBED_MODEL')" 2>/dev/null; then
   p 45 "Search model ready"
 else
-  p 40 "Downloading the search model…"
-  curl -s http://127.0.0.1:11434/api/pull -d '{"name":"embeddinggemma"}' >/dev/null \
-    || fail "couldn't pull embeddinggemma"
+  p 40 "Downloading the search model (~600 MB, one-time)…"
+  "$PY" -c "from mlx_embeddings.utils import load; load('$EMBED_MODEL')" \
+    || fail "couldn't download the search model"
   p 45 "Search model ready"
 fi
 

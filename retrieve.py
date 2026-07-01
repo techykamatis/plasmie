@@ -2,7 +2,7 @@
 """Retrieval strategies for vault Q&A — pluggable, measured by eval.py.
 
   tfidf   — lexical baseline (ask.build_corpus / ask.nearest)
-  embed   — EmbeddingGemma semantic (Google on-device, via Ollama), cosine
+  embed   — EmbeddingGemma semantic (Google on-device, in-process MLX), cosine
   hybrid  — blend of min-max-normalized tfidf + embed scores (alpha = embed weight)
 
 Plus link_graph(): OKF cross-links (markdown links + [[wikilinks]]) → adjacency,
@@ -20,24 +20,36 @@ import json
 import math
 import os
 import re
-import urllib.request
 from pathlib import Path
 
 import ask
 
-OLLAMA = os.environ.get("PLASMIE_OLLAMA", "http://127.0.0.1:11434")
-EMBED_MODEL = os.environ.get("PLASMIE_EMBED_MODEL", "embeddinggemma")
+# EmbeddingGemma on MLX — same model the rest of the stack uses, no extra runtime
+# (we already bundle Python+MLX for generation, so Ollama is no longer needed).
+EMBED_MODEL = os.environ.get("PLASMIE_EMBED_MODEL", "mlx-community/embeddinggemma-300m-bf16")
 CACHE = ask.SELF / ".embed-cache.json"
 DOC_CHARS = 1500       # EmbeddingGemma context is ~2k tokens; title+this stays under
 BATCH = 16
+_EMBEDDER = None       # (model, tokenizer), loaded once per process (~2s cold)
+
+
+def _embedder():
+    global _EMBEDDER
+    if _EMBEDDER is None:
+        from mlx_embeddings.utils import load
+        _EMBEDDER = load(EMBED_MODEL)
+    return _EMBEDDER
 
 
 def _embed(inputs):
-    body = json.dumps({"model": EMBED_MODEL, "input": inputs}).encode()
-    req = urllib.request.Request(f"{OLLAMA}/api/embed", data=body,
-                                 headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return json.load(r)["embeddings"]
+    # Call the model directly (mlx_embeddings.generate passes input_ids= but the
+    # gemma3 embedding class wants a positional arg — calling it ourselves is robust).
+    import mlx.core as mx
+    model, tok = _embedder()
+    enc = tok.batch_encode_plus(list(inputs), return_tensors="mlx", padding=True)
+    out = model(enc["input_ids"], attention_mask=enc.get("attention_mask"))
+    mx.eval(out.text_embeds)
+    return [[float(x) for x in row] for row in out.text_embeds]
 
 
 def _norm(v):

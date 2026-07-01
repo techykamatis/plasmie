@@ -15,17 +15,6 @@ ask()  { local a; read -r -p "  $1 [$2]: " a; printf '%s' "${a:-$2}"; }
 yes()  { local a; read -r -p "  $1 [y/N]: " a; [[ "$a" =~ ^[Yy] ]]; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-# Make sure the Ollama server is answering (semantic search + the pull need it).
-ensure_ollama() {
-  curl -s -o /dev/null --max-time 2 http://127.0.0.1:11434/api/tags 2>/dev/null && return 0
-  open -a Ollama 2>/dev/null || true
-  for _ in $(seq 1 15); do
-    curl -s -o /dev/null --max-time 2 http://127.0.0.1:11434/api/tags 2>/dev/null && return 0
-    sleep 1
-  done
-  return 1
-}
-
 install_app() {
   "$SELF/app/make-app.sh" >/dev/null 2>&1 || { warn "app build failed (need Xcode CLT: xcode-select --install)"; return 1; }
   rm -rf "/Applications/Plasmie.app"
@@ -51,7 +40,6 @@ missing=()   # brew-installable prereqs that aren't here yet
 if [ -x "$PY312" ] || have python3.12; then ok "python3.12 ($("$PY312" -V 2>&1 | awk '{print $2}'))"; else warn "python3.12 — missing"; missing+=("python@3.12"); fi
 if have git; then ok "git"; else warn "git — missing"; missing+=("git"); fi
 if [ -d /Applications/Obsidian.app ]; then ok "Obsidian"; else warn "Obsidian — missing (required to view the vault)"; missing+=("--cask obsidian"); fi
-if have ollama || [ -d /Applications/Ollama.app ]; then ok "Ollama"; else warn "Ollama — missing (runs the local semantic-search model)"; missing+=("--cask ollama"); fi
 if have claude; then ok "claude CLI"; else warn "claude CLI — missing (needed for local-model summaries; install Claude Code separately, not via brew)"; fi
 avail="$(df -g "$HOME" 2>/dev/null | awk 'NR==2{print $4}')"; [ "${avail:-0}" -ge 8 ] && ok "${avail} GB free" || warn "low disk (${avail:-?} GB) — the model needs ~5 GB."
 
@@ -65,10 +53,35 @@ else ok "all prerequisites present"; fi
 
 # 2) vault location -----------------------------------------------------------
 say "2/8 · Vault location"
-VAULT="$(ask "Where should the knowledge vault live?" "$HOME/knowledge")"
-VAULT="${VAULT/#\~/$HOME}"
-printf 'VAULT_DIR=%s\n' "$VAULT" > "$SELF/config.env"
+# Keep the vault on the local disk. A cloud folder (OneDrive/iCloud) lives under
+# ~/Library/CloudStorage, which macOS blocks background helpers from reading —
+# it would silently break the loop. Guard against picking one here; OneDrive
+# sync is offered separately below as a safe one-way copy.
+while :; do
+  VAULT="$(ask "Where should your notes live? (a normal folder on this Mac — not a cloud folder)" "$HOME/knowledge")"
+  VAULT="${VAULT/#\~/$HOME}"
+  case "$VAULT" in
+    */Library/CloudStorage/*|*/OneDrive*|*/iCloud*)
+      warn "That's a cloud-synced folder. The background helpers can't read there, so the loop would break." ;;
+    *) break ;;
+  esac
+  warn "Please pick a regular folder on your Mac. (You can sync a copy to OneDrive in the next step.)"
+done
+printf 'VAULT_DIR="%s"\n' "$VAULT" > "$SELF/config.env"   # quoted: safe for paths with spaces
 ok "vault → $VAULT  (saved to config.env)"
+
+# 2b) optional OneDrive sync — local stays the original; OneDrive gets a copy ---
+OD="$(ls -d "$HOME/Library/CloudStorage/OneDrive"* 2>/dev/null | head -1)"
+if [ -n "$OD" ] && yes "Also keep a synced copy in OneDrive, so you can read your notes on other devices?"; then
+  MDEST="$(ask "Which OneDrive folder for the copy?" "$OD/AI Labs/knowledge")"
+  MDEST="${MDEST/#\~/$HOME}"
+  printf 'MIRROR_DEST="%s"\n' "$MDEST" >> "$SELF/config.env"
+  ok "OneDrive copy → $MDEST  (updated every hour)"
+  warn "If your notes don't show up in OneDrive within an hour, macOS needs one grant:"
+  warn "  System Settings ▸ Privacy & Security ▸ Full Disk Access ▸ add /bin/bash and turn it on."
+else
+  [ -z "$OD" ] && warn "OneDrive not found — skipping cloud sync (your notes still work fine locally)."
+fi
 
 # 3) scaffold vault -----------------------------------------------------------
 say "3/8 · Scaffold vault"
@@ -89,8 +102,8 @@ fi
 # 5) python env + MLX ---------------------------------------------------------
 say "5/8 · Python environment (MLX)"
 [ -d "$SELF/.venv" ] && ok ".venv exists" || { "$PY312" -m venv "$SELF/.venv"; ok "created .venv"; }
-if "$VENV_PY" -c "import mlx_vlm" 2>/dev/null; then ok "mlx-vlm installed"
-else warn "installing mlx-vlm (pulls mlx + mlx-lm)…"; "$SELF/.venv/bin/pip" -q install mlx-vlm && ok "mlx-vlm installed" || warn "mlx-vlm install failed — local model won't serve"; fi
+if "$VENV_PY" -c "import mlx_vlm, mlx_embeddings" 2>/dev/null; then ok "mlx-vlm + mlx-embeddings installed"
+else warn "installing mlx-vlm + mlx-embeddings (pulls mlx + mlx-lm)…"; "$SELF/.venv/bin/pip" -q install mlx-vlm mlx-embeddings && ok "installed" || warn "install failed — local model won't serve"; fi
 
 # 6) local models -------------------------------------------------------------
 say "6/8 · Local models (generation + search)"
@@ -107,17 +120,18 @@ else
   warn "skipped — promote/summarize skip until the model is present (see models/README.md)"
 fi
 
-# 6b · search model — EmbeddingGemma on Ollama (ungated, auto-pull). The ask
-# feature's semantic search needs this; without it ask.py falls back to weaker
-# keyword matching and can't tell when the vault doesn't cover a question.
-if have ollama || [ -d /Applications/Ollama.app ]; then
-  if ensure_ollama; then
-    if ollama list 2>/dev/null | grep -q '^embeddinggemma'; then ok "search model (embeddinggemma) present"
-    else warn "pulling embeddinggemma (~620 MB)…"; ollama pull embeddinggemma >/dev/null 2>&1 \
-      && ok "search model ready" || warn "pull failed — ask falls back to keyword search until you run: ollama pull embeddinggemma"; fi
-  else warn "Ollama installed but not responding — open it once, then re-run to pull embeddinggemma"; fi
+# 6b · search model — EmbeddingGemma in-process via MLX (ungated, no server).
+# The ask feature's semantic search uses this; without it ask.py falls back to
+# weaker keyword matching and can't tell when the vault doesn't cover a question.
+EMBED_MODEL="mlx-community/embeddinggemma-300m-bf16"
+if "$VENV_PY" -c "from mlx_embeddings.utils import load; load('$EMBED_MODEL')" 2>/dev/null; then
+  ok "search model (embeddinggemma) present"
+elif yes "Download the search model now? (~600 MB, no account needed)"; then
+  warn "downloading embeddinggemma…"
+  "$VENV_PY" -c "from mlx_embeddings.utils import load; load('$EMBED_MODEL')" \
+    && ok "search model ready" || warn "download interrupted — re-run install.sh to resume"
 else
-  warn "Ollama not installed — semantic search is off until you install it (re-run) and it pulls embeddinggemma"
+  warn "skipped — ask falls back to keyword search until the model is downloaded"
 fi
 
 # 7) background loops — detect already-installed agents -----------------------
@@ -146,6 +160,8 @@ say "You're all set"
 echo "  Ask anything:  press ⌃⌥⌘K, type a question about your notes."
 echo "  Menu bar:      look for the brain icon at the top of your screen."
 echo "  Your notes:    $VAULT  (open it in Obsidian: File ▸ Open folder as vault)"
+grep -q '^MIRROR_DEST=' "$SELF/config.env" 2>/dev/null && \
+  echo "  OneDrive sync: a copy is mirrored hourly for your other devices."
 echo
 echo "  Slack ingest is optional — add a token to ~/.claude/.env any time to turn it on."
 echo "  Run this wizard again whenever you like; it only does what's still needed."

@@ -109,6 +109,11 @@ func openInObsidian(_ path: String) {
 }
 func detectObsidian() -> Bool { NSWorkspace.shared.urlForApplication(withBundleIdentifier: "md.obsidian") != nil }
 
+/// OneDrive sync is set up iff config.env defines MIRROR_DEST (wizard writes it).
+func syncConfigured(_ loop: String) -> Bool {
+    (try? String(contentsOfFile: "\(loop)/config.env", encoding: .utf8))?.contains("MIRROR_DEST=") ?? false
+}
+
 func loadStatus() -> Status {
     let out = runCapture("/usr/bin/python3", ["\(NSHomeDirectory())/.plasmie/plasmie-status.py"])
     guard let data = out.data(using: .utf8) else { return Status() }
@@ -176,6 +181,38 @@ final class Model: ObservableObject {
         updateAnimation(); schedulePoll()
         fireAndForget("/bin/launchctl", ["kickstart", "-p", "gui/\(getuid())/\(job)"])
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.note = "\(label) started"; self.refresh() }
+    }
+
+    /// Kick a launchd job and follow it to completion: real spinner while it runs,
+    /// then a ✓/✗ result from its exit status. Used for quick jobs (sync) where the
+    /// user wants to see it actually finish, not just "started".
+    func kickTracked(_ job: String, _ label: String) {
+        busy = true; note = "\(label)…"
+        hintUntil = Date().addingTimeInterval(2)
+        updateAnimation()
+        fireAndForget("/bin/launchctl", ["kickstart", "-p", "gui/\(getuid())/\(job)"])
+        DispatchQueue.global().async {
+            let start = Date()
+            var sawRunning = false
+            var exit = "0"
+            while Date().timeIntervalSince(start) < 30 {
+                Thread.sleep(forTimeInterval: 0.5)
+                let out = runCapture("/bin/launchctl", ["list", job])
+                let running = out.contains("\"PID\" =")
+                if running { sawRunning = true }
+                if let r = out.range(of: "\"LastExitStatus\" = ") {
+                    exit = String(out[r.upperBound...].prefix(while: { $0.isNumber || $0 == "-" }))
+                }
+                if !running && (sawRunning || Date().timeIntervalSince(start) > 1.5) { break }
+            }
+            DispatchQueue.main.async {
+                self.busy = false
+                self.note = (exit == "0") ? "\(label) done ✓"
+                                          : "\(label) failed (exit \(exit)) — check Full Disk Access for /bin/bash"
+                self.updateAnimation()
+                self.refresh()
+            }
+        }
     }
 
     /// run a python command in-process, show its output inline (no Terminal)
@@ -422,6 +459,10 @@ struct Panel: View {
                           detail: "Find new knowledge & auto-file it · runs nightly") { m.kick("com.plasmie.dev-promote", "Promote") }
                 ActionRow(title: "Run ingest now", symbol: "tray.and.arrow.down",
                           detail: "Capture latest Slack & sessions · runs hourly") { m.kick("com.plasmie.dev-ingest", "Ingest") }
+                if syncConfigured(m.s.loop) {
+                    ActionRow(title: "Sync to OneDrive now", symbol: "cloud",
+                              detail: "Copy notes to OneDrive for other devices · runs hourly") { m.kickTracked("com.plasmie.dev-mirror", "Sync to OneDrive") }
+                }
                 ActionRow(title: "Open vault in Obsidian", symbol: "folder",
                           detail: "Browse & edit all your notes") { openInObsidian(m.s.vault) }
                 if !m.s.journal.isEmpty {

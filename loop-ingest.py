@@ -11,6 +11,7 @@ Run via:  set -a; source ~/.claude/.env; set +a; python3 "99 Meta/loop-ingest.py
 import os, json, time, glob, re, urllib.request, urllib.parse, datetime
 
 from scrub import redact  # shared redactor — default keeps emails (journal attribution)
+import msgraph  # Microsoft Graph (Outlook mail + calendar)
 
 VAULT = os.environ.get("PLASMIE_VAULT") or os.path.expanduser("~/knowledge")
 STATE = os.path.expanduser("~/.plasmie/.loop-state.json")
@@ -85,6 +86,65 @@ if TOKEN:
 else:
     slack_err = "SLACK_USER_TOKEN not set"
 
+# ---- outlook (Microsoft Graph: mail + calendar) ----
+mail_lines = []
+mail_counts = []  # (label, n)
+cal_lines = []
+ms_err = None
+MS_RT = os.environ.get("MS_REFRESH_TOKEN", "")
+if MS_RT:
+    try:
+        at, new_rt = msgraph.access_token(MS_RT)
+        if new_rt != MS_RT:
+            msgraph._save_refresh(new_rt)  # refresh tokens rotate — persist the new one
+        utc = datetime.timezone.utc
+        since_iso = datetime.datetime.fromtimestamp(last_run, utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        for folder, dtf, direction in (("inbox", "receivedDateTime", "from"),
+                                       ("sentitems", "sentDateTime", "to")):
+            label = "Inbox" if folder == "inbox" else "Sent"
+            try:
+                res = msgraph.get(f"/me/mailFolders/{folder}/messages", at,
+                                  **{"$filter": f"{dtf} ge {since_iso}",
+                                     "$orderby": f"{dtf} desc", "$top": 50,
+                                     "$select": f"subject,bodyPreview,from,toRecipients,{dtf}"})
+            except Exception as e:
+                ms_err = ms_err or str(e)
+                continue
+            msgs = res.get("value", [])
+            if not msgs:
+                continue
+            mail_counts.append((label, len(msgs)))
+            mail_lines.append(f"\n**{label}** ({len(msgs)} new)")
+            for m in msgs[:25]:
+                if direction == "from":
+                    ea = (m.get("from") or {}).get("emailAddress") or {}
+                    who = ea.get("name") or ea.get("address") or "?"
+                else:
+                    rs = [(r.get("emailAddress") or {}) for r in (m.get("toRecipients") or [])]
+                    who = ", ".join(e.get("name") or e.get("address", "") for e in rs[:3]) or "?"
+                subj = redact(" ".join((m.get("subject") or "(no subject)").split()))[:120]
+                prev = redact(" ".join((m.get("bodyPreview") or "").split()))[:200]
+                mail_lines.append(f"- {direction} {who}: **{subj}** — {prev}")
+        # calendar: next 24h
+        now = datetime.datetime.now(utc)
+        try:
+            res = msgraph.get("/me/calendarView", at,
+                              **{"startDateTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                 "endDateTime": (now + datetime.timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                 "$orderby": "start/dateTime", "$top": 25,
+                                 "$select": "subject,start,location"})
+            for ev in res.get("value", []):
+                st = (ev.get("start") or {}).get("dateTime", "")[:16].replace("T", " ")
+                subj = redact(" ".join((ev.get("subject") or "(no title)").split()))[:120]
+                loc = ((ev.get("location") or {}).get("displayName") or "").strip()
+                cal_lines.append(f"- {st}Z · {subj}" + (f" @ {loc}" if loc else ""))
+        except Exception as e:
+            ms_err = ms_err or str(e)
+    except Exception as e:
+        ms_err = str(e)
+else:
+    ms_err = "MS_REFRESH_TOKEN not set"
+
 # ---- claude sessions ----
 sess_lines = []
 updated = []
@@ -158,6 +218,18 @@ elif slack_lines:
     block += slack_lines
 else:
     block.append("_no new Slack messages_")
+block.append("\n### Outlook")
+if ms_err:
+    block.append(f"_Outlook: {ms_err}_")
+else:
+    if mail_lines:
+        block += mail_lines
+    else:
+        block.append("_no new mail_")
+    if cal_lines:
+        block.append("\n**Next 24h**")
+        block += cal_lines
+
 block.append("\n### Claude sessions")
 if sess_lines:
     block.append(f"_{len(updated)} session file(s) updated_")
@@ -181,6 +253,16 @@ elif slack_counts:
         print(f"  {label}: {n} new")
 else:
     print("  (no new messages)")
+print("outlook:")
+if ms_err:
+    print(f"  ERROR: {ms_err}")
+else:
+    for label, n in mail_counts:
+        print(f"  {label}: {n} new")
+    if cal_lines:
+        print(f"  calendar: {len(cal_lines)} upcoming")
+    if not mail_counts and not cal_lines:
+        print("  (nothing new)")
 print("sessions:")
 if updated:
     for p, n in sorted(proj_counts.items(), key=lambda x: -x[1]):
@@ -189,5 +271,7 @@ else:
     print("  (no updates)")
 print(f"journal: {rel}")
 msgs = sum(n for _, n in slack_counts)
-print(f"SUMMARY: slack {len(slack_counts)} convos / {msgs} msgs · sessions {len(updated)} files · journal {rel}"
-      + (f" · SLACK-ERR {slack_err}" if slack_err else ""))
+mailn = sum(n for _, n in mail_counts)
+print(f"SUMMARY: slack {len(slack_counts)} convos / {msgs} msgs · outlook {mailn} mail / {len(cal_lines)} events · sessions {len(updated)} files · journal {rel}"
+      + (f" · SLACK-ERR {slack_err}" if slack_err else "")
+      + (f" · MS-ERR {ms_err}" if ms_err else ""))

@@ -14,8 +14,14 @@ VAULT="${VAULT_DIR:-$HOME/knowledge}"
 JPATH="$VAULT/02 Areas/journal/$(date +%F).md"
 [ -f "$JPATH" ] || { echo "no journal for today: $JPATH"; exit 0; }
 
-# grab the last "## HH:MM · auto-ingest ..." block through EOF
-block="$(awk '/^## .*auto-ingest/{buf=""; cap=1} cap{buf=buf $0 ORS} END{printf "%s", buf}' "$JPATH")"
+# grab the last "## HH:MM · auto-ingest ..." block through EOF.
+# retry: vault is in OneDrive, which briefly swaps the file inode mid-sync ->
+# awk "can't open file". A few attempts ride out the race.
+block=""
+for _ in 1 2 3 4; do
+    block="$(awk '/^## .*auto-ingest/{buf=""; cap=1} cap{buf=buf $0 ORS} END{printf "%s", buf}' "$JPATH" 2>/dev/null)" && [ -n "$block" ] && break
+    sleep 0.5
+done
 [ -n "$block" ] || { echo "no auto-ingest block to summarize"; exit 0; }
 
 # already summarized this block? (idempotent for re-runs within the hour)

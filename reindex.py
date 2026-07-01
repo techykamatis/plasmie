@@ -14,8 +14,25 @@ Usage:
 """
 import re
 import sys
+import time
 from datetime import date
 from pathlib import Path
+
+
+def read_text(path, tries=4, delay=0.5):
+    """Read a vault file, retrying transient OSErrors.
+
+    The vault lives in OneDrive; when the loop rewrites a hot file (index.md,
+    today's journal) OneDrive briefly swaps the inode to upload it, so a read
+    landing mid-sync gets EPERM/"Operation not permitted". Retry rides it out.
+    """
+    for i in range(tries):
+        try:
+            return path.read_text(errors="replace")
+        except OSError:
+            if i == tries - 1:
+                raise
+            time.sleep(delay)
 
 
 def frontmatter(text):
@@ -57,7 +74,7 @@ def reindex(vault, write=True):
     files = sorted(p for p in concepts.glob("*.md") if p.name != "index.md")
     count = len(files)
 
-    idx_text = idx.read_text(errors="replace")
+    idx_text = read_text(idx)
     curated = strip_unfiled(idx_text)
     linked = {Path(l).name for l in re.findall(r"\]\(([^)]+\.md)\)", curated)}
 
@@ -68,14 +85,14 @@ def reindex(vault, write=True):
     if orphans:
         rows = []
         for p in orphans:
-            fm = frontmatter(p.read_text(errors="replace"))
+            fm = frontmatter(read_text(p))
             title, desc = fm.get("title", p.stem), fm.get("description", "")
             rows.append(f"* [{title}]({p.name})" + (f" - {desc}" if desc else ""))
         new_idx += f"\n## Unfiled (auto — move into a section above) — {date.today()}\n" + "\n".join(rows) + "\n"
     new_idx = re.sub(r"\d+ atomic knowledge notes", f"{count} atomic knowledge notes", new_idx, count=1)
 
     root = vault / "index.md"
-    root_text = root.read_text(errors="replace") if root.exists() else None
+    root_text = read_text(root) if root.exists() else None
     new_root = re.sub(r"\d+ atomic notes", f"{count} atomic notes", root_text, count=1) if root_text else None
 
     if write:

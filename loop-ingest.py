@@ -8,7 +8,7 @@ a timestamped digest to today's journal note. Tracks a high-water mark in
 
 Run via:  set -a; source ~/.claude/.env; set +a; python3 "99 Meta/loop-ingest.py"
 """
-import os, json, time, glob, re, urllib.request, urllib.parse, datetime
+import os, json, time, glob, re, base64, html, urllib.request, urllib.parse, datetime
 
 from scrub import redact  # shared redactor — default keeps emails (journal attribution)
 import msgraph  # Microsoft Graph (Outlook mail + calendar)
@@ -145,6 +145,56 @@ if MS_RT:
 else:
     ms_err = "MS_REFRESH_TOKEN not set"
 
+# ---- confluence (Atlassian pages modified since last run) ----
+conf_lines = []
+conf_count = 0
+conf_err = None
+_jira_base = os.environ.get("JIRA_BASE_URL", "").rstrip("/")
+CONF_BASE = os.environ.get("CONFLUENCE_BASE_URL", "").rstrip("/") or (_jira_base + "/wiki" if _jira_base else "")
+CONF_EMAIL = os.environ.get("CONFLUENCE_EMAIL") or os.environ.get("JIRA_EMAIL", "")
+CONF_TOKEN = os.environ.get("CONFLUENCE_API_TOKEN") or os.environ.get("JIRA_API_TOKEN", "")
+
+def _strip_html(s):
+    return html.unescape(re.sub(r"<[^>]+>", " ", s or ""))
+
+if CONF_BASE and CONF_EMAIL and CONF_TOKEN:
+    try:
+        auth = base64.b64encode(f"{CONF_EMAIL}:{CONF_TOKEN}".encode()).decode()
+        # broad CQL query with a tz buffer (CQL time is the account's tz, not UTC);
+        # filter precisely on each page's version.when below.
+        since_cql = datetime.datetime.fromtimestamp(last_run - 3 * 3600).strftime("%Y/%m/%d %H:%M")
+        params = {"cql": f'type=page and lastmodified >= "{since_cql}" order by lastmodified desc',
+                  "expand": "space,version,body.storage", "limit": 50}
+        url = CONF_BASE + "/rest/api/content/search?" + urllib.parse.urlencode(params)
+        req = urllib.request.Request(url, headers={"Authorization": "Basic " + auth,
+                                                   "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            data = json.load(r)
+        base_link = (data.get("_links", {}) or {}).get("base", CONF_BASE)
+        for p in data.get("results", []):
+            ver = p.get("version") or {}
+            when = (ver.get("when") or "")[:19]
+            try:
+                ts = datetime.datetime.strptime(when, "%Y-%m-%dT%H:%M:%S").replace(
+                    tzinfo=datetime.timezone.utc).timestamp()
+            except ValueError:
+                ts = NOW
+            if ts <= last_run:
+                continue  # inside the tz buffer but not actually new
+            conf_count += 1
+            space = (p.get("space") or {}).get("name") or (p.get("space") or {}).get("key") or "?"
+            who = (ver.get("by") or {}).get("displayName") or "?"
+            title = redact(" ".join((p.get("title") or "(untitled)").split()))[:120]
+            body = _strip_html((((p.get("body") or {}).get("storage")) or {}).get("value") or "")
+            snippet = redact(" ".join(body.split()))[:200]
+            webui = (p.get("_links") or {}).get("webui") or ""
+            link = base_link + webui if webui else CONF_BASE
+            conf_lines.append(f"- [{title}]({link}) · {space} · {who} — {snippet}")
+    except Exception as e:
+        conf_err = str(e)
+else:
+    conf_err = "Confluence creds not set (JIRA_BASE_URL / JIRA_EMAIL / JIRA_API_TOKEN)"
+
 # ---- claude sessions ----
 sess_lines = []
 updated = []
@@ -230,6 +280,15 @@ else:
         block.append("\n**Next 24h**")
         block += cal_lines
 
+block.append("\n### Confluence")
+if conf_err:
+    block.append(f"_Confluence: {conf_err}_")
+elif conf_lines:
+    block.append(f"_{conf_count} page(s) updated_")
+    block += conf_lines
+else:
+    block.append("_no page updates_")
+
 block.append("\n### Claude sessions")
 if sess_lines:
     block.append(f"_{len(updated)} session file(s) updated_")
@@ -263,6 +322,13 @@ else:
         print(f"  calendar: {len(cal_lines)} upcoming")
     if not mail_counts and not cal_lines:
         print("  (nothing new)")
+print("confluence:")
+if conf_err:
+    print(f"  ERROR: {conf_err}")
+elif conf_count:
+    print(f"  {conf_count} page(s) updated")
+else:
+    print("  (no updates)")
 print("sessions:")
 if updated:
     for p, n in sorted(proj_counts.items(), key=lambda x: -x[1]):
@@ -272,6 +338,7 @@ else:
 print(f"journal: {rel}")
 msgs = sum(n for _, n in slack_counts)
 mailn = sum(n for _, n in mail_counts)
-print(f"SUMMARY: slack {len(slack_counts)} convos / {msgs} msgs · outlook {mailn} mail / {len(cal_lines)} events · sessions {len(updated)} files · journal {rel}"
+print(f"SUMMARY: slack {len(slack_counts)} convos / {msgs} msgs · outlook {mailn} mail / {len(cal_lines)} events · confluence {conf_count} pages · sessions {len(updated)} files · journal {rel}"
       + (f" · SLACK-ERR {slack_err}" if slack_err else "")
-      + (f" · MS-ERR {ms_err}" if ms_err else ""))
+      + (f" · MS-ERR {ms_err}" if ms_err else "")
+      + (f" · CONF-ERR {conf_err}" if conf_err else ""))

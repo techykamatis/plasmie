@@ -11,8 +11,12 @@ CLI:  python3 msgraph.py login     # one-time browser consent → writes .env
 """
 import os, sys, json, time, urllib.request, urllib.parse, urllib.error
 
-CLIENT_ID = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"  # Azure CLI public client
-AUTH = "https://login.microsoftonline.com/organizations/oauth2/v2.0"
+# Your own Entra app (recommended — locked-down tenants block borrowing Microsoft's
+# first-party Azure CLI client, AADSTS65002). Set MS_CLIENT_ID + MS_TENANT in
+# ~/.claude/.env after registering an app; falls back to the Azure CLI id.
+CLIENT_ID = os.environ.get("MS_CLIENT_ID", "04b07795-8ddb-461a-bbee-02f9e1bf7b46")
+TENANT = os.environ.get("MS_TENANT", "organizations")  # your tenant id, or "organizations"/"common"
+AUTH = f"https://login.microsoftonline.com/{TENANT}/oauth2/v2.0"
 GRAPH = "https://graph.microsoft.com/v1.0"
 SCOPE = "offline_access Mail.Read Calendars.Read"
 ENV = os.path.expanduser("~/.claude/.env")

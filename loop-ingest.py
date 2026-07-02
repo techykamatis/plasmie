@@ -92,6 +92,7 @@ mail_counts = []  # (label, n)
 cal_lines = []
 ms_err = None
 MS_RT = os.environ.get("MS_REFRESH_TOKEN", "")
+ms_enabled = bool(MS_RT)  # shelved until an Entra app is registered — silent when off
 if MS_RT:
     try:
         at, new_rt = msgraph.access_token(MS_RT)
@@ -142,8 +143,6 @@ if MS_RT:
             ms_err = ms_err or str(e)
     except Exception as e:
         ms_err = str(e)
-else:
-    ms_err = "MS_REFRESH_TOKEN not set"
 
 # ---- confluence (Atlassian pages modified since last run) ----
 conf_lines = []
@@ -268,17 +267,18 @@ elif slack_lines:
     block += slack_lines
 else:
     block.append("_no new Slack messages_")
-block.append("\n### Outlook")
-if ms_err:
-    block.append(f"_Outlook: {ms_err}_")
-else:
-    if mail_lines:
-        block += mail_lines
+if ms_enabled or ms_err:
+    block.append("\n### Outlook")
+    if ms_err:
+        block.append(f"_Outlook: {ms_err}_")
     else:
-        block.append("_no new mail_")
-    if cal_lines:
-        block.append("\n**Next 24h**")
-        block += cal_lines
+        if mail_lines:
+            block += mail_lines
+        else:
+            block.append("_no new mail_")
+        if cal_lines:
+            block.append("\n**Next 24h**")
+            block += cal_lines
 
 block.append("\n### Confluence")
 if conf_err:
@@ -312,16 +312,17 @@ elif slack_counts:
         print(f"  {label}: {n} new")
 else:
     print("  (no new messages)")
-print("outlook:")
-if ms_err:
-    print(f"  ERROR: {ms_err}")
-else:
-    for label, n in mail_counts:
-        print(f"  {label}: {n} new")
-    if cal_lines:
-        print(f"  calendar: {len(cal_lines)} upcoming")
-    if not mail_counts and not cal_lines:
-        print("  (nothing new)")
+if ms_enabled or ms_err:
+    print("outlook:")
+    if ms_err:
+        print(f"  ERROR: {ms_err}")
+    else:
+        for label, n in mail_counts:
+            print(f"  {label}: {n} new")
+        if cal_lines:
+            print(f"  calendar: {len(cal_lines)} upcoming")
+        if not mail_counts and not cal_lines:
+            print("  (nothing new)")
 print("confluence:")
 if conf_err:
     print(f"  ERROR: {conf_err}")
@@ -338,7 +339,8 @@ else:
 print(f"journal: {rel}")
 msgs = sum(n for _, n in slack_counts)
 mailn = sum(n for _, n in mail_counts)
-print(f"SUMMARY: slack {len(slack_counts)} convos / {msgs} msgs · outlook {mailn} mail / {len(cal_lines)} events · confluence {conf_count} pages · sessions {len(updated)} files · journal {rel}"
+outlook_seg = f" · outlook {mailn} mail / {len(cal_lines)} events" if (ms_enabled or ms_err) else ""
+print(f"SUMMARY: slack {len(slack_counts)} convos / {msgs} msgs{outlook_seg} · confluence {conf_count} pages · sessions {len(updated)} files · journal {rel}"
       + (f" · SLACK-ERR {slack_err}" if slack_err else "")
       + (f" · MS-ERR {ms_err}" if ms_err else "")
       + (f" · CONF-ERR {conf_err}" if conf_err else ""))

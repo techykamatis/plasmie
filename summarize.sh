@@ -1,7 +1,8 @@
 #!/bin/bash
-# Hourly: condense the newest raw auto-ingest block in today's journal into a
-# few bullets, using the LOCAL Gemma model via Claude Code. Text in / text out —
-# no file tools, no Slack creds needed (operates on already-ingested journal).
+# Hourly: condense today's raw activity (Slack + Claude sessions + Outlook) into a
+# few bullets via the LOCAL Gemma model. Text in / text out — no file tools, no
+# Slack creds. Writes a rolling daily digest to meta/digests/YYYY-MM-DD.md,
+# regenerated each run so it's always current and idempotent (no marker needed).
 set -euo pipefail
 umask 077   # audit/transcript logs are owner-only (contain your data)
 SELF="$(cd "$(dirname "$0")" && pwd)"
@@ -11,30 +12,37 @@ audit(){ printf '%s | summarize | %s\n' "$(date '+%F %T')" "$1" >> "$SELF/logs/a
          find "$SELF/logs" -name 'audit-*.log' -mtime +90 -delete 2>/dev/null || true; }
 [ -f "$SELF/config.env" ] && . "$SELF/config.env"
 VAULT="${VAULT_DIR:-$HOME/knowledge}"
-JPATH="$VAULT/02 Areas/journal/$(date +%F).md"
-[ -f "$JPATH" ] || { echo "no journal for today: $JPATH"; exit 0; }
+DAY="$(date +%F)"
 
-# grab the last "## HH:MM · auto-ingest ..." block through EOF.
-# retry: vault is in OneDrive, which briefly swaps the file inode mid-sync ->
-# awk "can't open file". A few attempts ride out the race.
-block=""
-for _ in 1 2 3 4; do
-    block="$(awk '/^## .*auto-ingest/{buf=""; cap=1} cap{buf=buf $0 ORS} END{printf "%s", buf}' "$JPATH" 2>/dev/null)" && [ -n "$block" ] && break
+# gather today's raw source files. retry: vault is in OneDrive, which briefly
+# swaps the file inode mid-sync -> a read can fail; a few attempts ride it out.
+input=""
+for s in slack claude outlook; do
+  f="$VAULT/raw/$s/$DAY.md"
+  [ -f "$f" ] || continue
+  for _ in 1 2 3 4; do
+    c="$(cat "$f" 2>/dev/null)" && { input="$input
+
+===== $s =====
+$c"; break; }
     sleep 0.5
+  done
 done
-[ -n "$block" ] || { echo "no auto-ingest block to summarize"; exit 0; }
-
-# already summarized this block? (idempotent for re-runs within the hour)
-case "$block" in *"summary (local gemma)"*) echo "already summarized"; exit 0;; esac
+input="$(printf '%s' "$input" | tail -c 20000)"
+[ -n "${input// /}" ] || { echo "no raw activity today"; exit 0; }
 
 prompt="Condense this raw activity log into 4-8 terse markdown bullets: real decisions, blockers, and who/what changed. No preamble, no headings, bullets only.
 
-$block"
+$input"
 
 # gen.sh handles guard + on-demand load + hard timeout + free. Skips quietly if busy.
-out="$("$SELF/gen.sh" 150 "$prompt")" || { audit "skipped (busy or timed out)"; echo "summarize skipped — retries next hour"; exit 0; }
+out="$("$SELF/gen.sh" 200 "$prompt")" || { audit "skipped (busy or timed out)"; echo "summarize skipped — retries next hour"; exit 0; }
 
-{ printf '\n#### 🤖 summary (local gemma)\n%s\n' "$out"; } >> "$JPATH"
+DIGEST_DIR="$VAULT/meta/digests"
+DIGEST="$DIGEST_DIR/$DAY.md"
+mkdir -p "$DIGEST_DIR"
+{ printf -- '---\ntype: note\ntitle: digest %s\ntags: [digest]\ntimestamp: %sT00:00:00Z\n---\n\n# Digest · %s\n_Local-Gemma rollup of the day'"'"'s raw activity. Regenerated hourly._\n\n%s\n' \
+    "$DAY" "$DAY" "$DAY" "$out"; } > "$DIGEST"
 n=$(printf '%s' "$out" | wc -l | tr -d ' ')
-audit "ok: appended ${n}-line summary"
-echo "appended summary ($n lines) to $JPATH"
+audit "ok: wrote ${n}-line digest -> meta/digests/$DAY.md"
+echo "wrote digest ($n lines) -> $DIGEST"

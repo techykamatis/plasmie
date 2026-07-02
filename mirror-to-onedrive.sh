@@ -32,6 +32,7 @@ fi
 mkdir -p "$DEST"
 rsync -a --delete \
     --exclude '.DS_Store' \
+    --exclude '.git/' \
     --exclude '.ruff_cache/' \
     --exclude '.obsidian/workspace*.json' \
     "$SRC/" "$DEST/" >>"$LOG" 2>&1

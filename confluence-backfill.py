@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Backfill Confluence into an organized, cross-linked PARA structure.
 
-Layout:   03 Resources/confluence/<Space>/<slug>-<id>.md   (one folder per space)
+Layout:   raw/confluence/<Space>/<slug>-<id>.md   (one folder per space)
 Linking:  - each note carries a body breadcrumb of [[wikilinks]] up its ancestor
             path, so Confluence's page tree becomes a navigable Obsidian graph
             (backlinks then reveal each page's children);
@@ -21,6 +21,7 @@ import os, sys, re, json, base64, html, shutil, urllib.request, urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import paths
 from scrub import redact as _scrub
 
 def redact(s):
@@ -98,7 +99,7 @@ def main():
         else:
             rest.append(argv[i]); i += 1
     vault = Path(rest[0] if rest else os.environ.get("PLASMIE_VAULT") or "~/knowledge").expanduser()
-    outdir = vault / "03 Resources" / "confluence"
+    outdir = vault / paths.RAW_CONFLUENCE
 
     print("fetching all pages…")
     pages, base_link = fetch_all(cql)

@@ -26,9 +26,11 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+import paths
+
 MERGE_AT = 0.30  # cosine >= this -> suggest merging into the nearest note
 STOP = set("the a an of to in on for and or is are was be it this that with as by from at into not no".split())
-CORPUS_DIRS = ["03 Resources/concepts", "03 Resources/people", "01 Projects"]
+CORPUS_DIRS = [paths.CONCEPTS, paths.PEOPLE, paths.PROJECTS]
 
 
 def tokens(text):
@@ -110,16 +112,16 @@ def enrich(draft_text, corpus, idf):
 
         near = nearest(f"{title} {body_text}", corpus, idf, k=3)
         src = fields.get("Source", "")
-        m_inbox = re.search(r"00 Inbox/(.+)$", src)
+        m_inbox = re.search(rf"{paths.RAW_INBOX}/(.+)$", src)
 
         sugg = {}
         if near and near[0][0] >= MERGE_AT:
             sugg["Action"], sugg["Merge-into"] = "merge", near[0][1]["path"]
         elif m_inbox:
-            sugg["Action"], sugg["File"] = "move", f"00 Inbox/{m_inbox.group(1)}"
-            sugg["Target"] = fields.get("Target", "03 Resources")
+            sugg["Action"], sugg["File"] = "move", f"{paths.RAW_INBOX}/{m_inbox.group(1)}"
+            sugg["Target"] = fields.get("Target", paths.WIKI)
         else:
-            sugg["Action"], sugg["Target"] = "create", fields.get("Target", "03 Resources/concepts")
+            sugg["Action"], sugg["Target"] = "create", fields.get("Target", paths.CONCEPTS)
 
         near_str = " · ".join(f"{d['path']} ({sc})" for sc, d in near) or "(none)"
         rebuilt = [f"## {title}", f"Action: {sugg['Action']}"]
@@ -139,10 +141,10 @@ def selfcheck():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         v = Path(d)
-        c = v / "03 Resources/concepts"
+        c = v / paths.CONCEPTS
         c.mkdir(parents=True)
-        (v / "03 Resources/people").mkdir(parents=True)
-        (v / "01 Projects").mkdir(parents=True)
+        (v / paths.PEOPLE).mkdir(parents=True)
+        (v / paths.PROJECTS).mkdir(parents=True)
         (c / "rds-cannot-shrink-storage-in-place.md").write_text(
             '---\ntitle: "RDS can\'t shrink allocated storage in place"\ndescription: "storage only grows; reduce via snapshot/dump-restore to a smaller instance"\n---\n')
         (c / "slack-bot-mpdm.md").write_text(
@@ -158,13 +160,13 @@ def selfcheck():
         assert not miss or miss[0][0] < MERGE_AT, miss
 
         draft = ("# Promotion draft\n\n"
-                 "## RDS storage can't be shrunk in place\nTarget: 03 Resources\nFound that RDS storage only grows.\nSource: journal 2026-06-25\n\n"
-                 "## A brand new unrelated idea about penguins\nTarget: 03 Resources/concepts\nNothing like it exists.\nSource: journal 2026-06-25\n\n"
-                 "## An inbox file\nTarget: 03 Resources\nSome doc.\nSource: 00 Inbox/foo.pdf\n")
+                 f"## RDS storage can't be shrunk in place\nTarget: {paths.WIKI}\nFound that RDS storage only grows.\nSource: journal 2026-06-25\n\n"
+                 f"## A brand new unrelated idea about penguins\nTarget: {paths.CONCEPTS}\nNothing like it exists.\nSource: journal 2026-06-25\n\n"
+                 f"## An inbox file\nTarget: {paths.WIKI}\nSome doc.\nSource: {paths.RAW_INBOX}/foo.pdf\n")
         e = enrich(draft, corpus, idf)
-        assert "Action: merge" in e and "Merge-into: 03 Resources/concepts/rds-cannot-shrink-storage-in-place.md" in e, e
+        assert "Action: merge" in e and f"Merge-into: {paths.CONCEPTS}/rds-cannot-shrink-storage-in-place.md" in e, e
         assert "## A brand new unrelated idea about penguins\nAction: create" in e, e
-        assert "Action: move" in e and "File: 00 Inbox/foo.pdf" in e, e
+        assert "Action: move" in e and f"File: {paths.RAW_INBOX}/foo.pdf" in e, e
     print("selfcheck OK")
 
 

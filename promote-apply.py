@@ -35,13 +35,14 @@ from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # find sibling scrub.py however we're loaded
+import paths
 from scrub import redact as _scrub
 
 
 def redact(s):
     return _scrub(s, emails=True)  # promote path also strips emails (PII in durable notes)
 
-TYPE_BY_DIR = {"concepts": "reference", "people": "person", "01 Projects": "project"}
+TYPE_BY_DIR = {"concepts": "reference", "people": "person", paths.PROJECTS: "project"}
 
 
 def slug(title):
@@ -176,7 +177,7 @@ def _reindex(vault):
     spec = importlib.util.spec_from_file_location("reindex", Path(__file__).resolve().with_name("reindex.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    mod.reindex(Path(vault).expanduser(), write=True)
+    mod.catalog(Path(vault).expanduser(), write=True)
 
 
 # ---- auto-apply policy (no human gate) ----
@@ -192,12 +193,12 @@ def _near_score(fields):
 def _norm_create_target(t):
     """A bare top-level folder is a model mis-target — atomic notes belong in concepts/."""
     t = (t or "").strip().rstrip("/")
-    return "03 Resources/concepts" if t in ("", "03 Resources", "Resources", "02 Areas", "Areas") else t
+    return paths.CONCEPTS if t in ("", paths.WIKI, "Resources", paths.AREAS, "Areas") else t
 
 
 def _norm_move_target(t):
     t = (t or "").strip().rstrip("/")
-    return "03 Resources/clippings" if t in ("", "03 Resources", "Resources") else t
+    return paths.CLIPPINGS if t in ("", paths.WIKI, "Resources") else t
 
 
 def _serialize(it):
@@ -268,31 +269,31 @@ def selfcheck():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         v = Path(d)
-        (v / "00 Inbox").mkdir()
-        (v / "03 Resources/concepts").mkdir(parents=True)
-        (v / "01 Projects").mkdir()
-        (v / "00 Inbox/doc.pdf").write_text("x")
-        (v / "01 Projects/orbit.md").write_text("# Orbit\n")
+        (v / paths.RAW_INBOX).mkdir(parents=True)
+        (v / paths.CONCEPTS).mkdir(parents=True)
+        (v / paths.PROJECTS).mkdir(parents=True)
+        (v / f"{paths.RAW_INBOX}/doc.pdf").write_text("x")
+        (v / f"{paths.PROJECTS}/orbit.md").write_text("# Orbit\n")
         draft = v / "draft.md"
         draft.write_text(
             "# Draft\n\n"
-            "## Move a doc\nAction: move\nFile: 00 Inbox/doc.pdf\nTarget: 03 Resources\n\n"
-            "## A new concept\nAction: create\nTarget: 03 Resources/concepts\nThe body.\nSource: journal\n\n"
-            "## Update Orbit\nAction: merge\nMerge-into: 01 Projects/orbit.md\nNear: 01 Projects/orbit.md (0.5)\nmigrated to dev\n\n"
+            f"## Move a doc\nAction: move\nFile: {paths.RAW_INBOX}/doc.pdf\nTarget: {paths.WIKI}\n\n"
+            f"## A new concept\nAction: create\nTarget: {paths.CONCEPTS}\nThe body.\nSource: journal\n\n"
+            f"## Update Orbit\nAction: merge\nMerge-into: {paths.PROJECTS}/orbit.md\nNear: {paths.PROJECTS}/orbit.md (0.5)\nmigrated to dev\n\n"
             "## Noise\nsome summary with no action\n"
         )
         run(draft, v, apply=True)
-        assert (v / "03 Resources/doc.pdf").exists(), "move failed"
-        assert not (v / "00 Inbox/doc.pdf").exists(), "source not removed"
-        assert (v / "03 Resources/concepts/a-new-concept.md").exists(), "create failed"
-        merged = (v / "01 Projects/orbit.md").read_text()
+        assert (v / f"{paths.WIKI}/doc.pdf").exists(), "move failed"
+        assert not (v / f"{paths.RAW_INBOX}/doc.pdf").exists(), "source not removed"
+        assert (v / f"{paths.CONCEPTS}/a-new-concept.md").exists(), "create failed"
+        merged = (v / f"{paths.PROJECTS}/orbit.md").read_text()
         assert "migrated to dev" in merged, "merge failed"
         assert "Near:" not in merged, "Near: leaked into merged body"
-        assert list((v / "00 Inbox").iterdir()) == [], "skip leaked"
+        assert list((v / paths.RAW_INBOX).iterdir()) == [], "skip leaked"
 
         # idempotency: re-applying the same draft must be a no-op (no double-merge bullet)
         run(draft, v, apply=True)
-        assert (v / "01 Projects/orbit.md").read_text().count("migrated to dev") == 1, "merge not idempotent"
+        assert (v / f"{paths.PROJECTS}/orbit.md").read_text().count("migrated to dev") == 1, "merge not idempotent"
 
         # security guards: path escape must be refused for move/create/merge
         outside = v.parent / "ESCAPED.md"
@@ -300,7 +301,7 @@ def selfcheck():
         esc.write_text(
             "## escape via create\nAction: create\nTarget: ../ESCAPED.md\nx\n\n"
             "## escape via merge\nAction: merge\nMerge-into: ../../etc/hosts\nx\n\n"
-            "## escape via move\nAction: move\nFile: 00 Inbox/doc.pdf\nTarget: /tmp\nx\n"
+            f"## escape via move\nAction: move\nFile: {paths.RAW_INBOX}/doc.pdf\nTarget: /tmp\nx\n"
         )
         run(esc, v, apply=True)
         assert not outside.exists(), "create escaped the vault!"
@@ -309,9 +310,9 @@ def selfcheck():
 
         # secret scrubbing on create
         sec = v / "sec.md"
-        sec.write_text("## leak\nAction: create\nTarget: 03 Resources/concepts\ntoken AKIAABCDEFGHIJKLMNOP and Bearer abcdefghijklmnopqrstuvwxyz123\n")
+        sec.write_text(f"## leak\nAction: create\nTarget: {paths.CONCEPTS}\ntoken AKIAABCDEFGHIJKLMNOP and Bearer abcdefghijklmnopqrstuvwxyz123\n")
         run(sec, v, apply=True)
-        leaked = (v / "03 Resources/concepts/leak.md").read_text()
+        leaked = (v / f"{paths.CONCEPTS}/leak.md").read_text()
         assert "AKIAABCDEFGHIJKLMNOP" not in leaked and "«redacted" in leaked, "secret not scrubbed"
     print("selfcheck OK")
 
@@ -322,12 +323,12 @@ if __name__ == "__main__":
         selfcheck()
     elif "--auto" in args:
         rest = [a for a in args if a != "--auto"]
-        draft = rest[0] if rest else str(Path("~/knowledge/99 Meta/promotion-drafts").expanduser() / f"{date.today()}.md")
+        draft = rest[0] if rest else str(Path("~/knowledge").expanduser() / paths.DRAFTS / f"{date.today()}.md")
         vault = rest[1] if len(rest) > 1 else "~/knowledge"
         auto(draft, vault)
     else:
         apply = "--apply" in args
         rest = [a for a in args if a != "--apply"]
-        draft = rest[0] if rest else str(Path("~/knowledge/99 Meta/promotion-drafts").expanduser() / f"{date.today()}.md")
+        draft = rest[0] if rest else str(Path("~/knowledge").expanduser() / paths.DRAFTS / f"{date.today()}.md")
         vault = rest[1] if len(rest) > 1 else "~/knowledge"
         run(draft, vault, apply)

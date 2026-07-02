@@ -1,6 +1,6 @@
 #!/bin/bash
-# Daily: local Gemma (via Claude Code) drafts promotions from recent journal
-# entries into a review note. Text-in / text-out — the script does the file I/O,
+# Daily: local Gemma (via Claude Code) drafts promotions from recent raw activity
+# into a review note. Text-in / text-out — the script does the file I/O,
 # so it doesn't depend on the small local model driving CC's tool-use (which it
 # doesn't do reliably). Output is a draft for you to review, never direct edits.
 set -euo pipefail
@@ -14,32 +14,34 @@ audit(){ printf '%s | promote | %s\n' "$(date '+%F %T')" "$1" >> "$SELF/logs/aud
 status(){ printf '%s|%s' "$(date +%s)" "$1" > "$SELF/.status"; }
 [ -f "$SELF/config.env" ] && . "$SELF/config.env"
 VAULT="${VAULT_DIR:-$HOME/knowledge}"
-JDIR="$VAULT/02 Areas/journal"
 TODAY="$(date +%F)"
 YEST="$(date -v-1d +%F 2>/dev/null || date -d 'yesterday' +%F)"
-DRAFT="$VAULT/99 Meta/promotion-drafts/$TODAY.md"
-mkdir -p "$VAULT/99 Meta/promotion-drafts"
+DRAFT="$VAULT/meta/promotion-drafts/$TODAY.md"
+mkdir -p "$VAULT/meta/promotion-drafts"
 
-# gather recent journal text (cap to keep generation bounded at local speed)
+# gather recent raw activity across sources (cap to keep generation bounded)
 input=""
 for d in "$YEST" "$TODAY"; do
-  [ -f "$JDIR/$d.md" ] && input="$input
+  for s in slack claude outlook; do
+    f="$VAULT/raw/$s/$d.md"
+    [ -f "$f" ] && input="$input
 
-===== journal $d =====
-$(cat "$JDIR/$d.md")"
+===== $s $d =====
+$(cat "$f")"
+  done
 done
 input="$(printf '%s' "$input" | tail -c 24000)"
 
-# also surface manually-dropped 00 Inbox items so each gets a proposed PARA target
-inbox_list="$(ls -1 "$VAULT/00 Inbox" 2>/dev/null || true)"
+# also surface manually-dropped raw/inbox items so each gets a proposed target
+inbox_list="$(ls -1 "$VAULT/raw/inbox" 2>/dev/null | grep -v '^.gitkeep$' || true)"
 [ -n "$inbox_list" ] && input="$input
 
-===== 00 Inbox (untriaged manual drops — propose a PARA target for each filename) =====
+===== raw/inbox (untriaged manual drops — propose a target for each filename) =====
 $inbox_list"
 
-[ -n "$input" ] || { echo "no recent journal to promote"; exit 0; }
+[ -n "$input" ] || { echo "no recent raw activity to promote"; exit 0; }
 
-prompt="You maintain a PARA Obsidian vault (folders: 01 Projects, 02 Areas, 03 Resources). From the journal entries below, identify durable, reusable knowledge worth promoting out of the raw journal: decisions, how-tos, project status changes, people/meeting facts. Also propose a PARA target for each file in the '00 Inbox' list, if present. Ignore noise and one-off chatter. Output ONLY markdown (no preamble): for each item a '## <title>', then 'Target:' folder, a 2-3 line summary, and 'Source:' the journal date or '00 Inbox/<filename>'. If nothing is worth promoting, output 'Nothing to promote.'
+prompt="You maintain a knowledge wiki (curated folders: wiki/concepts, wiki/people, wiki/projects, wiki/tech). From the raw activity below, identify durable, reusable knowledge worth promoting into the wiki: decisions, how-tos, project status changes, people/meeting facts. Also propose a target for each file in the 'raw/inbox' list, if present. Ignore noise and one-off chatter. Output ONLY markdown (no preamble): for each item a '## <title>', then 'Target:' a wiki folder, a 2-3 line summary, and 'Source:' the source+date or 'raw/inbox/<filename>'. If nothing is worth promoting, output 'Nothing to promote.'
 
 $input"
 
@@ -49,7 +51,7 @@ status "Generating draft — local Gemma (~1–2 min)…"
 out="$("$SELF/gen.sh" 480 "$prompt")" || { audit "skipped (busy or timed out)"; status "Skipped — machine busy"; echo "promote skipped — retries tomorrow"; exit 0; }
 
 {
-  printf -- '---\ntype: note\ntitle: promotion-draft %s\ntags: [promotion-draft]\ntimestamp: %sT00:00:00Z\n---\n\n# Promotion draft %s\n_Local-Gemma suggestions from journal %s–%s. Review before promoting._\n\n' "$TODAY" "$TODAY" "$TODAY" "$YEST" "$TODAY"
+  printf -- '---\ntype: note\ntitle: promotion-draft %s\ntags: [promotion-draft]\ntimestamp: %sT00:00:00Z\n---\n\n# Promotion draft %s\n_Local-Gemma suggestions from raw activity %s–%s. Review before promoting._\n\n' "$TODAY" "$TODAY" "$TODAY" "$YEST" "$TODAY"
   printf '%s\n' "$out"
 } > "$DRAFT"
 n=$(printf '%s' "$out" | wc -l | tr -d ' ')

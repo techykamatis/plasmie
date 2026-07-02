@@ -6,9 +6,12 @@ import json
 import os
 import re
 import subprocess
+import sys
 
 H = os.path.expanduser("~")
 LOOP = f"{H}/.plasmie"
+sys.path.insert(0, LOOP)
+import paths
 
 
 def _vault():
@@ -22,7 +25,7 @@ def _vault():
 
 
 VAULT = _vault()
-DRAFTS = f"{VAULT}/99 Meta/promotion-drafts"
+DRAFTS = f"{VAULT}/{paths.DRAFTS}"
 
 
 def read(p):
@@ -46,7 +49,10 @@ except (subprocess.CalledProcessError, OSError):
 m = re.search(r"(\d+) atomic notes", read(f"{VAULT}/index.md"))
 notes = m.group(1) if m else "?"
 feed = [l for l in read(f"{LOOP}/feed.log").splitlines() if l.strip()]
-journal = f"{VAULT}/02 Areas/journal/{datetime.date.today()}.md"
+# "did we ingest today" — any per-source raw file named <today>.md under slack/ or claude/
+today = datetime.date.today()
+journal = next((p for p in (f"{VAULT}/{paths.RAW_SLACK}/{today}.md",
+                            f"{VAULT}/{paths.RAW_CLAUDE}/{today}.md") if os.path.exists(p)), "")
 
 # live heartbeat written by the running step ("<epoch>|<message>")
 st = read(f"{LOOP}/.status")
@@ -69,7 +75,7 @@ print(json.dumps({
     "notes": notes,
     "recent": [l.replace("|", "·") for l in feed[-3:][::-1]],
     "activity": activity,
-    "journal": journal if os.path.exists(journal) else "",
+    "journal": journal,
     "vault": VAULT,
     "loop": LOOP,
 }))

@@ -1,30 +1,32 @@
 #!/usr/bin/env python3
-"""Deterministic vault reindex — no model, so it's exact and free.
+"""Regenerate index.md — the vault catalog. Deterministic, no model, so exact and free.
 
-Counts concept notes and rewrites the count in both index files, then surfaces
-notes that exist on disk but aren't linked from the concepts index (orphans) and
-links that point at missing files (dead links). Orphans are appended under an
-"## Unfiled (auto …)" section so a new note is never silently lost; a human moves
-them up into a curated section later, which removes them from Unfiled next run.
+Walks each wiki category, reads frontmatter title/description, and rewrites the
+root index.md as a grouped, linked catalog (llm-wiki's navigation file). Also
+reports dead markdown links across the wiki so nothing rots silently.
+
+Because index.md is fully generated, there's no manual curation to preserve — a
+new note appears in the catalog next run, no "Unfiled" holding pen needed.
 
 Usage:
-  reindex.py [VAULT]            # fix counts + refresh Unfiled (default ~/knowledge)
+  reindex.py [VAULT]            # rewrite index.md (default ~/knowledge)
   reindex.py --check [VAULT]    # report only, write nothing
   reindex.py --selfcheck        # run the built-in test
 """
 import re
 import sys
 import time
-from datetime import date
 from pathlib import Path
+
+import paths
 
 
 def read_text(path, tries=4, delay=0.5):
     """Read a vault file, retrying transient OSErrors.
 
-    The vault lives in OneDrive; when the loop rewrites a hot file (index.md,
-    today's journal) OneDrive briefly swaps the inode to upload it, so a read
-    landing mid-sync gets EPERM/"Operation not permitted". Retry rides it out.
+    The vault is OneDrive-mirrored; when the loop rewrites a hot file OneDrive
+    briefly swaps the inode to upload it, so a read landing mid-sync gets
+    EPERM/"Operation not permitted". Retry rides it out.
     """
     for i in range(tries):
         try:
@@ -36,7 +38,7 @@ def read_text(path, tries=4, delay=0.5):
 
 
 def frontmatter(text):
-    """Tiny YAML-ish frontmatter reader — only the flat `key: value` lines we emit."""
+    """Tiny YAML-ish reader — only the flat `key: value` lines we emit."""
     if not text.startswith("---"):
         return {}
     end = text.find("\n---", 3)
@@ -50,88 +52,98 @@ def frontmatter(text):
     return fm
 
 
-def strip_unfiled(text):
-    """Drop any existing auto-Unfiled block (header through the line before the next ##)."""
-    out, skip = [], False
-    for ln in text.splitlines(keepends=True):
-        if ln.startswith("## Unfiled (auto"):
-            skip = True
-            continue
-        if skip and ln.startswith("## "):
-            skip = False
-        if not skip:
-            out.append(ln)
-    return "".join(out)
+def _href(rel):
+    """Vault-relative markdown link target (spaces %20-encoded for Obsidian/MD)."""
+    return rel.replace(" ", "%20")
 
 
-def reindex(vault, write=True):
+def catalog(vault, write=True):
     vault = Path(vault).expanduser()
-    concepts = vault / "03 Resources" / "concepts"
-    idx = concepts / "index.md"
-    if not idx.exists():
-        print(f"reindex: no concepts index at {idx} — nothing to do")
-        return 0, [], []
-    files = sorted(p for p in concepts.glob("*.md") if p.name != "index.md")
-    count = len(files)
+    sections, total, known = [], 0, set()
+    all_md = list(vault.rglob("*.md"))
+    known = {p.name for p in all_md}          # basenames, for dead-link resolution
 
-    idx_text = read_text(idx)
-    curated = strip_unfiled(idx_text)
-    linked = {Path(l).name for l in re.findall(r"\]\(([^)]+\.md)\)", curated)}
-
-    orphans = [p for p in files if p.name not in linked]
-    dead = sorted(n for n in linked if not (concepts / n).exists())
-
-    new_idx = curated.rstrip() + "\n"
-    if orphans:
+    for rel, label in paths.WIKI_CATEGORIES:
+        d = vault / rel
+        if not d.exists():
+            continue
+        files = sorted((p for p in d.rglob("*.md") if p.name != "index.md"),
+                       key=lambda p: p.name.lower())
+        if not files:
+            continue
         rows = []
-        for p in orphans:
+        for p in files:
             fm = frontmatter(read_text(p))
-            title, desc = fm.get("title", p.stem), fm.get("description", "")
-            rows.append(f"* [{title}]({p.name})" + (f" - {desc}" if desc else ""))
-        new_idx += f"\n## Unfiled (auto — move into a section above) — {date.today()}\n" + "\n".join(rows) + "\n"
-    new_idx = re.sub(r"\d+ atomic knowledge notes", f"{count} atomic knowledge notes", new_idx, count=1)
+            title = fm.get("title") or p.stem
+            desc = fm.get("description", "")
+            link = _href(p.relative_to(vault).as_posix())
+            rows.append(f"* [{title}]({link})" + (f" — {desc}" if desc else ""))
+        sections.append((label, len(files), rows))
+        total += len(files)
 
-    root = vault / "index.md"
-    root_text = read_text(root) if root.exists() else None
-    new_root = re.sub(r"\d+ atomic notes", f"{count} atomic notes", root_text, count=1) if root_text else None
+    # dead-link scan over the curated wiki only (basename resolution, like Obsidian
+    # wikilinks). Root docs (CLAUDE.md) and raw/ sources are not policed for links.
+    dead = []
+    for p in all_md:
+        rel = p.relative_to(vault)
+        if not rel.parts or rel.parts[0] != paths.WIKI:
+            continue
+        for target in re.findall(r"\]\(([^)]+\.md)\)", read_text(p)):
+            name = Path(target.split("#")[0].replace("%20", " ")).name
+            if name not in known:
+                dead.append((p.relative_to(vault).as_posix(), target))
+
+    head = [
+        "# Knowledge vault",
+        "",
+        f"_Auto-generated catalog · {total} wiki notes across {len(sections)} categories._",
+        "",
+        "`raw/` holds immutable sources (Slack, Claude sessions, Confluence, Outlook) — "
+        "the loop appends, never edits. `wiki/` holds curated notes. `log.md` is the "
+        "chronological event stream. Conventions live in `CLAUDE.md`.",
+        "",
+    ]
+    body = []
+    for label, n, rows in sections:
+        body.append(f"## {label} ({n})")
+        body += rows
+        body.append("")
+    text = "\n".join(head + body).rstrip() + "\n"
 
     if write:
-        if new_idx != idx_text:
-            idx.write_text(new_idx)
-        if new_root and new_root != root_text:
-            root.write_text(new_root)
+        (vault / paths.INDEX).write_text(text)
 
-    print(f"concepts: {count} notes on disk")
-    print(f"orphans (not in a curated section): {len(orphans)}" + (f" -> {[p.name for p in orphans]}" if orphans else ""))
+    print(f"catalog: {total} wiki notes, {len(sections)} categories")
     if dead:
-        print(f"DEAD LINKS (fix by hand): {', '.join(dead)}")
+        print(f"DEAD LINKS ({len(dead)}) — fix by hand:")
+        for src, tgt in dead[:20]:
+            print(f"  {src} -> {tgt}")
     if not write:
         print("(--check: nothing written)")
-    return count, orphans, dead
+    return total, sections, dead
 
 
 def selfcheck():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         v = Path(d)
-        c = v / "03 Resources" / "concepts"
+        c = v / paths.CONCEPTS
+        pe = v / paths.PEOPLE
         c.mkdir(parents=True)
-        (c / "a.md").write_text('---\ntitle: "Note A"\ndescription: "desc a"\n---\nbody')
-        (c / "b.md").write_text('---\ntitle: "Note B"\n---\nbody')  # orphan
-        (c / "index.md").write_text("# Concepts\n\n0 atomic knowledge notes here.\n\n## X\n* [Note A](a.md) - desc a\n* [Gone](gone.md) - dead\n")
-        (v / "index.md").write_text("- 0 atomic notes total\n")
-        count, orphans, dead = reindex(v, write=True)
-        out = (c / "index.md").read_text()
-        assert count == 2, count
-        assert "2 atomic knowledge notes" in out, out
-        assert "2 atomic notes" in (v / "index.md").read_text()
-        assert [p.name for p in orphans] == ["b.md"], orphans
-        assert "## Unfiled" in out and "[Note B](b.md)" in out, out
-        assert dead == ["gone.md"], dead
-        # idempotent: second run keeps b under Unfiled, doesn't double it
-        reindex(v, write=True)
-        assert (c / "index.md").read_text().count("[Note B](b.md)") == 1
-    print("selfcheck OK")
+        pe.mkdir(parents=True)
+        (c / "a.md").write_text('---\ntitle: "Note A"\ndescription: "desc a"\n---\nsee [b](b.md) and [gone](gone.md)')
+        (c / "b.md").write_text('---\ntitle: "Note B"\n---\nbody')
+        (pe / "jo.md").write_text('---\ntitle: "Jo"\n---\nperson')
+        (c / "index.md").write_text("# concepts sub-index\n")  # excluded from catalog
+        total, sections, dead = catalog(v, write=True)
+        out = (v / paths.INDEX).read_text()
+        assert total == 3, total
+        assert "## Concepts (2)" in out and "## People (1)" in out, out
+        assert "[Note A](wiki/concepts/a.md) — desc a" in out, out
+        assert "3 wiki notes across 2 categories" in out, out
+        assert ("wiki/concepts/a.md", "gone.md") in dead, dead
+        assert not any(t == "b.md" for _, t in dead), dead  # b.md exists -> not dead
+    print("reindex selfcheck OK")
 
 
 if __name__ == "__main__":
@@ -140,6 +152,6 @@ if __name__ == "__main__":
         selfcheck()
     elif "--check" in args:
         rest = [a for a in args if a != "--check"]
-        reindex(rest[0] if rest else "~/knowledge", write=False)
+        catalog(rest[0] if rest else "~/knowledge", write=False)
     else:
-        reindex(args[0] if args else "~/knowledge", write=True)
+        catalog(args[0] if args else "~/knowledge", write=True)

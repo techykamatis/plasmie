@@ -1,5 +1,5 @@
 #!/bin/bash
-# Scaffold a fresh PARA knowledge vault from the bundled template.
+# Scaffold a fresh knowledge vault (raw/wiki/archive/meta) from the bundled template.
 # Never overwrites an existing, non-empty vault.
 # Usage: scaffold-vault.sh [DEST]   (default: ~/knowledge)
 set -euo pipefail

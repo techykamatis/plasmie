@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
 """Hourly knowledge-vault ingest.
 
-Pulls (a) recent Slack conversations via the personal user token and (b) newly
-created / recently updated Claude Code sessions since the last run, and appends
-a timestamped digest to today's journal note. Tracks a high-water mark in
-99 Meta/.loop-state.json so each run only covers new material.
+Pulls recent Slack, Outlook, and Claude Code activity since the last run and
+appends each source to its own dated raw file (raw/<source>/YYYY-MM-DD.md).
+Confluence *changes* and a one-line run summary go to the chronological log.md;
+the page content itself is mirrored by confluence-backfill.py. Tracks a
+high-water mark in ~/.plasmie/.loop-state.json so each run only covers
+new material.
 
-Run via:  set -a; source ~/.claude/.env; set +a; python3 "99 Meta/loop-ingest.py"
+Run via:  set -a; source ~/.claude/.env; set +a; python3 loop-ingest.py
 """
 import os, json, time, glob, re, base64, html, urllib.request, urllib.parse, datetime
 
+import paths  # vault layout constants
 from scrub import redact  # shared redactor — default keeps emails (journal attribution)
 import msgraph  # Microsoft Graph (Outlook mail + calendar)
 
 VAULT = os.environ.get("PLASMIE_VAULT") or os.path.expanduser("~/knowledge")
 STATE = os.path.expanduser("~/.plasmie/.loop-state.json")
-JOURNAL_DIR = os.path.join(VAULT, "02 Areas", "journal")
 SESS_ROOT = os.path.expanduser("~/.claude/projects")
 NOW = time.time()
 TOKEN = os.environ.get("SLACK_USER_TOKEN", "")
@@ -249,60 +251,64 @@ for f in updated[:40]:
     for s in tail_texts(f):
         sess_lines.append(f"- {s}")
 
-# ---- write digest ----
-os.makedirs(JOURNAL_DIR, exist_ok=True)
+# ---- write per-source raw files + one chronological log.md line ----
 today = datetime.date.today().isoformat()
-jpath = os.path.join(JOURNAL_DIR, today + ".md")
-if not os.path.exists(jpath):
-    open(jpath, "w").write(
-        f"---\ntype: note\ntitle: {today}\ntags: [journal]\ntimestamp: {today}T00:00:00Z\n---\n\n# {today}\n")
-
 stamp = datetime.datetime.now().strftime("%H:%M")
 since = datetime.datetime.fromtimestamp(last_run).strftime("%Y-%m-%d %H:%M")
-block = [f"\n## {stamp} · auto-ingest (since {since})\n"]
-block.append("### Slack")
-if slack_err:
-    block.append(f"_Slack: {slack_err}_")
-elif slack_lines:
-    block += slack_lines
-else:
-    block.append("_no new Slack messages_")
-if ms_enabled or ms_err:
-    block.append("\n### Outlook")
-    if ms_err:
-        block.append(f"_Outlook: {ms_err}_")
-    else:
-        if mail_lines:
-            block += mail_lines
-        else:
-            block.append("_no new mail_")
-        if cal_lines:
-            block.append("\n**Next 24h**")
-            block += cal_lines
 
-block.append("\n### Confluence")
-if conf_err:
-    block.append(f"_Confluence: {conf_err}_")
-elif conf_lines:
-    block.append(f"_{conf_count} page(s) updated_")
-    block += conf_lines
-else:
-    block.append("_no page updates_")
 
-block.append("\n### Claude sessions")
+def append_source(subdir, label, body_lines):
+    """Append a timestamped block to raw/<subdir>/<today>.md, seeding source
+    frontmatter on first write. Returns the vault-relative path."""
+    d = os.path.join(VAULT, subdir)
+    os.makedirs(d, exist_ok=True)
+    fp = os.path.join(d, today + ".md")
+    if not os.path.exists(fp):
+        open(fp, "w").write(
+            f"---\ntype: source\nsource: {label.lower()}\ntitle: {label} {today}\n"
+            f"tags: [raw, {label.lower()}]\ntimestamp: {today}T00:00:00Z\n---\n\n# {label} · {today}\n")
+    with open(fp, "a") as fh:
+        fh.write(f"\n## {stamp} · since {since}\n" + "\n".join(body_lines) + "\n")
+    return os.path.relpath(fp, VAULT)
+
+
+written = []  # (source, relpath) for the run report
+if slack_lines:
+    written.append(("slack", append_source(paths.RAW_SLACK, "Slack", slack_lines)))
+if mail_lines or cal_lines:
+    ob = list(mail_lines)
+    if cal_lines:
+        ob += ["\n**Next 24h**"] + cal_lines
+    written.append(("outlook", append_source(paths.RAW_OUTLOOK, "Outlook", ob)))
 if sess_lines:
-    block.append(f"_{len(updated)} session file(s) updated_")
-    block += sess_lines
-else:
-    block.append("_no session updates_")
-block.append("")
-with open(jpath, "a") as fh:
-    fh.write("\n".join(block) + "\n")
+    written.append(("claude", append_source(paths.RAW_CLAUDE, "Claude", sess_lines)))
+
+# log.md — append-only chronological event stream. Confluence *changes* are
+# events (page content is mirrored by the backfill), so they log here, not as raw docs.
+logpath = os.path.join(VAULT, paths.LOG)
+if not os.path.exists(logpath):
+    open(logpath, "w").write(
+        "# Log\n\nAppend-only event stream — ingests, promotions, lints. "
+        "Grep it: `grep '^## \\[' log.md | tail`.\n")
+entry = [f"\n## [{datetime.datetime.now().isoformat(timespec='seconds')}] ingest · since {since}",
+         f"- slack {len(slack_counts)} convo / {sum(n for _, n in slack_counts)} msg"
+         f" · sessions {len(updated)} file(s)"
+         + (f" · confluence {conf_count} page(s)" if conf_count else "")
+         + (f" · outlook {sum(n for _, n in mail_counts)} mail" if mail_counts else "")]
+for line in conf_lines:      # changed Confluence pages, as event pointers
+    entry.append("  " + line)
+if slack_err:
+    entry.append(f"  _slack: {slack_err}_")
+if ms_err:
+    entry.append(f"  _outlook: {ms_err}_")
+if conf_err and "not set" not in conf_err:
+    entry.append(f"  _confluence: {conf_err}_")
+with open(logpath, "a") as fh:
+    fh.write("\n".join(entry) + "\n")
 
 json.dump({"last_run": NOW, "last_run_iso": datetime.datetime.now().isoformat()}, open(STATE, "w"))
 
 # ---- detailed run report (stdout → per-run log); final SUMMARY line → feed.log ----
-rel = os.path.relpath(jpath, VAULT)
 print(f"window: since {since}")
 print("slack:")
 if slack_err:
@@ -336,11 +342,12 @@ if updated:
         print(f"  {p}: {n} file(s)")
 else:
     print("  (no updates)")
-print(f"journal: {rel}")
+raw_seg = ", ".join(f"{s}→{p}" for s, p in written) or "(none)"
+print(f"raw: {raw_seg}")
 msgs = sum(n for _, n in slack_counts)
 mailn = sum(n for _, n in mail_counts)
 outlook_seg = f" · outlook {mailn} mail / {len(cal_lines)} events" if (ms_enabled or ms_err) else ""
-print(f"SUMMARY: slack {len(slack_counts)} convos / {msgs} msgs{outlook_seg} · confluence {conf_count} pages · sessions {len(updated)} files · journal {rel}"
+print(f"SUMMARY: slack {len(slack_counts)} convos / {msgs} msgs{outlook_seg} · confluence {conf_count} pages · sessions {len(updated)} files · raw {len(written)} file(s)"
       + (f" · SLACK-ERR {slack_err}" if slack_err else "")
       + (f" · MS-ERR {ms_err}" if ms_err else "")
       + (f" · CONF-ERR {conf_err}" if conf_err else ""))

@@ -473,6 +473,8 @@ struct Panel: View {
                           detail: "Recount & flag orphans · changes nothing") { m.reindexCheck() }
                 ActionRow(title: "Open activity log", symbol: "doc.plaintext",
                           detail: "History of every ingest & promote run") { openExternal("\(m.s.loop)/feed.log") }
+                ActionRow(title: "Settings", symbol: "gearshape",
+                          detail: "Vault, OneDrive sync & connector tokens") { SettingsController.shared.show() }
                 ActionRow(title: "Refresh", symbol: "arrow.clockwise",
                           detail: "Re-read status now · auto every 60s") { m.refresh() }
             }
@@ -837,7 +839,11 @@ struct SetupView: View {
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
-                HStack { Spacer(); Button("Done") { onDone() }.keyboardShortcut(.defaultAction) }
+                HStack {
+                    Spacer()
+                    Button("Set up connectors") { onDone(); SettingsController.shared.show(firstRun: true) }
+                    Button("Done") { onDone() }.keyboardShortcut(.defaultAction)
+                }
             } else {
                 Text("One-time setup: this installs the local AI and creates your notes vault. "
                      + "It can take several minutes (a large download) — you can keep using your Mac.")
@@ -878,6 +884,237 @@ struct SetupView: View {
                 if failed == nil && pct >= 100 { done = true }   // show success, let the user dismiss
                 else if failed == nil { failed = "Setup ended early. Tap Try again." }
             })
+    }
+}
+
+// MARK: - configuration store (connectors + sync)
+
+/// Reads/writes the loop's configuration, which lives in two plain files:
+///   ~/.plasmie/config.env  — VAULT_DIR, MIRROR_DEST (quoted, spaces-safe)
+///   ~/.claude/.env                — connector secrets, SHARED with other tools; we
+///                                   upsert only our own keys and preserve the rest.
+enum ConfigStore {
+    static var home: String { NSHomeDirectory() }
+    static var configEnv: String { "\(home)/.plasmie/config.env" }
+    static var dotEnv: String { "\(home)/.claude/.env" }
+
+    /// Parse KEY=value, tolerating a leading `export ` and single/double quotes.
+    static func read(_ path: String) -> [String: String] {
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return [:] }
+        var out: [String: String] = [:]
+        for raw in text.components(separatedBy: "\n") {
+            var line = raw.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty || line.hasPrefix("#") { continue }
+            if line.hasPrefix("export ") { line = String(line.dropFirst(7)) }
+            guard let eq = line.firstIndex(of: "=") else { continue }
+            let k = String(line[..<eq]).trimmingCharacters(in: .whitespaces)
+            var v = String(line[line.index(after: eq)...]).trimmingCharacters(in: .whitespaces)
+            if v.count >= 2, (v.hasPrefix("\"") && v.hasSuffix("\"")) || (v.hasPrefix("'") && v.hasSuffix("'")) {
+                v = String(v.dropFirst().dropLast())
+            }
+            out[k] = v
+        }
+        return out
+    }
+
+    /// Upsert keys, preserving every other line (critical for the shared .env).
+    /// Empty value removes the key. `exportPrefix`/`quoted` match each file's style.
+    static func upsert(_ path: String, _ kv: [String: String],
+                       exportPrefix: Bool, quoted: Bool, perms: Int16? = nil) {
+        var lines = (try? String(contentsOfFile: path, encoding: .utf8))?.components(separatedBy: "\n") ?? []
+        func matches(_ line: String, _ k: String) -> Bool {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            return t.hasPrefix("\(k)=") || t.hasPrefix("export \(k)=")
+        }
+        for (k, v) in kv {
+            lines.removeAll { matches($0, k) }        // drop any existing definition
+            if !v.isEmpty {
+                lines.append((exportPrefix ? "export " : "") + k + "=" + (quoted ? "\"\(v)\"" : v))
+            }
+        }
+        var out = lines.joined(separator: "\n").trimmingCharacters(in: .newlines)
+        out += "\n"
+        try? out.write(toFile: path, atomically: true, encoding: .utf8)
+        if let p = perms { try? FileManager.default.setAttributes([.posixPermissions: p], ofItemAtPath: path) }
+    }
+}
+
+// MARK: - settings / first-run connector wizard
+
+/// Shows the settings window. `firstRun` gives it a welcome header + "Finish"
+/// button; the menu opens it in plain edit mode.
+final class SettingsController {
+    static let shared = SettingsController()
+    private var win: NSWindow?
+    func show(firstRun: Bool = false) {
+        if let w = win { NSApp.activate(ignoringOtherApps: true); w.makeKeyAndOrderFront(nil); return }
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 600),
+                         styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        w.title = firstRun ? "Set up connectors" : "Plasmie Settings"
+        w.center(); w.isReleasedWhenClosed = false; w.level = .floating
+        w.contentView = NSHostingView(rootView: SettingsView(firstRun: firstRun) { [weak self] in
+            self?.win?.orderOut(nil); self?.win = nil
+        })
+        win = w
+        NSApp.activate(ignoringOtherApps: true)
+        w.makeKeyAndOrderFront(nil)
+    }
+}
+
+/// One config UI, two roles: the first-run connector wizard and the editable
+/// settings window. Secrets are never loaded back into the UI — a blank token
+/// field keeps the existing value; you only ever type a *new* one.
+struct SettingsView: View {
+    let firstRun: Bool
+    let onDone: () -> Void
+
+    private var loop: String { "\(NSHomeDirectory())/.plasmie" }
+
+    // non-secret (prefilled)
+    @State private var vaultDir = ""
+    @State private var syncEnabled = false
+    @State private var mirrorDest = ""
+    @State private var jiraBase = ""
+    @State private var jiraEmail = ""
+    // secret (write-only — blank means "keep")
+    @State private var slackToken = ""
+    @State private var jiraToken = ""
+    // status (loaded, not the secret itself)
+    @State private var slackSet = false
+    @State private var jiraTokenSet = false
+    @State private var outlookSet = false
+    @State private var saved = false
+    @State private var outlookLog = ""
+    @State private var connecting = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 10) {
+                    Image(nsImage: kLogo)
+                    Text(firstRun ? "Set up your connectors" : "Settings")
+                        .font(.system(size: 16, weight: .semibold))
+                }
+                if firstRun {
+                    Text("Choose what Plasmie pulls into your vault. Everything here is optional and can be changed later from the menu.")
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                group("Vault & sync") {
+                    labeled("Vault folder") { TextField("~/knowledge", text: $vaultDir).textFieldStyle(.roundedBorder) }
+                    Toggle("Sync a copy to OneDrive (for other devices)", isOn: $syncEnabled)
+                    if syncEnabled {
+                        labeled("OneDrive folder") { TextField("…/OneDrive/AI Labs/knowledge", text: $mirrorDest).textFieldStyle(.roundedBorder) }
+                    }
+                }
+
+                group("Connectors") {
+                    row("Slack", ok: slackSet)
+                    SecureField(slackSet ? "Connected — enter a new token to replace" : "Paste SLACK_USER_TOKEN (xoxp-…)", text: $slackToken)
+                        .textFieldStyle(.roundedBorder)
+
+                    Divider().padding(.vertical, 2)
+                    row("Confluence / Jira", ok: jiraTokenSet)
+                    labeled("Site URL") { TextField("https://your-site.atlassian.net", text: $jiraBase).textFieldStyle(.roundedBorder) }
+                    labeled("Email") { TextField("you@company.com", text: $jiraEmail).textFieldStyle(.roundedBorder) }
+                    SecureField(jiraTokenSet ? "Connected — enter a new API token to replace" : "Atlassian API token", text: $jiraToken)
+                        .textFieldStyle(.roundedBorder)
+
+                    Divider().padding(.vertical, 2)
+                    row("Outlook (mail + calendar)", ok: outlookSet)
+                    HStack {
+                        Button(connecting ? "Connecting…" : (outlookSet ? "Reconnect" : "Connect Outlook")) { connectOutlook() }
+                            .disabled(connecting)
+                        Spacer()
+                    }
+                    if !outlookLog.isEmpty {
+                        Text(outlookLog).font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary).textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Divider().padding(.vertical, 2)
+                    row("Claude Code sessions", ok: true)
+                    Text("Always on — no setup needed.").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+
+                HStack {
+                    if saved { Text("Saved ✓").font(.caption).foregroundStyle(.green) }
+                    Spacer()
+                    Button(firstRun ? "Finish" : "Save") { save(); if firstRun { onDone() } }
+                        .keyboardShortcut(.defaultAction)
+                    if !firstRun { Button("Close") { onDone() } }
+                }
+            }
+            .padding(20)
+        }
+        .frame(width: 480, height: 600)
+        .onAppear(perform: load)
+    }
+
+    @ViewBuilder private func group<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased()).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+            content()
+        }
+    }
+    @ViewBuilder private func labeled<C: View>(_ label: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.system(size: 11)).foregroundStyle(.secondary)
+            content()
+        }
+    }
+    @ViewBuilder private func row(_ name: String, ok: Bool) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: ok ? "checkmark.circle.fill" : "circle.dashed")
+                .foregroundStyle(ok ? .green : .secondary)
+            Text(name).font(.system(size: 13, weight: .medium))
+        }
+    }
+
+    private func load() {
+        let cfg = ConfigStore.read(ConfigStore.configEnv)
+        vaultDir = cfg["VAULT_DIR"] ?? "\(NSHomeDirectory())/knowledge"
+        mirrorDest = cfg["MIRROR_DEST"] ?? ""
+        syncEnabled = !mirrorDest.isEmpty
+        let env = ConfigStore.read(ConfigStore.dotEnv)
+        jiraBase = env["JIRA_BASE_URL"] ?? ""
+        jiraEmail = env["JIRA_EMAIL"] ?? ""
+        slackSet = !(env["SLACK_USER_TOKEN"] ?? "").isEmpty
+        jiraTokenSet = !(env["JIRA_API_TOKEN"] ?? "").isEmpty
+        outlookSet = !(env["MS_REFRESH_TOKEN"] ?? "").isEmpty
+    }
+
+    private func save() {
+        ConfigStore.upsert(ConfigStore.configEnv, [
+            "VAULT_DIR": vaultDir.trimmingCharacters(in: .whitespaces),
+            "MIRROR_DEST": syncEnabled ? mirrorDest.trimmingCharacters(in: .whitespaces) : "",
+        ], exportPrefix: false, quoted: true)
+
+        var env: [String: String] = [
+            "JIRA_BASE_URL": jiraBase.trimmingCharacters(in: .whitespaces),
+            "JIRA_EMAIL": jiraEmail.trimmingCharacters(in: .whitespaces),
+        ]
+        if !slackToken.isEmpty { env["SLACK_USER_TOKEN"] = slackToken.trimmingCharacters(in: .whitespaces) }
+        if !jiraToken.isEmpty { env["JIRA_API_TOKEN"] = jiraToken.trimmingCharacters(in: .whitespaces) }
+        ConfigStore.upsert(ConfigStore.dotEnv, env, exportPrefix: true, quoted: false, perms: 0o600)
+
+        slackToken = ""; jiraToken = ""; load()
+        saved = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { saved = false }
+    }
+
+    /// Device-code login (msgraph.py) — streams the "open this URL, enter this code"
+    /// message; on success the script writes MS_REFRESH_TOKEN to ~/.claude/.env.
+    private func connectOutlook() {
+        connecting = true; outlookLog = "Starting…"
+        let py = FileManager.default.fileExists(atPath: "\(loop)/.venv/bin/python3")
+            ? "\(loop)/.venv/bin/python3" : "/usr/bin/python3"
+        runStreaming(py, ["\(loop)/msgraph.py", "login"],
+            onStatus: { _ in },
+            onChunk: { full in outlookLog = full.trimmingCharacters(in: .whitespacesAndNewlines) },
+            onDone: { connecting = false; load() })
     }
 }
 

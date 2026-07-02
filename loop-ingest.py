@@ -283,28 +283,21 @@ if mail_lines or cal_lines:
 if sess_lines:
     written.append(("claude", append_source(paths.RAW_CLAUDE, "Claude", sess_lines)))
 
-# log.md — append-only chronological event stream. Confluence *changes* are
-# events (page content is mirrored by the backfill), so they log here, not as raw docs.
-logpath = os.path.join(VAULT, paths.LOG)
-if not os.path.exists(logpath):
-    open(logpath, "w").write(
-        "# Log\n\nAppend-only event stream — ingests, promotions, lints. "
-        "Grep it: `grep '^## \\[' log.md | tail`.\n")
-entry = [f"\n## [{datetime.datetime.now().isoformat(timespec='seconds')}] ingest · since {since}",
-         f"- slack {len(slack_counts)} convo / {sum(n for _, n in slack_counts)} msg"
-         f" · sessions {len(updated)} file(s)"
-         + (f" · confluence {conf_count} page(s)" if conf_count else "")
-         + (f" · outlook {sum(n for _, n in mail_counts)} mail" if mail_counts else "")]
-for line in conf_lines:      # changed Confluence pages, as event pointers
-    entry.append("  " + line)
+# log.md — the durable, append-only audit. Confluence *changes* are events (page
+# content is mirrored by the backfill), so they log here, not as raw docs.
+summary = (f"slack {len(slack_counts)} convo / {sum(n for _, n in slack_counts)} msg"
+           f" · sessions {len(updated)} file(s)"
+           + (f" · confluence {conf_count} page(s)" if conf_count else "")
+           + (f" · outlook {sum(n for _, n in mail_counts)} mail" if mail_counts else ""))
+bullets = [summary]
+bullets += [ln[2:] if ln.startswith("- ") else ln for ln in conf_lines]   # changed Confluence pages
 if slack_err:
-    entry.append(f"  _slack: {slack_err}_")
+    bullets.append(f"_slack: {slack_err}_")
 if ms_err:
-    entry.append(f"  _outlook: {ms_err}_")
+    bullets.append(f"_outlook: {ms_err}_")
 if conf_err and "not set" not in conf_err:
-    entry.append(f"  _confluence: {conf_err}_")
-with open(logpath, "a") as fh:
-    fh.write("\n".join(entry) + "\n")
+    bullets.append(f"_confluence: {conf_err}_")
+paths.log_event(VAULT, f"ingest · since {since}", bullets)
 
 json.dump({"last_run": NOW, "last_run_iso": datetime.datetime.now().isoformat()}, open(STATE, "w"))
 

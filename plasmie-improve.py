@@ -5,8 +5,11 @@ Each pass:
   1. regenerate index.md — the vault catalog — and flag dead links.
   2. archive fully-resolved promotion drafts/holds (not today's) into
      promotion-drafts/archive/ so the active folder shows only live work.
-  3. append a dated line to meta/improvement-loop.md whenever a pass changed
-     the vault, giving the loop memory and the user a readable changelog.
+  3. prune transient raw/ activity dumps past the retention window — raw is a
+     staging ground; the durable record is log.md (comprehensive, never pruned)
+     plus the promoted wiki notes.
+  4. append a dated line to meta/improvement-loop.md + a log.md event whenever a
+     pass changed the vault, giving the loop memory and a readable audit trail.
 
 ponytail: deterministic checks only — no unattended LLM file-editing. Catalog +
 dead-link logic already live in reindex.py; this wires that in and adds
@@ -19,7 +22,7 @@ Usage:
 """
 import shutil
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import paths
@@ -62,6 +65,33 @@ def archive_resolved(vault, write=True):
     return moved
 
 
+def prune_raw(vault, write=True, days=paths.RAW_RETENTION_DAYS):
+    """Delete transient raw activity dumps (raw/slack|claude|outlook/YYYY-MM-DD.md)
+    older than `days`.
+
+    raw/ is a staging ground — the durable record is log.md (comprehensive, never
+    pruned) plus the promoted wiki notes. The Confluence mirror and the legacy
+    journal aren't dated dumps, so they're left alone. The vault is git-tracked,
+    so a prune is recoverable from history if ever needed.
+    """
+    cutoff = date.today() - timedelta(days=days)
+    pruned = []
+    for sub in paths.RAW_ACTIVITY:
+        d = Path(vault) / sub
+        if not d.exists():
+            continue
+        for p in sorted(d.glob("*.md")):
+            try:
+                fdate = date.fromisoformat(p.stem)
+            except ValueError:
+                continue                       # not a dated dump — leave it
+            if fdate < cutoff:
+                pruned.append(str(p.relative_to(Path(vault))))
+                if write:
+                    p.unlink()
+    return pruned
+
+
 def remember(vault, line, write=True):
     """Append a dated line to the loop-memory log, creating it on first write."""
     mem = Path(vault) / MEMORY
@@ -80,20 +110,26 @@ def run(vault="~/knowledge", write=True):
     vault = str(Path(vault).expanduser())
     total, sections, dead = reindex.catalog(vault, write=write)
     moved = archive_resolved(vault, write=write)
+    pruned = prune_raw(vault, write=write)
     gaps = count_gaps(vault)
 
-    # Memory logs vault-changing events only; the catalog count is steady-state context.
+    # Memory + audit log record vault-changing events only; the count is context.
     events = []
     if moved:
         events.append(f"archived {len(moved)} resolved draft(s)")
+    if pruned:
+        events.append(f"pruned {len(pruned)} stale raw file(s)")
     if dead:
         events.append(f"{len(dead)} dead link(s) need a hand: "
                       + ", ".join(f"{s} -> {t}" for s, t in dead))
     if events:
         remember(vault, "; ".join(events) + f" — {total} wiki notes", write=write)
+    if pruned and write:
+        paths.log_event(vault, f"prune · {len(pruned)} raw file(s) past {paths.RAW_RETENTION_DAYS}d retention",
+                        pruned[:25])
 
-    print(f"{total} wiki notes · {len(dead)} dead links · "
-          f"{len(moved)} archived · {gaps} coverage gaps" + (" · (dry)" if not write else ""))
+    print(f"{total} wiki notes · {len(dead)} dead links · {len(moved)} archived · "
+          f"{len(pruned)} pruned · {gaps} coverage gaps" + (" · (dry)" if not write else ""))
     return total, sections, dead, moved
 
 
@@ -116,14 +152,25 @@ def selfcheck():
                               '- 2026-06-29 · (0.31) "q two" — closest: b.md\n')
         assert count_gaps(str(v)) == 2, count_gaps(str(v))
 
+        # prune: a stale raw dump is deleted; a recent one survives
+        raw = v / paths.RAW_SLACK
+        raw.mkdir(parents=True)
+        stale = raw / f"{(date.today() - timedelta(days=60)).isoformat()}.md"
+        fresh = raw / f"{date.today().isoformat()}.md"
+        stale.write_text("# old\n")
+        fresh.write_text("# new\n")
+
         total, sections, dead, moved = run(str(v), write=True)
         assert total == 2, total
         assert moved == ["2026-06-25.md"], moved                       # only old + resolved
         assert (drafts / "archive" / "2026-06-25.md").exists()
         assert (drafts / "2026-06-26.md").exists()                     # unresolved stays
         assert (drafts / f"{date.today().isoformat()}.md").exists()    # today stays
+        assert not stale.exists(), "stale raw dump not pruned"
+        assert fresh.exists(), "fresh raw dump wrongly pruned"
         mem = (v / MEMORY).read_text()
-        assert "archived 1 resolved draft" in mem, mem
+        assert "archived 1 resolved draft" in mem and "pruned 1 stale raw file" in mem, mem
+        assert "prune · 1 raw file" in (v / paths.LOG).read_text(), "prune not audited to log.md"
 
         # idempotent: second pass finds nothing to archive, writes no new memory line
         _, _, _, moved2 = run(str(v), write=True)

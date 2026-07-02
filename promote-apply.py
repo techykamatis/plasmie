@@ -170,6 +170,7 @@ def run(draft_path, vault, apply):
     if apply and done:
         print("\n--- reindex ---")
         _reindex(vault)
+        paths.log_event(vault, f"promote · {done} item(s) applied (manual)")
 
 
 def _reindex(vault):
@@ -261,6 +262,9 @@ def auto(draft_path, vault):
         f"{f' → {holdpath.name}' if held else ''}.\n\n{rec}\n")
 
     _reindex(vault)
+    if applied:
+        paths.log_event(vault, f"promote · {len(applied)} item(s) into wiki",
+                        [f"{verb}: {det}" for verb, det in applied])
     print(f"\nAUTO: {len(applied)} applied, {len(held)} held")
     return len(applied), len(held)
 

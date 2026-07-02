@@ -10,9 +10,10 @@ qmd CLI. If the server is down it's kicked up on demand; if it can't load, falls
 back to showing the matching notes so you still get an answer.
 
 qmd owns retrieval (see the vault's CLAUDE.md); ask.py owns the private
-local-Gemma synthesis and the promote/improve loops that depend on it. If qmd's
-hybrid `query` can't run yet (models still downloading), it falls back to BM25
-`qmd search`, then to nothing.
+local-Gemma synthesis and the promote/improve loops that depend on it. Retrieval
+is over the **wiki/** collection only — raw/ is immutable source material, not an
+answer source. If vector search can't run yet (models still downloading), it
+falls back to BM25 `qmd search`.
 
 Two output channels so a UI can show live progress:
   stdout = the answer text (streamed), then a "Sources:" list
@@ -85,9 +86,9 @@ def _run_qmd(args):
 def qmd_hits(question, vault, k=TOP_K, collection=None):
     """Ranked notes from qmd -> [(score, {path, title, text}), ...].
 
-    Tries the hybrid `query` (expansion + vector + rerank); if that fails —
-    e.g. the local models are still downloading — falls back to BM25 `search`.
-    Full note text is read from disk (qmd's snippet is only a diff excerpt).
+    Tries vector search (vsearch); if that fails — e.g. the embedding model is
+    still downloading — falls back to BM25 `search`. Full note text is read from
+    disk (qmd's snippet is only a diff excerpt).
     """
     vp = Path(vault).expanduser()
 
@@ -279,16 +280,15 @@ def ask(question, vault="~/knowledge", on_chunk=None):
             return result    # else nothing in range — fall through to retrieval
 
     _say("Searching your notes…")
-    # Durable answers live in wiki/; query it first so raw/ (thousands of source
-    # pages) can't drown the curated notes. Widen to raw only when the wiki falls
-    # short — that's when source-diving is actually what you want.
+    # Answer ONLY from wiki/ — the curated, organized layer. raw/ is immutable
+    # source material to be synthesized INTO wiki (via promote), not answered from
+    # directly: it can contradict curated guidance. A weak/empty wiki result is a
+    # coverage GAP to fill by promoting, not a reason to fall back to raw.
     hits = qmd_hits(question, vault, collection="wiki")
-    if not hits or hits[0][0] < COVERAGE_MIN:
-        wide = qmd_hits(question, vault)
-        if wide and (not hits or wide[0][0] > hits[0][0]):
-            hits = wide
     if not hits:
-        return done("No matching notes found in the vault.", [])
+        if log_gap(vault, question, 0.0, "(none)"):
+            _say("Nothing in the wiki covers this — logged a coverage gap.")
+        return done("Nothing in the wiki covers this yet — promote a note from raw to answer it.", [])
     # qmd's top score gauges coverage — a low one means nothing really matches (gap).
     weak = hits[0][0] < COVERAGE_MIN
     if weak and log_gap(vault, question, hits[0][0], hits[0][1]["path"]):

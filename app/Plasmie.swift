@@ -466,11 +466,11 @@ struct Panel: View {
                 ActionRow(title: "Open vault in Obsidian", symbol: "folder",
                           detail: "Browse & edit all your notes") { openInObsidian(m.s.vault) }
                 if !m.s.journal.isEmpty {
-                    ActionRow(title: "Open today's journal", symbol: "book.closed",
+                    ActionRow(title: "Open today's raw log", symbol: "book.closed",
                               detail: "Today's raw captured activity") { openInObsidian(m.s.journal) }
                 }
                 ActionRow(title: "Reindex check", symbol: "magnifyingglass",
-                          detail: "Recount & flag orphans · changes nothing") { m.reindexCheck() }
+                          detail: "Rebuild catalog & flag dead links · changes nothing") { m.reindexCheck() }
                 ActionRow(title: "Open activity log", symbol: "doc.plaintext",
                           detail: "History of every ingest & promote run") { openExternal("\(m.s.loop)/feed.log") }
                 ActionRow(title: "Settings", symbol: "gearshape",

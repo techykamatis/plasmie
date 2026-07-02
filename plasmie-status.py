@@ -46,7 +46,7 @@ try:
 except (subprocess.CalledProcessError, OSError):
     is_running = False
 
-m = re.search(r"(\d+) atomic notes", read(f"{VAULT}/index.md"))
+m = re.search(r"(\d+) wiki notes", read(f"{VAULT}/index.md"))
 notes = m.group(1) if m else "?"
 feed = [l for l in read(f"{LOOP}/feed.log").splitlines() if l.strip()]
 # "did we ingest today" — any per-source raw file named <today>.md under slack/ or claude/

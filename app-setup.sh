@@ -82,16 +82,30 @@ p 45 "Downloading the search models (~3.7 GB, one-time)…"
 
 # 5) generation model (ungated, resumable) -----------------------------------
 if [ -f "$MODEL_DIR/config.json" ]; then
-  p 90 "Answer model ready"
+  p 82 "Answer model ready"
 else
   p 65 "Downloading the answer model (~4.9 GB, one-time)…"
   "$VENV/bin/hf" download mlx-community/gemma-4-e4b-it-4bit --local-dir "$MODEL_DIR" \
     || fail "model download interrupted — reopen the app to resume"
-  p 90 "Answer model ready"
+  p 82 "Answer model ready"
+fi
+
+# 5b) first-time crawl — seed the vault so day one is useful -----------------
+# Only on a genuine first run (no prior state). Best-effort: whatever defers here
+# the hourly/nightly loops backfill. Confluence = full contributor history;
+# Slack + Claude sessions = the bootstrap window (PLASMIE_BOOTSTRAP_DAYS, default 30).
+if [ ! -f "$LOOP/.loop-state.json" ]; then
+  p 85 "Gathering your recent history (first-time crawl)…"
+  set -a; [ -f "$HOME/.claude/.env" ] && . "$HOME/.claude/.env"; set +a
+  export PLASMIE_VAULT="$VAULT" PLASMIE_BOOTSTRAP_DAYS="${PLASMIE_BOOTSTRAP_DAYS:-30}"
+  "$PY" "$LOOP/confluence-backfill.py" "$VAULT" >/dev/null 2>&1 || true
+  "$PY" "$LOOP/loop-ingest.py"                   >/dev/null 2>&1 || true
+  "$PY" "$LOOP/reindex.py" "$VAULT"              >/dev/null 2>&1 || true
+  "$QMD" embed                                   >/dev/null 2>&1 || true
 fi
 
 # 6) background loops --------------------------------------------------------
-p 92 "Turning on the background helpers…"
+p 95 "Turning on the background helpers…"
 "$LOOP/launchd/install.sh" >/dev/null 2>&1 || fail "couldn't start the background helpers"
 
 p 100 "Done"

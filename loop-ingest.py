@@ -23,10 +23,16 @@ NOW = time.time()
 TOKEN = os.environ.get("SLACK_USER_TOKEN", "")
 
 # ---- state ----
+# First run (no state file) seeds a bootstrap window so a fresh install crawls
+# recent history, not just the last hour. 30 days by default; set PLASMIE_BOOTSTRAP_DAYS
+# (e.g. 90) for a deeper seed — slower, and only as far back as Slack retention
+# actually keeps. Confluence gets a full backfill separately (confluence-backfill.py).
+BOOTSTRAP_DAYS = int(os.environ.get("PLASMIE_BOOTSTRAP_DAYS", "30"))
+_first_run = NOW - BOOTSTRAP_DAYS * 86400
 try:
-    last_run = json.load(open(STATE)).get("last_run", NOW - 3600)
+    last_run = json.load(open(STATE)).get("last_run", _first_run)
 except Exception:
-    last_run = NOW - 3600  # first run: look back one hour
+    last_run = _first_run  # first run / lost state: seed the bootstrap window
 
 # ---- slack ----
 def slack(method, **params):

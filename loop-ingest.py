@@ -34,6 +34,24 @@ try:
 except Exception:
     last_run = _first_run  # first run / lost state: seed the bootstrap window
 
+# Backfill mode: PLASMIE_SINCE / PLASMIE_UNTIL (ISO datetime or epoch) crawl a *bounded*
+# historical window through this same ingest+redaction path — a driver chunks
+# the range so each run stays under the per-source result caps (Slack 100,
+# Confluence 50), which desc-sorted+capped queries otherwise can't reach back
+# through. When set we do NOT advance the live watermark (.loop-state.json).
+def _parse_ts(v):
+    v = str(v).strip()
+    try:
+        return float(v)
+    except ValueError:
+        return datetime.datetime.fromisoformat(v).timestamp()
+
+_since_env, _until_env = os.environ.get("PLASMIE_SINCE", ""), os.environ.get("PLASMIE_UNTIL", "")
+BACKFILL = bool(_since_env or _until_env)
+UNTIL = _parse_ts(_until_env) if _until_env else NOW
+if _since_env:
+    last_run = _parse_ts(_since_env)
+
 # ---- slack ----
 def slack(method, **params):
     url = "https://slack.com/api/" + method + "?" + urllib.parse.urlencode(params)
@@ -60,8 +78,9 @@ if TOKEN:
     try:
         uname = slack("auth.test").get("user", "")
         since_date = datetime.datetime.fromtimestamp(last_run - 86400).strftime("%Y-%m-%d")
+        _bound = "" if not BACKFILL else " before:" + datetime.datetime.fromtimestamp(UNTIL + 86400).strftime("%Y-%m-%d")
         seen = {}
-        for q in (f"from:@{uname} after:{since_date}", f"to:@{uname} after:{since_date}"):
+        for q in (f"from:@{uname} after:{since_date}{_bound}", f"to:@{uname} after:{since_date}{_bound}"):
             try:
                 res = slack("search.messages", query=q, sort="timestamp",
                             sort_dir="desc", count=100)
@@ -71,7 +90,8 @@ if TOKEN:
                 slack_err = slack_err or res.get("error")
                 continue
             for m in res.get("messages", {}).get("matches", []):
-                if float(m.get("ts", 0)) <= last_run:
+                _mts = float(m.get("ts", 0))
+                if _mts <= last_run or _mts > UNTIL:
                     continue
                 seen[(m.get("channel", {}).get("id"), m.get("ts"))] = m
         bychan = {}
@@ -100,6 +120,8 @@ mail_counts = []  # (label, n)
 cal_lines = []
 ms_err = None
 MS_RT = os.environ.get("MS_REFRESH_TOKEN", "")
+if os.environ.get("PLASMIE_OUTLOOK", "0") != "1":  # off for now — set PLASMIE_OUTLOOK=1 to re-enable
+    MS_RT = ""
 ms_enabled = bool(MS_RT)  # shelved until an Entra app is registered — silent when off
 if MS_RT:
     try:
@@ -108,12 +130,14 @@ if MS_RT:
             msgraph._save_refresh(new_rt)  # refresh tokens rotate — persist the new one
         utc = datetime.timezone.utc
         since_iso = datetime.datetime.fromtimestamp(last_run, utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        until_iso = datetime.datetime.fromtimestamp(UNTIL, utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         for folder, dtf, direction in (("inbox", "receivedDateTime", "from"),
                                        ("sentitems", "sentDateTime", "to")):
             label = "Inbox" if folder == "inbox" else "Sent"
+            _filt = f"{dtf} ge {since_iso}" + (f" and {dtf} le {until_iso}" if BACKFILL else "")
             try:
                 res = msgraph.get(f"/me/mailFolders/{folder}/messages", at,
-                                  **{"$filter": f"{dtf} ge {since_iso}",
+                                  **{"$filter": _filt,
                                      "$orderby": f"{dtf} desc", "$top": 50,
                                      "$select": f"subject,bodyPreview,from,toRecipients,{dtf}"})
             except Exception as e:
@@ -170,7 +194,8 @@ if CONF_BASE and CONF_EMAIL and CONF_TOKEN:
         # broad CQL query with a tz buffer (CQL time is the account's tz, not UTC);
         # filter precisely on each page's version.when below.
         since_cql = datetime.datetime.fromtimestamp(last_run - 3 * 3600).strftime("%Y/%m/%d %H:%M")
-        params = {"cql": f'type=page and lastmodified >= "{since_cql}" order by lastmodified desc',
+        _until_cql = "" if not BACKFILL else f' and lastmodified <= "{datetime.datetime.fromtimestamp(UNTIL + 3 * 3600).strftime("%Y/%m/%d %H:%M")}"'
+        params = {"cql": f'type=page and lastmodified >= "{since_cql}"{_until_cql} order by lastmodified desc',
                   "expand": "space,version,body.storage", "limit": 50}
         url = CONF_BASE + "/rest/api/content/search?" + urllib.parse.urlencode(params)
         req = urllib.request.Request(url, headers={"Authorization": "Basic " + auth,
@@ -186,8 +211,8 @@ if CONF_BASE and CONF_EMAIL and CONF_TOKEN:
                     tzinfo=datetime.timezone.utc).timestamp()
             except ValueError:
                 ts = NOW
-            if ts <= last_run:
-                continue  # inside the tz buffer but not actually new
+            if ts <= last_run or ts > UNTIL:
+                continue  # inside the tz buffer but outside the target window
             conf_count += 1
             space = (p.get("space") or {}).get("name") or (p.get("space") or {}).get("key") or "?"
             who = (ver.get("by") or {}).get("displayName") or "?"
@@ -207,7 +232,7 @@ sess_lines = []
 updated = []
 for f in glob.glob(os.path.join(SESS_ROOT, "*", "*.jsonl")):
     try:
-        if os.path.getmtime(f) > last_run:
+        if last_run < os.path.getmtime(f) <= UNTIL:
             updated.append(f)
     except OSError:
         pass
@@ -258,7 +283,10 @@ for f in updated[:40]:
         sess_lines.append(f"- {s}")
 
 # ---- write per-source raw files + one chronological log.md line ----
-today = datetime.date.today().isoformat()
+# Backfill: date raw files by the window's end so historical material lands in
+# correctly-dated files (retention + qmd date retrieval), not under today.
+today = (datetime.datetime.fromtimestamp(UNTIL).date().isoformat() if BACKFILL
+         else datetime.date.today().isoformat())
 stamp = datetime.datetime.now().strftime("%H:%M")
 since = datetime.datetime.fromtimestamp(last_run).strftime("%Y-%m-%d %H:%M")
 
@@ -305,7 +333,8 @@ if conf_err and "not set" not in conf_err:
     bullets.append(f"_confluence: {conf_err}_")
 paths.log_event(VAULT, f"ingest · since {since}", bullets)
 
-json.dump({"last_run": NOW, "last_run_iso": datetime.datetime.now().isoformat()}, open(STATE, "w"))
+if not BACKFILL:  # backfill must not move the live incremental watermark
+    json.dump({"last_run": NOW, "last_run_iso": datetime.datetime.now().isoformat()}, open(STATE, "w"))
 
 # ---- detailed run report (stdout → per-run log); final SUMMARY line → feed.log ----
 print(f"window: since {since}")

@@ -36,6 +36,13 @@ input="$(printf '%s' "$input" | tail -c 24000)"
 # Markdown/text drops (plasmie-capture.sh writes these) are included WITH their body —
 # a filename alone gives the model nothing to classify on, which made hand-captured
 # notes effectively untriageable. Binaries are still listed by name only.
+# Inbox bodies go through scrub.py first. Every other source is redacted at
+# ingest, but a hand-dropped file never passes through loop-ingest.py — and this
+# text reaches the local model AND the full-prompt transcript log, so it must be
+# scrubbed here or it is the one unredacted path into logs/transcript-*.log.
+redact_stdin(){ PLASMIE_SELF="$SELF" /usr/bin/python3 -c \
+  'import sys,os; sys.path.insert(0,os.environ["PLASMIE_SELF"]); from scrub import redact; print(redact(sys.stdin.read()), end="")'; }
+
 inbox_block=""
 if [ -d "$VAULT/raw/inbox" ]; then
   while IFS= read -r f; do
@@ -47,7 +54,7 @@ if [ -d "$VAULT/raw/inbox" ]; then
         inbox_block="$inbox_block
 
 --- raw/inbox/$b ---
-$(head -c 4000 "$f")" ;;
+$(head -c 4000 "$f" | redact_stdin)" ;;
       *)
         inbox_block="$inbox_block
 

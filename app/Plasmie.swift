@@ -9,6 +9,7 @@ import SwiftUI
 
 struct Status: Codable {
     var state = "healthy"
+    var reason = ""          // why we're in `state` (e.g. "ingest: CONF-ERR")
     var pending = 0
     var pendingFile = ""
     var pendingBase = ""
@@ -300,12 +301,15 @@ let kLogo: NSImage = {
 
 struct StatusPill: View {
     let state: String
+    var reason: String = ""
     @State private var pulse = false
     private var spec: (String, Color) {
         switch state {
         case "pending": return ("Needs review", .orange)
         case "running": return ("Working", .blue)
-        case "error":   return ("Promote skipped", .red)
+        // reason comes from plasmie-status.py; falling back to the old wording keeps
+        // an older status script working, but ingest errors now say so.
+        case "error":   return (reason.isEmpty ? "Promote skipped" : reason, .red)
         default:        return ("Healthy", .green)
         }
     }
@@ -371,7 +375,7 @@ struct Panel: View {
                 Image(nsImage: kLogo).foregroundStyle(.primary)
                 Text("Plasmie").font(.system(size: 13, weight: .semibold))
                 Spacer()
-                StatusPill(state: m.s.state)
+                StatusPill(state: m.s.state, reason: m.s.reason)
             }
             .padding(.horizontal, 12).padding(.top, 11).padding(.bottom, 9)
 

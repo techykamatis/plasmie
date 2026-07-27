@@ -208,6 +208,28 @@ def remember(vault, line, write=True):
     return entry
 
 
+def _audit(msg):
+    """One timestamped line per run, alongside summarize's and promote's.
+
+    improve.log carries no timestamps and this pass only writes to
+    improvement-loop.md when something CHANGED — so a no-op run left no trace
+    anywhere, making "ran and had nothing to do" indistinguishable from "never
+    fired" or "died silently". Given how much of this system failed by looking
+    successful, every scheduled stage needs a heartbeat, not just a changelog.
+    """
+    try:
+        d = Path(__file__).resolve().parent / "logs"
+        d.mkdir(exist_ok=True)
+        stamp = datetime.now()
+        with (d / f"audit-{stamp:%Y-%m-%d}.log").open("a") as fh:
+            fh.write(f"{stamp:%F %T} | improve | {msg}\n")
+        for old in d.glob("audit-*.log"):     # same 90d retention as summarize
+            if (stamp - datetime.fromtimestamp(old.stat().st_mtime)).days > 90:
+                old.unlink()
+    except OSError:
+        pass                                   # never let bookkeeping break the pass
+
+
 def run(vault="~/knowledge", write=True):
     vault = str(Path(vault).expanduser())
     total, sections, dead = reindex.catalog(vault, write=write)
@@ -233,10 +255,13 @@ def run(vault="~/knowledge", write=True):
         paths.log_event(vault, f"prune · {len(pruned)} raw file(s) past {paths.RAW_RETENTION_DAYS}d retention",
                         pruned[:25])
 
-    print(f"{total} wiki notes · {len(dead)} dead links · {len(moved)} archived · "
-          f"{len(pruned)} pruned · {gaps} coverage gaps"
-          + (f" ({len(closed)} closed)" if closed else "")
-          + (" · (dry)" if not write else ""))
+    line = (f"{total} wiki notes · {len(dead)} dead links · {len(moved)} archived · "
+            f"{len(pruned)} pruned · {gaps} coverage gaps"
+            + (f" ({len(closed)} closed)" if closed else "")
+            + (" · (dry)" if not write else ""))
+    print(line)
+    if write:
+        _audit(line)
     return total, sections, dead, moved
 
 

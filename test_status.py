@@ -107,6 +107,74 @@ def test_promote_skipped_still_reported():
     assert state == "error" and reason == "Promote skipped"
 
 
+
+
+# --- per-source freshness (added iteration 3) -----------------------------
+# Distinguishing "genuinely quiet" from "silently broken" cost a manual API call
+# twice on 2026-07-27. feed.log already holds the answer; these pin the parsing.
+def _source_ages(lines, now):
+    """Re-implemented import-free: plasmie-status.py executes against the real vault on import."""
+    pats = {
+        "slack": re.compile(r"slack \d+ convos / (\d+) msgs"),
+        "confluence": re.compile(r"confluence (\d+) pages"),
+        "sessions": re.compile(r"sessions (\d+) files"),
+        "github": re.compile(r"github (\d+) item"),
+        "outlook": re.compile(r"outlook (\d+) mail"),
+    }
+    ages = {k: None for k in pats}
+    for ln in reversed(lines):
+        m_ts = re.match(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", ln)
+        if not m_ts:
+            continue
+        ts = datetime.datetime.strptime(m_ts.group(1), "%Y-%m-%d %H:%M:%S")
+        for src, pat in pats.items():
+            if ages[src] is not None:
+                continue
+            m = pat.search(ln)
+            if m and int(m.group(1)) > 0:
+                ages[src] = round((now - ts).total_seconds() / 3600, 1)
+        if all(v is not None for v in ages.values()):
+            break
+    return ages
+
+
+FEED = [
+    "2026-07-27 09:07:02 | exit 0 | errors 0 | slack 1 convos / 1 msgs · confluence 0 pages · sessions 4 files · raw 2 file(s)",
+    "2026-07-27 10:07:05 | exit 0 | errors 0 | slack 0 convos / 0 msgs · confluence 0 pages · sessions 5 files · raw 1 file(s)",
+    "2026-07-27 11:07:03 | exit 0 | errors 0 | slack 3 convos / 15 msgs · confluence 0 pages · sessions 4 files · raw 2 file(s)",
+]
+
+
+def test_recently_producing_source_is_fresh():
+    ages = _source_ages(FEED, datetime.datetime(2026, 7, 27, 12, 7, 3))
+    assert ages["slack"] == 1.0, "slack produced 15 msgs at 11:07"
+    assert ages["sessions"] == 1.0
+
+
+def test_never_producing_source_reports_none():
+    """confluence is 0 on every line — must be None, never mistaken for fresh."""
+    ages = _source_ages(FEED, datetime.datetime(2026, 7, 27, 12, 7, 3))
+    assert ages["confluence"] is None
+
+
+def test_zero_count_does_not_count_as_produced():
+    """slack 0 msgs at 10:07 must not mask the real last-produced at 09:07."""
+    ages = _source_ages(FEED[:2], datetime.datetime(2026, 7, 27, 11, 7, 2))
+    assert ages["slack"] == 2.0, "picked up the 0-msg line instead of the 1-msg one"
+
+
+def test_omitted_segment_is_not_a_false_positive():
+    """github/outlook segments vanish when zero — absence must read as None."""
+    ages = _source_ages(FEED, datetime.datetime(2026, 7, 27, 12, 0, 0))
+    assert ages["github"] is None and ages["outlook"] is None
+
+
+def test_present_github_segment_is_detected():
+    line = "2026-07-27 11:07:03 | exit 0 | errors 0 | slack 0 convos / 0 msgs · github 4 item(s) · confluence 0 pages · sessions 1 files"
+    ages = _source_ages([line], datetime.datetime(2026, 7, 27, 13, 7, 3))
+    assert ages["github"] == 2.0
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main([__file__, "-q"]))

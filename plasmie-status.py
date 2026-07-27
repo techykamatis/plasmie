@@ -81,6 +81,46 @@ if m_ts:
 # which reads identically to "quiet day" unless we say so.
 is_stale = stale_min is not None and stale_min > 90
 
+# Per-source "last actually produced something", derived from feed.log — no new
+# state to keep. A source reporting 0 is ambiguous: genuinely quiet, or silently
+# broken? Answering that took a hand-rolled API call twice on 2026-07-27, so
+# surface the age instead and let the reader judge. Deliberately reports data,
+# not a verdict: weekends and holidays make any "too quiet" threshold noisy.
+# NOTE github/outlook segments are OMITTED from the summary when zero, so their
+# mere presence means they produced; slack/confluence/sessions always print.
+_SRC_PATTERNS = {
+    "slack": re.compile(r"slack \d+ convos / (\d+) msgs"),
+    "confluence": re.compile(r"confluence (\d+) pages"),
+    "sessions": re.compile(r"sessions (\d+) files"),
+    "github": re.compile(r"github (\d+) item"),
+    "outlook": re.compile(r"outlook (\d+) mail"),
+}
+
+
+def _source_ages(lines, now):
+    """{source: hours since it last reported a non-zero count} (None = never seen)."""
+    ages = {k: None for k in _SRC_PATTERNS}
+    for ln in reversed(lines):                       # newest first
+        m_ts = re.match(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", ln)
+        if not m_ts:
+            continue
+        try:
+            ts = datetime.datetime.strptime(m_ts.group(1), "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            continue
+        for src, pat in _SRC_PATTERNS.items():
+            if ages[src] is not None:
+                continue
+            m = pat.search(ln)
+            if m and int(m.group(1)) > 0:
+                ages[src] = round((now - ts).total_seconds() / 3600, 1)
+        if all(v is not None for v in ages.values()):
+            break
+    return ages
+
+
+source_ages = _source_ages(feed, datetime.datetime.now())
+
 state, reason = "healthy", ""
 if is_running:
     state = "running"
@@ -102,6 +142,7 @@ print(json.dumps({
     "errors": errors,
     "errorSources": sorted(set(err_sources)),
     "staleMinutes": stale_min,
+    "sourceAgeHours": source_ages,
     "pending": len(pending),
     "pendingFile": pfile,
     "pendingBase": os.path.basename(pfile),

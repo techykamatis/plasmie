@@ -4,8 +4,12 @@
 # writes them to ~/Library/LaunchAgents/, and (re)bootstraps each into your GUI
 # domain. Safe to re-run: each agent is booted out first.
 #
-#   launchd/install.sh            # install all four
-#   launchd/install.sh uninstall  # boot out + remove all four
+#   launchd/install.sh            # install every agent in this dir
+#   launchd/install.sh uninstall  # boot out + remove them all
+#
+# The loop globs *.plist, so a template dropped in here IS the install manifest —
+# an agent that only exists in ~/Library/LaunchAgents is drift and will vanish on
+# the next machine (that is how knowledge-improve went unversioned for a month).
 set -euo pipefail
 SELF="$(cd "$(dirname "$0")" && pwd)"
 LOOP_DIR="$(cd "$SELF/.." && pwd)"
@@ -34,4 +38,4 @@ for tpl in "$SELF"/*.plist; do
   echo "installed $label"
 done
 
-echo "done. ingest :07 hourly · summarize :15 hourly · promote 02:30 · mlx-server on-demand"
+echo "done. ingest :07 hourly · summarize :15 hourly · improve :17 hourly · promote 02:30 · mlx-server on-demand"

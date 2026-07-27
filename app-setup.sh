@@ -92,13 +92,14 @@ fi
 
 # 5b) first-time crawl — seed the vault so day one is useful -----------------
 # Only on a genuine first run (no prior state). Best-effort: whatever defers here
-# the hourly/nightly loops backfill. Confluence = full contributor history;
-# Slack + Claude sessions = the bootstrap window (PLASMIE_BOOTSTRAP_DAYS, default 30).
+# the hourly/nightly loops backfill. Confluence + GitHub = full contributor
+# history; Slack + Claude sessions = the bootstrap window (PLASMIE_BOOTSTRAP_DAYS).
 if [ ! -f "$LOOP/.loop-state.json" ]; then
   p 85 "Gathering your recent history (first-time crawl)…"
   set -a; [ -f "$HOME/.claude/.env" ] && . "$HOME/.claude/.env"; set +a
   export PLASMIE_VAULT="$VAULT" PLASMIE_BOOTSTRAP_DAYS="${PLASMIE_BOOTSTRAP_DAYS:-30}"
   "$PY" "$LOOP/confluence-backfill.py" "$VAULT" >/dev/null 2>&1 || true
+  "$PY" "$LOOP/github-backfill.py"     "$VAULT" >/dev/null 2>&1 || true
   "$PY" "$LOOP/loop-ingest.py"                   >/dev/null 2>&1 || true
   "$PY" "$LOOP/reindex.py" "$VAULT"              >/dev/null 2>&1 || true
   "$QMD" embed                                   >/dev/null 2>&1 || true

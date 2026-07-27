@@ -32,12 +32,33 @@ $(cat "$f")"
 done
 input="$(printf '%s' "$input" | tail -c 24000)"
 
-# also surface manually-dropped raw/inbox items so each gets a proposed target
-inbox_list="$(ls -1 "$VAULT/raw/inbox" 2>/dev/null | grep -v '^.gitkeep$' || true)"
-[ -n "$inbox_list" ] && input="$input
+# also surface manually-dropped raw/inbox items so each gets a proposed target.
+# Markdown/text drops (plasmie-capture.sh writes these) are included WITH their body —
+# a filename alone gives the model nothing to classify on, which made hand-captured
+# notes effectively untriageable. Binaries are still listed by name only.
+inbox_block=""
+if [ -d "$VAULT/raw/inbox" ]; then
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    b="$(basename "$f")"
+    case "$b" in .gitkeep) continue ;; esac
+    case "$b" in
+      *.md|*.txt|*.markdown)
+        inbox_block="$inbox_block
 
-===== raw/inbox (untriaged manual drops — propose a target for each filename) =====
-$inbox_list"
+--- raw/inbox/$b ---
+$(head -c 4000 "$f")" ;;
+      *)
+        inbox_block="$inbox_block
+
+--- raw/inbox/$b (binary/unreadable — classify from the filename) ---" ;;
+    esac
+  done < <(find "$VAULT/raw/inbox" -maxdepth 1 -type f | sort)
+fi
+[ -n "$inbox_block" ] && input="$input
+
+===== raw/inbox (untriaged manual drops — propose a target for each) =====
+$inbox_block"
 
 [ -n "$input" ] || { echo "no recent raw activity to promote"; exit 0; }
 

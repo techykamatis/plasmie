@@ -79,7 +79,9 @@ point. Instead:
 
 | File | Role |
 |------|------|
+| `plasmie-capture.sh` | Manual on-ramp: `plasmie-capture.sh "thought"` (or pipe stdin) writes a scrubbed note to `raw/inbox`, which the nightly promote pass triages into the wiki like any other source. |
 | `loop-ingest.py` | Pulls recent Slack + updated Claude sessions, scrubs secrets, appends a timestamped digest to today's journal note. Tracks a high-water mark in `.loop-state.json`. |
+| `ingest_window.py` | Paging/watermark arithmetic for the ingest — shared with `test_ingest.py` so the capture window is actually testable. |
 | `run-ingest.sh` | launchd wrapper for the ingest: loads `.env`, splits full detail → per-run log, one summary line → `feed.log`. |
 | `summarize.sh` | Condenses the newest raw ingest block into bullets via the local model. Idempotent per hour. |
 | `promote.sh` | Nightly: drafts durable, promotable knowledge from recent journal entries into a review note. Never edits the vault directly. |

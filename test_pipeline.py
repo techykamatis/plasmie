@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Adversarial battle-test for the promote pipeline. stdlib only, no framework.
+"""Adversarial battle-test for the promote pipeline. stdlib + pytest-collectable.
 
 Runs every case against a `cp -r` COPY of the real vault (never the real one).
-Covers the /goal criteria: path containment, no-data-loss, malformed-input,
-idempotency, secret/PII scrubbing, and reindex correctness. Each case prints
-[PASS]/[FAIL]; the process exits non-zero if anything fails.
+Covers path containment, no-data-loss, malformed input, idempotency, secret/PII
+scrubbing, catalog correctness, and the two regressions found in the 2026-07-27
+audit (promotion targets escaping wiki/, saturated queries losing data).
 
-Usage:  test_pipeline.py [REAL_VAULT=~/knowledge]
+Layout comes from paths.py, never hardcoded — this suite sat 4/6 red and unnoticed
+from the llm-wiki refactor until 2026-07-27 precisely because it pinned the old
+"03 Resources"/"01 Projects" directory names.
+
+Usage:  pytest test_pipeline.py          (or)  ./test_pipeline.py [VAULT=~/knowledge]
 """
 import contextlib
 import importlib.util
@@ -17,31 +21,46 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
 
 
 def load(name, fname):
     spec = importlib.util.spec_from_file_location(name, HERE / fname)
     m = importlib.util.module_from_spec(spec)
+    sys.modules[name] = m
     spec.loader.exec_module(m)
     return m
 
 
+import paths  # noqa: E402
+
 PA = load("promote_apply", "promote-apply.py")
 RI = load("reindex", "reindex.py")
-DD = load("dedupe", "dedupe.py")
 
-RESULTS = []
+REAL_VAULT = os.environ.get("PLASMIE_VAULT", "~/knowledge")
 
 
-def check(name, fn):
-    try:
-        fn()
-        RESULTS.append((name, True, ""))
-        print(f"[PASS] {name}")
-    except Exception as e:
-        RESULTS.append((name, False, repr(e)))
-        print(f"[FAIL] {name} -> {e!r}")
+@pytest.fixture(scope="module")
+def vault():
+    """A disposable copy of the real vault; guarantees the real one is untouched."""
+    real = Path(REAL_VAULT).expanduser()
+    if not real.is_dir():
+        pytest.skip(f"no vault at {real}")
+    tmproot = Path(tempfile.mkdtemp(prefix="vault-battletest-"))
+    v = tmproot / "knowledge"
+    shutil.copytree(real, v, symlinks=True, ignore=shutil.ignore_patterns(".git"))
+    for rel in (paths.CONCEPTS, paths.PROJECTS, paths.RAW_INBOX, paths.ARCHIVE):
+        (v / rel).mkdir(parents=True, exist_ok=True)
+    yield v
+    shutil.rmtree(tmproot, ignore_errors=True)
+
+
+@pytest.fixture
+def concepts(vault):
+    return vault / paths.CONCEPTS
 
 
 def item(title, **fields):
@@ -49,162 +68,193 @@ def item(title, **fields):
     return {"title": title, "fields": fields, "body": body}
 
 
-def quiet_run(draft, vault, apply):
+def quiet_run(draft, vault, apply=True):
     with contextlib.redirect_stdout(io.StringIO()):
         PA.run(str(draft), str(vault), apply)
 
 
-def main(real_vault):
-    real = Path(real_vault).expanduser()
-    tmproot = Path(tempfile.mkdtemp(prefix="vault-battletest-"))
-    V = tmproot / "knowledge"
-    shutil.copytree(real, V)  # criterion: cp -r the real vault, work on the copy
-    concepts = V / "03 Resources" / "concepts"
-    outside = tmproot / "ESCAPED.md"  # a sentinel OUTSIDE the vault
+# --------------------------------------------------------------------------
+# C0 — promotion targets can never escape wiki/   (regression: audit P0-3)
+# --------------------------------------------------------------------------
+# A local model writes the draft, so `Target:` is untrusted. Before the fix the
+# normalizer passed unknown names through verbatim and "Project"/"Technical"/
+# "Concepts" created TOP-LEVEL dirs outside wiki/ — invisible to the "wiki" qmd
+# collection, so ask.py could never retrieve them. Silent: promote logged success.
+@pytest.mark.parametrize("target", [
+    "Project", "Technical", "Concepts", "tech",          # observed in promote.log
+    "Resources", "", "wiki", "Areas", "How-Tos", "Security",
+    "projects/", "wiki/Projects", "Engineering", "SomethingInvented", None,
+])
+def test_create_target_stays_in_wiki(target):
+    known = {c for c, _ in paths.WIKI_CATEGORIES}
+    dest = PA._norm_create_target(target)
+    assert dest.startswith("wiki/"), f"{target!r} escaped wiki/ -> {dest}"
+    assert dest in known, f"{target!r} resolved to unknown category {dest}"
 
-    # ---- C1: path containment (untrusted draft must not escape the vault) ----
-    def c1():
-        assert PA.plan(item("e", Action="create", Target="../ESCAPED.md"), V)[2] is None
-        assert PA.plan(item("e", Action="create", Target="/tmp/evil.md"), V)[2] is None
-        assert PA.plan(item("e", Action="merge", **{"Merge-into": "../../etc/hosts"}), V)[2] is None
-        # move whose target escapes (real source inside the vault)
-        src = V / "00 Inbox" / "src.tmp"
-        src.write_text("payload")
-        assert PA.plan(item("e", Action="move", File="00 Inbox/src.tmp", Target="/tmp"), V)[2] is None
-        # move whose source is outside
-        assert PA.plan(item("e", Action="move", File="../../etc/passwd", Target="03 Resources"), V)[2] is None
-        # symlink escape
-        link = concepts / "evil-link"
-        if not link.exists():
-            os.symlink("/etc", link)
-        assert PA.plan(item("e", Action="create", Target="03 Resources/concepts/evil-link/x.md"), V)[2] is None
-        link.unlink()
-        src.unlink()
-        assert not outside.exists(), "sentinel created outside vault"
-    check("C1 path containment (create/merge/move/symlink escapes refused)", c1)
 
-    # ---- C2: no data loss ----
-    def c2():
-        orbit = V / "01 Projects" / "orbit.md"
-        before = orbit.read_text()
-        # create refuses to overwrite an existing note
-        verb, _, do, _ = PA.plan(item("x", Action="create", Target="01 Projects/orbit.md"), V)
-        assert verb == "skip" and do is None and orbit.read_text() == before, "create overwrote"
-        # merge preserves original content and appends
-        v2, _, do2, _ = PA.plan(item("status note", Action="merge", **{"Merge-into": "01 Projects/orbit.md"}, body="a new line"), V)
-        do2()
-        after = orbit.read_text()
-        assert after.startswith(before.rstrip()) and "a new line" in after, "merge lost content"
-        orbit.write_text(before)  # restore
-        # move keeps the content (no loss), source gone, dest present
-        s = V / "00 Inbox" / "moveme.tmp"
-        s.write_text("KEEP")
-        _, _, do3, _ = PA.plan(item("m", Action="move", File="00 Inbox/moveme.tmp", Target="04 Archive"), V)
-        do3()
-        assert not s.exists() and (V / "04 Archive" / "moveme.tmp").read_text() == "KEEP", "move lost data"
-        (V / "04 Archive" / "moveme.tmp").unlink()
-    check("C2 no data loss (create no-overwrite, merge preserves, move keeps content)", c2)
+def test_legacy_targets_map_to_right_category():
+    assert PA._norm_create_target("Project") == paths.PROJECTS
+    assert PA._norm_create_target("Technical") == paths.TECH
+    assert PA._norm_create_target("Concepts") == paths.CONCEPTS
+    assert PA._norm_create_target("Security") == paths.SECURITY
+    # areas/ holds hand-curated MOCs — the loop files into it, never auto-creates
+    assert PA._norm_create_target("wiki/areas") == paths.CONCEPTS
+    assert PA._norm_move_target("Resources") == paths.CLIPPINGS
 
-    # ---- C3: malformed drafts never crash / half-corrupt ----
-    def c3():
-        before_count = len(list(concepts.glob("*.md")))
-        cases = {
-            "empty.md": "",
-            "nothing.md": "Nothing to promote.\n",
-            "missing.md": "## no target\nAction: create\nbody only\n",
-            "dupes.md": "## Dup\nAction: skip\n\n## Dup\nAction: skip\n",
-            "hashbody.md": "## real\nAction: skip\nbody with\n## a fake heading\nand Action: create looking line\n",
-            "huge.md": "## big\nAction: skip\n" + ("filler line\n" * 400_000),  # ~5MB
-        }
-        for fn, content in cases.items():
-            (V / fn).write_text(content)
-            quiet_run(V / fn, V, apply=True)  # must not raise
-        # non-UTF8 bytes
-        (V / "binary.md").write_bytes(b"## t\nAction: skip\n\xff\xfe\x00 raw bytes\n")
-        quiet_run(V / "binary.md", V, apply=True)
-        # missing draft path → graceful
-        quiet_run(V / "does-not-exist.md", V, apply=True)
-        assert len(list(concepts.glob("*.md"))) == before_count, "malformed input created stray notes"
-        for fn in list(cases) + ["binary.md"]:
-            (V / fn).unlink()
-    check("C3 malformed drafts (empty/none/missing-field/dupes/##-body/non-utf8/5MB/missing-file)", c3)
 
-    # ---- C4: idempotency ----
-    def c4():
-        draft = V / "idem.md"
-        draft.write_text(
-            "## Idem create\nAction: create\nTarget: 03 Resources/concepts\nidempotent body\n\n"
-            "## Idem merge\nAction: merge\nMerge-into: 01 Projects/orbit.md\nidem merge line\n"
-        )
-        orbit = V / "01 Projects" / "orbit.md"
-        before = orbit.read_text()
-        quiet_run(draft, V, apply=True)
-        quiet_run(draft, V, apply=True)  # second apply must be a no-op
-        created = list(concepts.glob("idem-create.md"))
-        assert len(created) == 1, "create not idempotent"
-        assert orbit.read_text().count("idem merge line") == 1, "merge double-applied"
-        # reindex twice → identical
-        RI.reindex(V, write=True)
-        idx1 = (concepts / "index.md").read_text()
-        RI.reindex(V, write=True)
-        assert (concepts / "index.md").read_text() == idx1, "reindex not idempotent"
-        created[0].unlink()
-        orbit.write_text(before)
-    check("C4 idempotency (double apply = no dup note / no double-merge; reindex stable)", c4)
+def test_every_catalog_category_is_a_legal_target():
+    """A category you can browse must also be one the loop can write to."""
+    for rel, _ in paths.WIKI_CATEGORIES:
+        assert paths.resolve_target(rel) == rel, f"{rel} is cataloged but unwritable"
 
-    # ---- C5: secret / PII containment ----
-    def c5():
-        draft = V / "leak.md"
-        secrets = "AKIAABCDEFGHIJKLMNOP Bearer abcdefghijklmnopqrstuvwxyz123 sk-abcdefghijklmnopqrstuv jane@example.com"
-        draft.write_text(f"## Leaky create\nAction: create\nTarget: 03 Resources/concepts\n{secrets}\n")
-        quiet_run(draft, V, apply=True)
-        note = (concepts / "leaky-create.md").read_text()
-        for raw in ["AKIAABCDEFGHIJKLMNOP", "abcdefghijklmnopqrstuvwxyz123", "sk-abcdefghijklmnopqrstuv", "jane@example.com"]:
-            assert raw not in note, f"secret leaked verbatim: {raw}"
-        assert "«redacted" in note, "nothing redacted"
-        (concepts / "leaky-create.md").unlink()
-    check("C5 secret/PII scrub (AWS key, Bearer, sk-, email all redacted in written note)", c5)
 
-    # ---- C6: reindex correctness ----
-    def c6():
-        n_files = len([p for p in concepts.glob("*.md") if p.name != "index.md"])
-        count, orphans, dead = RI.reindex(V, write=False)
-        assert count == n_files, f"count {count} != ls|wc {n_files}"
-        # orphan append + round-trip
-        orphan = concepts / "zzz-battletest-orphan.md"
-        orphan.write_text('---\ntitle: "ZZZ battletest orphan"\ndescription: "d"\n---\n')
-        RI.reindex(V, write=True)
-        idx = (concepts / "index.md").read_text()
-        assert "zzz-battletest-orphan.md" in idx and "## Unfiled" in idx, "orphan not appended"
-        RI.reindex(V, write=True)  # idempotent: no duplicate Unfiled entry
-        assert (concepts / "index.md").read_text().count("zzz-battletest-orphan.md") == 1, "Unfiled duplicated"
-        # curate it into a real section -> next reindex drops it from Unfiled
-        idx2 = (concepts / "index.md").read_text().replace(
-            "## Unfiled", "* [ZZZ battletest orphan](zzz-battletest-orphan.md) - d\n\n## Unfiled", 1)
-        (concepts / "index.md").write_text(idx2)
-        RI.reindex(V, write=True)
-        final = (concepts / "index.md").read_text()
-        # curated note must drop OUT of Unfiled → appears exactly once total
-        # (robust to the vault having other pre-existing orphans)
-        assert final.count("zzz-battletest-orphan.md") == 1, "curated link lost or still duplicated in Unfiled"
-        # dead-link detection — insert into a curated section (not after the Unfiled
-        # block, which strip_unfiled would swallow before the check)
-        lines = final.splitlines(keepends=True)
-        for i, ln in enumerate(lines):
-            if ln.startswith("## "):
-                lines.insert(i + 1, "* [ghost](nonexistent-xyz123.md) - dead\n")
-                break
-        (concepts / "index.md").write_text("".join(lines))
-        _, _, dead2 = RI.reindex(V, write=False)
-        assert "nonexistent-xyz123.md" in dead2, "dead link not detected"
-    check("C6 reindex (count==ls|wc, orphan round-trip, Unfiled no-dup, dead-link detect)", c6)
+# --------------------------------------------------------------------------
+# C1 — path containment
+# --------------------------------------------------------------------------
+def test_path_containment(vault, concepts):
+    outside = vault.parent / "ESCAPED.md"
+    assert PA.plan(item("e", Action="create", Target="../ESCAPED.md"), vault)[2] is None
+    assert PA.plan(item("e", Action="create", Target="/tmp/evil.md"), vault)[2] is None
+    assert PA.plan(item("e", Action="merge", **{"Merge-into": "../../etc/hosts"}), vault)[2] is None
 
-    shutil.rmtree(tmproot, ignore_errors=True)
-    passed = sum(1 for _, ok, _ in RESULTS if ok)
-    print(f"\n{passed}/{len(RESULTS)} criteria-cases passed")
-    if passed != len(RESULTS):
-        sys.exit(1)
+    src = vault / paths.RAW_INBOX / "src.tmp"
+    src.write_text("payload")
+    assert PA.plan(item("e", Action="move", File=f"{paths.RAW_INBOX}/src.tmp", Target="/tmp"), vault)[2] is None
+    assert PA.plan(item("e", Action="move", File="../../etc/passwd", Target=paths.CONCEPTS), vault)[2] is None
+
+    link = concepts / "evil-link"
+    if not link.exists():
+        os.symlink("/etc", link)
+    assert PA.plan(item("e", Action="create", Target=f"{paths.CONCEPTS}/evil-link/x.md"), vault)[2] is None
+    link.unlink()
+    src.unlink()
+    assert not outside.exists(), "sentinel created outside vault"
+
+
+# --------------------------------------------------------------------------
+# C2 — no data loss
+# --------------------------------------------------------------------------
+def test_no_data_loss(vault):
+    orbit = vault / paths.PROJECTS / "orbit.md"
+    orbit.write_text("# Orbit\n")
+    before = orbit.read_text()
+
+    verb, _, do, _ = PA.plan(item("x", Action="create", Target=f"{paths.PROJECTS}/orbit.md"), vault)
+    assert verb == "skip" and do is None and orbit.read_text() == before, "create overwrote"
+
+    _, _, do2, _ = PA.plan(item("status note", Action="merge",
+                                **{"Merge-into": f"{paths.PROJECTS}/orbit.md"}, body="a new line"), vault)
+    do2()
+    after = orbit.read_text()
+    assert after.startswith(before.rstrip()) and "a new line" in after, "merge lost content"
+    orbit.write_text(before)
+
+    s = vault / paths.RAW_INBOX / "moveme.tmp"
+    s.write_text("KEEP")
+    _, _, do3, _ = PA.plan(item("m", Action="move", File=f"{paths.RAW_INBOX}/moveme.tmp",
+                                Target=paths.ARCHIVE), vault)
+    do3()
+    moved = vault / paths.ARCHIVE / "moveme.tmp"
+    assert not s.exists() and moved.read_text() == "KEEP", "move lost data"
+    moved.unlink()
+
+
+# --------------------------------------------------------------------------
+# C3 — malformed drafts never crash or half-corrupt
+# --------------------------------------------------------------------------
+def test_malformed_drafts(vault, concepts):
+    before_count = len(list(concepts.glob("*.md")))
+    cases = {
+        "empty.md": "",
+        "nothing.md": "Nothing to promote.\n",
+        "missing.md": "## no target\nAction: create\nbody only\n",
+        "dupes.md": "## Dup\nAction: skip\n\n## Dup\nAction: skip\n",
+        "hashbody.md": "## real\nAction: skip\nbody with\n## a fake heading\nand Action: create looking line\n",
+        "huge.md": "## big\nAction: skip\n" + ("filler line\n" * 400_000),  # ~5MB
+    }
+    for fn, content in cases.items():
+        (vault / fn).write_text(content)
+        quiet_run(vault / fn, vault)
+    (vault / "binary.md").write_bytes(b"## t\nAction: skip\n\xff\xfe\x00 raw bytes\n")
+    quiet_run(vault / "binary.md", vault)
+    quiet_run(vault / "does-not-exist.md", vault)
+    assert len(list(concepts.glob("*.md"))) == before_count, "malformed input created stray notes"
+    for fn in list(cases) + ["binary.md"]:
+        (vault / fn).unlink()
+
+
+# --------------------------------------------------------------------------
+# C4 — idempotency
+# --------------------------------------------------------------------------
+def test_idempotency(vault, concepts):
+    orbit = vault / paths.PROJECTS / "orbit.md"
+    orbit.write_text("# Orbit\n")
+    before = orbit.read_text()
+    draft = vault / "idem.md"
+    draft.write_text(
+        f"## Idem create\nAction: create\nTarget: {paths.CONCEPTS}\nidempotent body\n\n"
+        f"## Idem merge\nAction: merge\nMerge-into: {paths.PROJECTS}/orbit.md\nidem merge line\n"
+    )
+    quiet_run(draft, vault)
+    quiet_run(draft, vault)  # second apply must be a no-op
+    created = list(concepts.glob("idem-create.md"))
+    assert len(created) == 1, "create not idempotent"
+    assert orbit.read_text().count("idem merge line") == 1, "merge double-applied"
+    created[0].unlink()
+    orbit.write_text(before)
+    draft.unlink()
+
+
+def test_catalog_is_idempotent(vault):
+    with contextlib.redirect_stdout(io.StringIO()):
+        RI.catalog(vault, write=True)
+        idx1 = (vault / paths.INDEX).read_text()
+        RI.catalog(vault, write=True)
+    assert (vault / paths.INDEX).read_text() == idx1, "catalog not idempotent"
+
+
+# --------------------------------------------------------------------------
+# C5 — secret / PII containment
+# --------------------------------------------------------------------------
+def test_secrets_scrubbed(vault, concepts):
+    draft = vault / "leak.md"
+    secrets = ("AKIAABCDEFGHIJKLMNOP Bearer abcdefghijklmnopqrstuvwxyz123 "
+               "sk-abcdefghijklmnopqrstuv jane@example.com")
+    draft.write_text(f"## Leaky create\nAction: create\nTarget: {paths.CONCEPTS}\n{secrets}\n")
+    quiet_run(draft, vault)
+    note = (concepts / "leaky-create.md").read_text()
+    for raw in ["AKIAABCDEFGHIJKLMNOP", "abcdefghijklmnopqrstuvwxyz123",
+                "sk-abcdefghijklmnopqrstuv", "jane@example.com"]:
+        assert raw not in note, f"secret leaked verbatim: {raw}"
+    assert "«redacted" in note, "nothing redacted"
+    (concepts / "leaky-create.md").unlink()
+    draft.unlink()
+
+
+# --------------------------------------------------------------------------
+# C6 — catalog correctness
+# --------------------------------------------------------------------------
+def test_catalog_counts_every_wiki_note(vault):
+    on_disk = set()
+    for rel, _ in paths.WIKI_CATEGORIES:
+        d = vault / rel
+        if d.exists():
+            on_disk |= {p for p in d.rglob("*.md") if p.name != "index.md"}
+    with contextlib.redirect_stdout(io.StringIO()):
+        total, _, _ = RI.catalog(vault, write=False)
+    assert total == len(on_disk), f"catalog counted {total}, disk has {len(on_disk)}"
+
+
+def test_no_notes_stranded_outside_wiki(vault):
+    """Anything the loop wrote must live under a directory the catalog reads."""
+    reserved = {"wiki", "raw", "archive", "meta", ".git", ".obsidian",
+                ".claude", ".ruff_cache", ".trash"}
+    stray = [p for p in vault.glob("*/") if p.is_dir() and p.name not in reserved
+             and list(p.rglob("*.md"))]
+    assert not stray, f"notes stranded outside wiki/: {[p.name for p in stray]}"
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "~/knowledge")
+    if len(sys.argv) > 1:
+        os.environ["PLASMIE_VAULT"] = sys.argv[1]
+    sys.exit(pytest.main([__file__, "-q"]))

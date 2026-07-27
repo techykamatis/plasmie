@@ -30,7 +30,7 @@ out="$(cat "$tmp")"; rm -f "$tmp"
 # One daily file; contains your journal/Slack/session data -> pruned after 30 days.
 {
   printf '\n========== %s | endpoint=%s | model=%s ==========\n' \
-    "$(date '+%F %T')" "${ANTHROPIC_BASE_URL:-http://127.0.0.1:8080}" "${GEMMA_MODEL:-gemma-4-e4b(4bit)}"
+    "$(date '+%F %T')" "${ANTHROPIC_BASE_URL:-http://127.0.0.1:8091}" "${GEMMA_MODEL:-gemma-4-e4b(4bit)}"
   printf -- '----- REQUEST (context sent to model) -----\n%s\n' "$prompt"
   printf -- '----- RESPONSE (rc=%s) -----\n%s\n' "$rc" "$out"
 } >> "$SELF/logs/transcript-$(date +%F).log"

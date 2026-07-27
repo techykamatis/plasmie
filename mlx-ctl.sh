@@ -16,7 +16,7 @@ case "${1:-}" in
       launchctl bootstrap "gui/$UID_N" "$HOME/Library/LaunchAgents/$LABEL.plist" 2>/dev/null || true
     launchctl kickstart -k "gui/$UID_N/$LABEL" 2>/dev/null || launchctl start "$LABEL" 2>/dev/null || true
     for i in $(seq 1 40); do
-      curl -s -o /dev/null --max-time 2 http://127.0.0.1:8080/v1/models 2>/dev/null && exit 0
+      curl -fs -o /dev/null --max-time 2 http://127.0.0.1:8091/v1/models 2>/dev/null && exit 0
       sleep 2
     done
     echo "mlx server failed to come up" >&2; exit 1 ;;

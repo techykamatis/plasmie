@@ -192,14 +192,17 @@ def _near_score(fields):
 
 
 def _norm_create_target(t):
-    """A bare top-level folder is a model mis-target — atomic notes belong in concepts/."""
-    t = (t or "").strip().rstrip("/")
-    return paths.CONCEPTS if t in ("", paths.WIKI, "Resources", paths.AREAS, "Areas") else t
+    """Whitelist the model's target: unknown names land in concepts/, never a new dir.
+
+    areas/ holds hand-curated MOC pages, so it stays a redirect (as before) — the
+    loop may file INTO a category, never auto-create a new area.
+    """
+    dest = paths.resolve_target(t, default=paths.CONCEPTS)
+    return paths.CONCEPTS if dest == paths.AREAS else dest
 
 
 def _norm_move_target(t):
-    t = (t or "").strip().rstrip("/")
-    return paths.CLIPPINGS if t in ("", paths.WIKI, "Resources") else t
+    return paths.resolve_target(t, default=paths.CLIPPINGS)
 
 
 def _serialize(it):

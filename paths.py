@@ -21,6 +21,7 @@ RAW_SLACK = "raw/slack"
 RAW_CLAUDE = "raw/claude"
 RAW_OUTLOOK = "raw/outlook"
 RAW_CONFLUENCE = "raw/confluence"
+RAW_GITHUB = "raw/github"
 RAW_INBOX = "raw/inbox"
 RAW_JOURNAL = "raw/journal"      # legacy combined digests (pre-refactor, read-only)
 
@@ -32,6 +33,8 @@ PROJECTS = "wiki/projects"
 TECH = "wiki/tech"
 CLIPPINGS = "wiki/clippings"
 AREAS = "wiki/areas"
+HOWTOS = "wiki/how-tos"
+SECURITY = "wiki/security"
 
 ARCHIVE = "archive"
 META = "meta"
@@ -43,15 +46,51 @@ IMPROVE_LOG = "meta/improvement-loop.md"
 INDEX = "index.md"
 LOG = "log.md"
 
-# wiki categories to catalog, in display order: (relpath, human label)
+# wiki categories to catalog, in display order: (relpath, human label).
+# This list IS the whitelist of legal promotion targets (see promote-apply.py) —
+# a category missing here is invisible to index.md AND unwritable by the loop.
 WIKI_CATEGORIES = [
     (CONCEPTS, "Concepts"),
     (PEOPLE, "People"),
     (PROJECTS, "Projects"),
     (TECH, "Tech"),
+    (HOWTOS, "How-tos"),
+    (SECURITY, "Security"),
     (CLIPPINGS, "Clippings"),
     (AREAS, "Areas"),
 ]
+
+# Legacy / model-invented target names → the real category. The promotion draft
+# is LLM-written, so `Target:` is untrusted input: a local model reliably emits
+# capitalised pre-refactor names ("Project", "Technical"), which used to be
+# passed through verbatim and created top-level dirs OUTSIDE wiki/ — invisible
+# to the "wiki" qmd collection and therefore unanswerable by ask.py.
+# Matched on the final path segment, lowercased.
+TARGET_ALIASES = {
+    "concept": CONCEPTS, "concepts": CONCEPTS, "note": CONCEPTS, "notes": CONCEPTS,
+    "person": PEOPLE, "people": PEOPLE,
+    "project": PROJECTS, "projects": PROJECTS,
+    "tech": TECH, "technical": TECH, "technology": TECH, "engineering": TECH,
+    "how-to": HOWTOS, "how-tos": HOWTOS, "howto": HOWTOS, "howtos": HOWTOS,
+    "guide": HOWTOS, "guides": HOWTOS, "runbook": HOWTOS, "runbooks": HOWTOS,
+    "security": SECURITY,
+    "clipping": CLIPPINGS, "clippings": CLIPPINGS,
+    "area": AREAS, "areas": AREAS,
+}
+
+
+def resolve_target(t, default=CONCEPTS):
+    """Map an untrusted `Target:` string onto a real wiki category.
+
+    Returns a path guaranteed to sit under wiki/. Anything unrecognised falls
+    back to `default` rather than being trusted as a path — the promotion path
+    must never be able to invent a directory outside the indexed tree.
+    """
+    seg = (t or "").strip().strip("/").split("/")[-1].lower()
+    known = {c for c, _ in WIKI_CATEGORIES}
+    if (t or "").strip().strip("/") in known:
+        return (t or "").strip().strip("/")
+    return TARGET_ALIASES.get(seg, default)
 
 # dirs the Q&A corpus / catalog skips (scaffolding, not knowledge)
 SKIP_DIRS = {"meta", "archive", "raw", ".git", ".obsidian", ".ruff_cache", ".claude"}
@@ -59,7 +98,10 @@ SKIP_DIRS = {"meta", "archive", "raw", ".git", ".obsidian", ".ruff_cache", ".cla
 # raw activity dumps that the maintenance loop prunes on a retention window.
 # raw/confluence is a live mirror (rebuilt by the backfill) and raw/journal is
 # legacy history — neither is a dated dump, so neither is pruned here.
-RAW_ACTIVITY = [RAW_SLACK, RAW_CLAUDE, RAW_OUTLOOK]
+# raw/github holds BOTH: dated incremental dumps (raw/github/YYYY-MM-DD.md, pruned
+# by the non-recursive *.md glob) and the backfill mirror in raw/github/<repo>/
+# subdirs (untouched — subdir files aren't matched, and _MOC stem isn't a date).
+RAW_ACTIVITY = [RAW_SLACK, RAW_CLAUDE, RAW_OUTLOOK, RAW_GITHUB]
 RAW_RETENTION_DAYS = int(os.environ.get("PLASMIE_RAW_RETENTION_DAYS", "14"))
 
 _LOG_HEADER = (

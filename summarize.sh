@@ -14,8 +14,8 @@ audit(){ printf '%s | summarize | %s\n' "$(date '+%F %T')" "$1" >> "$SELF/logs/a
 VAULT="${VAULT_DIR:-$HOME/knowledge}"
 DAY="$(date +%F)"
 
-# gather today's raw source files. retry: vault is in OneDrive, which briefly
-# swaps the file inode mid-sync -> a read can fail; a few attempts ride it out.
+# gather today's raw source files. retry: a read can race the hourly ingest
+# rewriting the same file; a few attempts ride it out.
 input=""
 for s in slack claude outlook; do
   f="$VAULT/raw/$s/$DAY.md"
@@ -31,6 +31,19 @@ done
 input="$(printf '%s' "$input" | tail -c 20000)"
 [ -n "${input// /}" ] || { echo "no raw activity today"; exit 0; }
 
+# The digest is a rolling whole-day rollup, so it is regenerated rather than
+# appended. But regenerating identical input just burns local-LLM cycles and
+# lets a worse sample overwrite a better one — so skip when nothing changed.
+DIGEST_DIR="$VAULT/meta/digests"
+DIGEST="$DIGEST_DIR/$DAY.md"
+STAMP="$DIGEST_DIR/.$DAY.inputhash"
+hash="$(printf '%s' "$input" | shasum -a 256 | cut -d' ' -f1)"
+if [ -f "$DIGEST" ] && [ -f "$STAMP" ] && [ "$hash" = "$(cat "$STAMP" 2>/dev/null)" ]; then
+  audit "skipped (raw activity unchanged)"
+  echo "digest current — raw activity unchanged since last run"
+  exit 0
+fi
+
 prompt="Condense this raw activity log into 4-8 terse markdown bullets: real decisions, blockers, and who/what changed. No preamble, no headings, bullets only.
 
 $input"
@@ -38,11 +51,10 @@ $input"
 # gen.sh handles guard + on-demand load + hard timeout + free. Skips quietly if busy.
 out="$("$SELF/gen.sh" 200 "$prompt")" || { audit "skipped (busy or timed out)"; echo "summarize skipped — retries next hour"; exit 0; }
 
-DIGEST_DIR="$VAULT/meta/digests"
-DIGEST="$DIGEST_DIR/$DAY.md"
 mkdir -p "$DIGEST_DIR"
-{ printf -- '---\ntype: note\ntitle: digest %s\ntags: [digest]\ntimestamp: %sT00:00:00Z\n---\n\n# Digest · %s\n_Local-Gemma rollup of the day'"'"'s raw activity. Regenerated hourly._\n\n%s\n' \
+{ printf -- '---\ntype: note\ntitle: digest %s\ntags: [digest]\ntimestamp: %sT00:00:00Z\n---\n\n# Digest · %s\n_Local-Gemma rollup of the day'"'"'s raw activity. Regenerated when raw activity changes._\n\n%s\n' \
     "$DAY" "$DAY" "$DAY" "$out"; } > "$DIGEST"
-n=$(printf '%s' "$out" | wc -l | tr -d ' ')
+printf '%s' "$hash" > "$STAMP"
+n=$(printf '%s\n' "$out" | grep -c . || true)
 audit "ok: wrote ${n}-line digest -> meta/digests/$DAY.md"
 echo "wrote digest ($n lines) -> $DIGEST"

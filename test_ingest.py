@@ -102,6 +102,73 @@ def test_page_boundaries(n):
     assert len(seen) == n and not trunc
 
 
+
+
+# --- per-source watermarks (added 2026-07-28) -----------------------------
+# A single global watermark advanced to NOW even when a source ERRORED, so the
+# failed window was stepped over permanently. Seen live: the machine woke without
+# a network and Slack/GitHub/Confluence all failed at 07:07 and 08:07 on
+# 2026-07-28, skipping 06:07-09:07 for those three.
+import ingest_window as IW  # noqa: E402
+
+
+def test_legacy_state_migrates_without_reprocessing():
+    """An old {"last_run": ts} file must seed every source from that ts."""
+    marks, base = IW.load_state({"last_run": 1000.0}, default=0.0)
+    assert base == 1000.0
+    assert all(v == 1000.0 for v in marks.values()), marks
+    assert set(marks) == set(IW.SOURCES)
+
+
+def test_missing_state_falls_back_to_bootstrap_default():
+    marks, base = IW.load_state({}, default=555.0)
+    assert base == 555.0 and all(v == 555.0 for v in marks.values())
+
+
+def test_corrupt_state_does_not_crash_the_run():
+    for junk in (None, [], "nope", {"last_run": "abc"}, {"sources": "bad"}):
+        marks, base = IW.load_state(junk, default=42.0)
+        assert base == 42.0 and all(v == 42.0 for v in marks.values())
+
+
+def test_failed_source_holds_its_watermark():
+    """The actual 2026-07-28 outage: three sources fail, one succeeds."""
+    prev = {s: 1000.0 for s in IW.SOURCES}
+    st = IW.next_state(prev, now=2000.0, failed={"slack", "github", "confluence"})
+    assert st["sources"]["slack"] == 1000.0, "failed slack advanced — data would be lost"
+    assert st["sources"]["github"] == 1000.0
+    assert st["sources"]["confluence"] == 1000.0
+    assert st["sources"]["claude"] == 2000.0, "healthy source should advance"
+    assert st["last_run"] == 2000.0, "global heartbeat always advances"
+
+
+def test_held_window_is_recovered_on_the_next_run():
+    """Two failed hours then a success must re-cover the whole gap."""
+    marks = {s: 1000.0 for s in IW.SOURCES}
+    for t in (2000.0, 3000.0):                       # two failing runs
+        marks = IW.next_state(marks, now=t, failed={"slack"})["sources"]
+    assert marks["slack"] == 1000.0, "gap not preserved across repeated failures"
+    ok = IW.next_state(marks, now=4000.0, failed=set())
+    assert ok["sources"]["slack"] == 4000.0
+    # the recovering run queried from 1000, not 3000 — nothing was skipped
+
+
+def test_truncation_also_holds_the_watermark():
+    """Hitting MAX_PAGES means the tail went unread; don't step past it."""
+    prev = {s: 1000.0 for s in IW.SOURCES}
+    st = IW.next_state(prev, now=2000.0, failed={"slack"})
+    assert st["sources"]["slack"] == 1000.0
+
+
+def test_roundtrip_through_load_state():
+    """next_state output must be readable by load_state — the real file cycle."""
+    prev = {s: 1000.0 for s in IW.SOURCES}
+    written = IW.next_state(prev, now=2000.0, failed={"confluence"})
+    marks, base = IW.load_state(written, default=0.0)
+    assert base == 2000.0
+    assert marks["confluence"] == 1000.0 and marks["slack"] == 2000.0
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main([__file__, "-q"]))

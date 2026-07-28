@@ -13,6 +13,51 @@ implementation rather than a replica that can drift.
 """
 import time
 
+# Sources that own an independent watermark. Claude sessions come off the
+# filesystem and can't fail the way a network call can, but share the mechanism.
+SOURCES = ("slack", "confluence", "github", "outlook", "claude")
+
+
+def load_state(raw, default):
+    """Per-source watermarks from the state file, tolerant of the legacy shape.
+
+    Legacy state was a single {"last_run": ts} advanced to NOW unconditionally, so
+    an hour where a source ERRORED still moved its watermark past material it never
+    read. Observed for real on 2026-07-28: the machine woke without a network,
+    Slack/GitHub/Confluence all failed at 07:07 and 08:07, and the 06:07-09:07
+    window was skipped for those three. Same silent permanent loss as an
+    unpaginated read — different trigger.
+
+    Migration: a legacy file seeds every source from its single `last_run`, so
+    upgrading re-reads nothing and loses nothing.
+    """
+    if not isinstance(raw, dict):
+        raw = {}
+    base = raw.get("last_run", default)
+    try:
+        base = float(base)
+    except (TypeError, ValueError):
+        base = default
+    saved = raw.get("sources") or {}
+    out = {}
+    for s in SOURCES:
+        try:
+            out[s] = float(saved[s])
+        except (KeyError, TypeError, ValueError):
+            out[s] = base                      # legacy or missing -> inherit
+    return out, base
+
+
+def next_state(prev, now, failed):
+    """Advance only the sources that succeeded; hold the ones that failed.
+
+    A held watermark means the next run re-covers that window — the whole point.
+    The global `last_run` advances regardless: it is the "when did the loop last
+    run" heartbeat plasmie-status reads, not a claim about data coverage.
+    """
+    return {"last_run": now,
+            "sources": {s: (prev.get(s, now) if s in failed else now) for s in SOURCES}}
+
 
 def paginate(fetch, ts_of, last_run, until, max_pages=10, pause=0.0, _sleep=None):
     """Collect every item in (last_run, until] from a desc-sorted, capped source.

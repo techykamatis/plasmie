@@ -34,9 +34,12 @@ TOKEN = os.environ.get("SLACK_USER_TOKEN", "")
 BOOTSTRAP_DAYS = int(os.environ.get("PLASMIE_BOOTSTRAP_DAYS", "30"))
 _first_run = NOW - BOOTSTRAP_DAYS * 86400
 try:
-    last_run = json.load(open(STATE)).get("last_run", _first_run)
+    _raw_state = json.load(open(STATE))
 except Exception:
-    last_run = _first_run  # first run / lost state: seed the bootstrap window
+    _raw_state = {}        # first run / lost state: seed the bootstrap window
+# Per-source watermarks: a source that ERRORS must not have its watermark
+# advanced past material it never read (see ingest_window.load_state).
+SRC_MARK, last_run = ingest_window.load_state(_raw_state, _first_run)
 
 # Backfill mode: PLASMIE_SINCE / PLASMIE_UNTIL (ISO datetime or epoch) crawl a *bounded*
 # historical window through this same ingest+redaction path — a driver chunks
@@ -55,6 +58,12 @@ BACKFILL = bool(_since_env or _until_env)
 UNTIL = _parse_ts(_until_env) if _until_env else NOW
 if _since_env:
     last_run = _parse_ts(_since_env)
+if BACKFILL:
+    # An explicit window overrides every per-source mark — the caller is asking
+    # for exactly this range, not for each source's own resume point.
+    SRC_MARK = {s: last_run for s in ingest_window.SOURCES}
+
+failed = set()   # sources whose watermark must NOT advance this run
 
 # ---- slack ----
 def slack(method, **params):
@@ -91,7 +100,8 @@ slack_err = None
 if TOKEN:
     try:
         uname = slack("auth.test").get("user", "")
-        since_date = datetime.datetime.fromtimestamp(last_run - 86400).strftime("%Y-%m-%d")
+        _mark = SRC_MARK["slack"]
+        since_date = datetime.datetime.fromtimestamp(_mark - 86400).strftime("%Y-%m-%d")
         _bound = "" if not BACKFILL else " before:" + datetime.datetime.fromtimestamp(UNTIL + 86400).strftime("%Y-%m-%d")
         seen = {}
         for q in (f"from:@{uname} after:{since_date}{_bound}", f"to:@{uname} after:{since_date}{_bound}"):
@@ -106,7 +116,7 @@ if TOKEN:
             try:
                 matches, was_truncated = ingest_window.paginate(
                     _fetch, lambda m: float(m.get("ts", 0)),
-                    last_run, UNTIL, max_pages=MAX_PAGES, pause=PAGE_PAUSE)
+                    _mark, UNTIL, max_pages=MAX_PAGES, pause=PAGE_PAUSE)
             except Exception as e:
                 slack_err = slack_err or str(e)
                 continue
@@ -149,7 +159,7 @@ if MS_RT:
         if new_rt != MS_RT:
             msgraph._save_refresh(new_rt)  # refresh tokens rotate — persist the new one
         utc = datetime.timezone.utc
-        since_iso = datetime.datetime.fromtimestamp(last_run, utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        since_iso = datetime.datetime.fromtimestamp(SRC_MARK["outlook"], utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         until_iso = datetime.datetime.fromtimestamp(UNTIL, utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         for folder, dtf, direction in (("inbox", "receivedDateTime", "from"),
                                        ("sentitems", "sentDateTime", "to")):
@@ -213,7 +223,8 @@ if CONF_BASE and CONF_EMAIL and CONF_TOKEN:
         auth = base64.b64encode(f"{CONF_EMAIL}:{CONF_TOKEN}".encode()).decode()
         # broad CQL query with a tz buffer (CQL time is the account's tz, not UTC);
         # filter precisely on each page's version.when below.
-        since_cql = datetime.datetime.fromtimestamp(last_run - 3 * 3600).strftime("%Y/%m/%d %H:%M")
+        _cmark = SRC_MARK["confluence"]
+        since_cql = datetime.datetime.fromtimestamp(_cmark - 3 * 3600).strftime("%Y/%m/%d %H:%M")
         _until_cql = "" if not BACKFILL else f' and lastmodified <= "{datetime.datetime.fromtimestamp(UNTIL + 3 * 3600).strftime("%Y/%m/%d %H:%M")}"'
         _cql = f'type=page and lastmodified >= "{since_cql}"{_until_cql} order by lastmodified desc'
         LIMIT, start, cpage = 50, 0, 1
@@ -236,7 +247,7 @@ if CONF_BASE and CONF_EMAIL and CONF_TOKEN:
                         tzinfo=datetime.timezone.utc).timestamp()
                 except ValueError:
                     ts = NOW
-                if ts <= last_run:
+                if ts <= _cmark:
                     exhausted = True  # desc order — nothing newer lies further down
                     continue
                 if ts > UNTIL:
@@ -300,7 +311,8 @@ if GH_ORGS:
         _guser = _who.stdout.strip()
         if _who.returncode != 0 or not _guser:
             raise RuntimeError("gh not authenticated (`gh auth login`)")
-        since_d = datetime.datetime.fromtimestamp(last_run).strftime("%Y-%m-%d")
+        _gmark = SRC_MARK["github"]
+        since_d = datetime.datetime.fromtimestamp(_gmark).strftime("%Y-%m-%d")
         _upper = f" updated:<={datetime.datetime.fromtimestamp(UNTIL).strftime('%Y-%m-%d')}" if BACKFILL else ""
         byrepo = {}
         seen_ids = set()
@@ -315,7 +327,7 @@ if GH_ORGS:
                     ts = datetime.datetime.strptime((it.get("updated_at") or "")[:19],
                                                     "%Y-%m-%dT%H:%M:%S").replace(
                                                     tzinfo=datetime.timezone.utc).timestamp()
-                    if ts <= last_run or ts > UNTIL or it.get("id") in seen_ids:
+                    if ts <= _gmark or ts > UNTIL or it.get("id") in seen_ids:
                         continue
                     seen_ids.add(it.get("id"))
                     repo = (it.get("repository_url") or "").split("/repos/", 1)[-1]
@@ -337,7 +349,7 @@ sess_lines = []
 updated = []
 for f in glob.glob(os.path.join(SESS_ROOT, "*", "*.jsonl")):
     try:
-        if last_run < os.path.getmtime(f) <= UNTIL:
+        if SRC_MARK["claude"] < os.path.getmtime(f) <= UNTIL:
             updated.append(f)
     except OSError:
         pass
@@ -447,7 +459,22 @@ if truncated:
 paths.log_event(VAULT, f"ingest · since {since}", bullets)
 
 if not BACKFILL:  # backfill must not move the live incremental watermark
-    json.dump({"last_run": NOW, "last_run_iso": datetime.datetime.now().isoformat()}, open(STATE, "w"))
+    # Hold the watermark for any source that errored OR was truncated, so the
+    # next run re-covers that window instead of stepping over material it never
+    # read. "Creds not set" counts: when they ARE set, the first run then picks
+    # up from where coverage actually stopped rather than from now.
+    if slack_err:
+        failed.add("slack")
+    if conf_err:
+        failed.add("confluence")
+    if gh_err:
+        failed.add("github")
+    if ms_err:
+        failed.add("outlook")
+    failed.update(truncated)
+    st = ingest_window.next_state(SRC_MARK, NOW, failed)
+    st["last_run_iso"] = datetime.datetime.now().isoformat()
+    json.dump(st, open(STATE, "w"))
 
 # ---- detailed run report (stdout → per-run log); final SUMMARY line → feed.log ----
 print(f"window: since {since}")

@@ -30,7 +30,7 @@ import paths
 
 MERGE_AT = 0.30  # cosine >= this -> suggest merging into the nearest note
 STOP = set("the a an of to in on for and or is are was be it this that with as by from at into not no".split())
-CORPUS_DIRS = [paths.CONCEPTS, paths.PEOPLE, paths.PROJECTS]
+CORPUS_DIRS = [paths.WIKI]  # all of wiki/, recursively — tech/ etc. were invisible and duplicated
 
 
 def tokens(text):
@@ -51,16 +51,29 @@ def frontmatter(text):
     return fm
 
 
+def _body(text, cap=300):
+    """Note body (frontmatter stripped), whitespace-collapsed, capped."""
+    if text.startswith("---"):
+        end = text.find("\n---", 3)
+        if end != -1:
+            text = text[end + 4:]
+    return " ".join(text.split())[:cap]
+
+
 def build_corpus(vault):
     """[{path, title, vec}]  — path is relative to vault, vec is a normalized tf-idf dict."""
     vault = Path(vault).expanduser()
     docs = []
     for d in CORPUS_DIRS:
-        for p in sorted((vault / d).glob("*.md")):
+        for p in sorted((vault / d).rglob("*.md")):
             if p.name == "index.md":
                 continue
-            fm = frontmatter(p.read_text(errors="replace"))
-            text = f"{fm.get('title', p.stem)} {fm.get('description', '')}"
+            raw = p.read_text(errors="replace")
+            fm = frontmatter(raw)
+            # ponytail: fall back to the body when description is missing. Loop-written notes
+            # have none, so title-only vectors scored near-identical notes at ~0.26 (below
+            # MERGE_AT) and duplicated them instead of merging.
+            text = f"{fm.get('title', p.stem)} {fm.get('description') or _body(raw)}"
             docs.append({"path": str(p.relative_to(vault)), "title": fm.get("title", p.stem), "toks": tokens(text)})
     n = len(docs)
     df = Counter(t for doc in docs for t in set(doc["toks"]))
@@ -102,15 +115,15 @@ def enrich(draft_text, corpus, idf):
         title = lines[0][3:].strip()
         fields, body = {}, []
         for ln in lines[1:]:
-            m = re.match(r"^(Action|Target|Merge-into|File|Source|Near):\s*(.*)$", ln)
+            m = re.match(r"^(Action|Target|Merge-into|File|Source|Near|Description):\s*(.*)$", ln)
             if m:
-                if m.group(1) not in ("Near", "Action", "Merge-into", "File"):  # keep Target/Source; drop stale suggestions
+                if m.group(1) not in ("Near", "Action", "Merge-into", "File"):  # keep Target/Source/Description; drop stale suggestions
                     fields[m.group(1)] = m.group(2).strip()
             else:
                 body.append(ln)
         body_text = "\n".join(body).strip()
 
-        near = nearest(f"{title} {body_text}", corpus, idf, k=3)
+        near = nearest(f"{title} {fields.get('Description', '')} {body_text}", corpus, idf, k=3)
         src = fields.get("Source", "")
         m_inbox = re.search(rf"{paths.RAW_INBOX}/(.+)$", src)
 
@@ -128,6 +141,8 @@ def enrich(draft_text, corpus, idf):
         for kf in ("Merge-into", "Target", "File"):
             if kf in sugg:
                 rebuilt.append(f"{kf}: {sugg[kf]}")
+        if fields.get("Description"):
+            rebuilt.append(f"Description: {fields['Description']}")
         rebuilt.append(f"Near: {near_str}")
         if body_text:
             rebuilt.append(body_text)

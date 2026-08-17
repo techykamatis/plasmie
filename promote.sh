@@ -69,7 +69,7 @@ $inbox_block"
 
 [ -n "$input" ] || { echo "no recent raw activity to promote"; exit 0; }
 
-prompt="You maintain a knowledge wiki (curated folders: wiki/concepts, wiki/people, wiki/projects, wiki/tech). From the raw activity below, identify durable, reusable knowledge worth promoting into the wiki: decisions, how-tos, project status changes, people/meeting facts. Also propose a target for each file in the 'raw/inbox' list, if present. Ignore noise and one-off chatter. Output ONLY markdown (no preamble): for each item a '## <title>', then 'Target:' a wiki folder, a 2-3 line summary, and 'Source:' the source+date or 'raw/inbox/<filename>'. If nothing is worth promoting, output 'Nothing to promote.'
+prompt="You maintain a knowledge wiki (curated folders: wiki/concepts, wiki/people, wiki/projects, wiki/tech). From the raw activity below, identify durable, reusable knowledge worth promoting into the wiki: decisions, how-tos, project status changes, people/meeting facts. Also propose a target for each file in the 'raw/inbox' list, if present. Ignore noise and one-off chatter. Output ONLY markdown (no preamble): for each item a '## <title>', then 'Target:' a wiki folder, 'Description:' ONE sentence stating the durable takeaway (this drives search — make it specific and self-contained, not a topic label), a 2-3 line summary, and 'Source:' the source+date or 'raw/inbox/<filename>'. If nothing is worth promoting, output 'Nothing to promote.'
 
 $input"
 

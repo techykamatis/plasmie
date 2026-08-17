@@ -69,13 +69,25 @@ def parse(text):
         title = lines[0].strip() if lines else ""
         fields, body = {}, []
         for ln in lines[1:]:
-            m = re.match(r"^(Action|Target|Merge-into|File|Source|Near):\s*(.*)$", ln)
+            m = re.match(r"^(Action|Target|Merge-into|File|Source|Near|Description):\s*(.*)$", ln)
             if m:
                 fields[m.group(1)] = m.group(2).strip()  # Near is informational (from dedupe); kept out of body
             else:
                 body.append(ln)
         items.append({"title": title, "fields": fields, "body": "\n".join(body).strip()})
     return items
+
+
+def _first_sentence(body, cap=200):
+    """First sentence of a note body, for use as a fallback description."""
+    txt = " ".join(re.sub(r"^Summary:\s*\|?\s*", "", body.strip()).split())
+    m = re.search(r"^(.{20,}?[.!?])(\s|$)", txt)
+    return (m.group(1) if m else txt)[:cap]
+
+
+def _yaml_str(s):
+    """Quote a YAML scalar so ':' / '#' in a description can't break the frontmatter."""
+    return '"{}"'.format(s.replace('\\', '\\\\').replace('"', '\\"'))
 
 
 def note_type(target):
@@ -123,7 +135,11 @@ def plan(item, vault):
             return ("skip", item["title"], None, f"already exists: {path.relative_to(vroot)} (use merge?)")
         rtitle, rbody = redact(item["title"]), redact(item["body"])
         ttl = f'"{rtitle}"' if ":" in rtitle else rtitle
-        fm = f"---\ntype: {note_type(tgt)}\ntitle: {ttl}\ntags: []\ntimestamp: {date.today()}T00:00:00Z\n---\n\n# {rtitle}\n\n{rbody}\n"
+        # description drives both qmd retrieval and dedupe's corpus vectors — never leave it
+        # empty. Fall back to the body's first sentence when the drafter omits it.
+        desc = _yaml_str(redact(f.get("Description", "")) or _first_sentence(rbody))
+        fm = (f"---\ntype: {note_type(tgt)}\ntitle: {ttl}\ndescription: {desc}\n"
+              f"tags: []\ntimestamp: {date.today()}T00:00:00Z\n---\n\n# {rtitle}\n\n{rbody}\n")
         def do():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(fm)

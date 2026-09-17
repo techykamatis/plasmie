@@ -94,6 +94,8 @@ _SRC_PATTERNS = {
     "sessions": re.compile(r"sessions (\d+) files"),
     "github": re.compile(r"github (\d+) item"),
     "outlook": re.compile(r"outlook (\d+) mail"),
+    # \bgit followed by a space cannot match inside "github 2 item(s)".
+    "git": re.compile(r"\bgit (\d+) commit"),
 }
 
 

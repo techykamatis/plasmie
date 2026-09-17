@@ -1004,6 +1004,9 @@ struct Connector: Identifiable {
                   ageKey: "slack", errCode: "SLACK", blurb: "Messages you sent and received."),
         Connector(id: "github", name: "GitHub", symbol: "chevron.left.forwardslash.chevron.right",
                   ageKey: "github", errCode: "GH", blurb: "Pull requests and issues you opened or commented on."),
+        Connector(id: "git", name: "Local git commits", symbol: "arrow.triangle.branch",
+                  ageKey: "git", errCode: "GIT",
+                  blurb: "Your own commit messages, from repos cloned on this Mac. Finer-grained than GitHub, and needs no network or token."),
         Connector(id: "confluence", name: "Confluence", symbol: "doc.text.fill",
                   ageKey: "confluence", errCode: "CONF", blurb: "Pages you created or edited."),
         Connector(id: "outlook", name: "Outlook", symbol: "envelope.fill",
@@ -1192,6 +1195,7 @@ struct SettingsView: View {
     @State private var jiraBase = ""
     @State private var jiraEmail = ""
     @State private var githubOrgs = ""
+    @State private var gitRoots = ""
     // secret (write-only — blank means "keep")
     @State private var slackToken = ""
     @State private var jiraToken = ""
@@ -1305,6 +1309,15 @@ struct SettingsView: View {
                     .font(.system(size: 10.5)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        case "git":
+            ConnectorCard(c: c, m: conn, onDisconnect: nil) {
+                labeled("Folders to scan (comma-separated)") {
+                    TextField("~/code", text: $gitRoots).textFieldStyle(.roundedBorder)
+                }
+                Text("Only commits authored by you, with a real explanation in the message — one-liners and mechanical chores are filtered out.")
+                    .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         case "confluence":
             ConnectorCard(c: c, m: conn, onDisconnect: { disconnect(["JIRA_API_TOKEN": "", "CONFLUENCE_API_TOKEN": ""]) }) {
                 labeled("Site URL") { TextField("https://your-site.atlassian.net", text: $jiraBase).textFieldStyle(.roundedBorder) }
@@ -1389,6 +1402,7 @@ struct SettingsView: View {
         jiraBase = env["JIRA_BASE_URL"] ?? ""
         jiraEmail = env["JIRA_EMAIL"] ?? ""
         githubOrgs = env["PLASMIE_GITHUB_ORGS"] ?? "fabrikam"
+        gitRoots = env["PLASMIE_GIT_ROOTS"] ?? "~/code"
     }
 
     private func save() {
@@ -1404,6 +1418,7 @@ struct SettingsView: View {
             "JIRA_BASE_URL": jiraBase.trimmingCharacters(in: .whitespaces),
             "JIRA_EMAIL": jiraEmail.trimmingCharacters(in: .whitespaces),
             "PLASMIE_GITHUB_ORGS": githubOrgs.trimmingCharacters(in: .whitespaces),
+            "PLASMIE_GIT_ROOTS": gitRoots.trimmingCharacters(in: .whitespaces),
         ]
         if !slackToken.isEmpty { env["SLACK_USER_TOKEN"] = slackToken.trimmingCharacters(in: .whitespaces) }
         if !jiraToken.isEmpty { env["JIRA_API_TOKEN"] = jiraToken.trimmingCharacters(in: .whitespaces) }
@@ -1441,7 +1456,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKey: HotKey?
     func applicationDidFinishLaunching(_ notification: Notification) {
         hotKey = HotKey { [weak self] in self?.overlay.toggle() }
-        SetupController.shared.showIfNeeded()
+        // `open -a "Plasmie" --args --settings` opens straight to the
+        // connectors page. Only honoured on a cold start — macOS does not deliver
+        // args to an already-running app, which is fine: the menu has Settings.
+        if CommandLine.arguments.contains("--settings") {
+            SettingsController.shared.show()
+        } else {
+            SetupController.shared.showIfNeeded()
+        }
     }
 }
 

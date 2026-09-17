@@ -281,6 +281,7 @@ gh_err = None
 GH_ORGS = [o.strip() for o in os.environ.get("PLASMIE_GITHUB_ORGS", "fabrikam").split(",") if o.strip()]
 # launchd runs with a minimal PATH, so resolve the gh binary explicitly.
 import shutil
+GIT_BIN = shutil.which("git") or next((p for p in ("/opt/homebrew/bin/git", "/usr/bin/git") if os.path.exists(p)), "git")
 GH_BIN = shutil.which("gh") or next((p for p in ("/opt/homebrew/bin/gh", "/usr/local/bin/gh") if os.path.exists(p)), "gh")
 
 
@@ -399,6 +400,73 @@ for f in updated[:40]:
     for s in tail_texts(f):
         sess_lines.append(f"- {s}")
 
+# ---- local git commits ----
+# The CHANGE layer, finer-grained than the GitHub connector's PR/issue records:
+# measured 139 commits in 30 days against 82 PR/issue items in a month, and 2 of
+# 10 active repos have no GitHub remote at all so search/issues cannot see them.
+# github-backfill.py mirrored commits once (2026-07-22) and nothing refreshed
+# them since — this is that source, made incremental.
+#
+# Reads only your OWN commits, from clones already on this machine: no network,
+# no token, nothing to expire. Filtering is ingest_window.keep_commit().
+GIT_ROOTS = [os.path.expanduser(p.strip())
+             for p in os.environ.get("PLASMIE_GIT_ROOTS", "~/code").split(",") if p.strip()]
+GIT_BODY_CAP = int(os.environ.get("PLASMIE_GIT_BODY_CAP", "800"))
+
+git_lines, git_counts, git_err, git_dropped = [], [], None, 0
+if GIT_ROOTS:
+    try:
+        _mark_git = SRC_MARK["git"]
+        _since = datetime.datetime.fromtimestamp(_mark_git).isoformat()
+        _until = datetime.datetime.fromtimestamp(UNTIL).isoformat()
+        for _root in GIT_ROOTS:
+            for _repo in sorted(glob.glob(os.path.join(_root, "*"))):
+                if not os.path.isdir(os.path.join(_repo, ".git")):
+                    continue
+                try:
+                    _email = subprocess.run([GIT_BIN, "-C", _repo, "config", "user.email"],
+                                            capture_output=True, text=True, timeout=15).stdout.strip()
+                    if not _email:
+                        continue
+                    # %x1f between fields, %x1e between records: commit bodies contain
+                    # blank lines and bullets, so no line-oriented format is safe.
+                    _r = subprocess.run(
+                        [GIT_BIN, "-C", _repo, "log", f"--author={_email}",
+                         f"--since={_since}", f"--until={_until}", "--no-merges",
+                         "--pretty=format:%H\x1f%ct\x1f%s\x1f%b\x1e"],
+                        capture_output=True, text=True, timeout=45)
+                except (OSError, subprocess.SubprocessError) as e:
+                    git_err = git_err or str(e)
+                    continue
+                if _r.returncode != 0:
+                    continue                      # not a repo we can read; not an error
+                _kept = []
+                for _rec in _r.stdout.split("\x1e"):
+                    if not _rec.strip():
+                        continue
+                    _f = _rec.strip().split("\x1f")
+                    if len(_f) < 3:
+                        continue
+                    _sha, _ct, _subj = _f[0][:7], _f[1], _f[2]
+                    _body = _f[3] if len(_f) > 3 else ""
+                    try:
+                        if not (_mark_git < float(_ct) <= UNTIL):
+                            continue
+                    except ValueError:
+                        continue
+                    if not ingest_window.keep_commit(_subj, _body):
+                        git_dropped += 1
+                        continue
+                    _b = redact(" ".join(_body.split()))[:GIT_BODY_CAP]
+                    _kept.append(f"- `{_sha}` {redact(' '.join(_subj.split()))[:140]}\n  {_b}")
+                if _kept:
+                    _name = os.path.basename(_repo.rstrip("/"))
+                    git_counts.append((_name, len(_kept)))
+                    git_lines.append(f"\n**{_name}** ({len(_kept)})")
+                    git_lines += _kept
+    except Exception as e:
+        git_err = str(e)
+
 # ---- write per-source raw files + one chronological log.md line ----
 # Backfill: date raw files by the window's end so historical material lands in
 # correctly-dated files (retention + qmd date retrieval), not under today.
@@ -435,6 +503,8 @@ if gh_lines:
     written.append(("github", append_source(paths.RAW_GITHUB, "GitHub", gh_lines)))
 if sess_lines:
     written.append(("claude", append_source(paths.RAW_CLAUDE, "Claude", sess_lines)))
+if git_lines:
+    written.append(("git", append_source(paths.RAW_GIT, "Git", git_lines)))
 
 # log.md — the durable, append-only audit. Confluence *changes* are events (page
 # content is mirrored by the backfill), so they log here, not as raw docs.
@@ -471,6 +541,8 @@ if not BACKFILL:  # backfill must not move the live incremental watermark
         failed.add("github")
     if ms_err:
         failed.add("outlook")
+    if git_err:
+        failed.add("git")
     failed.update(truncated)
     st = ingest_window.next_state(SRC_MARK, NOW, failed)
     st["last_run_iso"] = datetime.datetime.now().isoformat()
@@ -525,10 +597,15 @@ mailn = sum(n for _, n in mail_counts)
 outlook_seg = f" · outlook {mailn} mail / {len(cal_lines)} events" if (ms_enabled or ms_err) else ""
 ghn = sum(n for _, n in gh_counts)
 github_seg = f" · github {ghn} item(s)" if (gh_counts or gh_err) else ""
-print(f"SUMMARY: slack {len(slack_counts)} convos / {msgs} msgs{outlook_seg}{github_seg} · confluence {conf_count} pages · sessions {len(updated)} files · raw {len(written)} file(s)"
+gitn = sum(n for _, n in git_counts)
+# dropped count is on the line on purpose: a filter nobody can see is a filter
+# nobody will notice has gone wrong.
+git_seg = (f" · git {gitn} commit(s)" + (f" ({git_dropped} filtered)" if git_dropped else "")) if (git_counts or git_err) else ""
+print(f"SUMMARY: slack {len(slack_counts)} convos / {msgs} msgs{outlook_seg}{github_seg}{git_seg} · confluence {conf_count} pages · sessions {len(updated)} files · raw {len(written)} file(s)"
       + (f" · SLACK-ERR {slack_err}" if slack_err else "")
       + (f" · MS-ERR {ms_err}" if ms_err else "")
       + (f" · GH-ERR {gh_err}" if gh_err else "")
+      + (f" · GIT-ERR {git_err}" if git_err else "")
       + (f" · CONF-ERR {conf_err}" if conf_err else "")
       + (f" · TRUNC-ERR hit PLASMIE_MAX_PAGES on {','.join(sorted(set(truncated)))}"
          f" — window too large, material may be unread" if truncated else ""))

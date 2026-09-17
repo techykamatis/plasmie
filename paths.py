@@ -22,6 +22,7 @@ RAW_CLAUDE = "raw/claude"
 RAW_OUTLOOK = "raw/outlook"
 RAW_CONFLUENCE = "raw/confluence"
 RAW_GITHUB = "raw/github"
+RAW_GIT = "raw/git"
 RAW_INBOX = "raw/inbox"
 RAW_JOURNAL = "raw/journal"      # legacy combined digests (pre-refactor, read-only)
 
@@ -101,7 +102,7 @@ SKIP_DIRS = {"meta", "archive", "raw", ".git", ".obsidian", ".ruff_cache", ".cla
 # raw/github holds BOTH: dated incremental dumps (raw/github/YYYY-MM-DD.md, pruned
 # by the non-recursive *.md glob) and the backfill mirror in raw/github/<repo>/
 # subdirs (untouched — subdir files aren't matched, and _MOC stem isn't a date).
-RAW_ACTIVITY = [RAW_SLACK, RAW_CLAUDE, RAW_OUTLOOK, RAW_GITHUB]
+RAW_ACTIVITY = [RAW_SLACK, RAW_CLAUDE, RAW_OUTLOOK, RAW_GITHUB, RAW_GIT]
 RAW_RETENTION_DAYS = int(os.environ.get("PLASMIE_RAW_RETENTION_DAYS", "14"))
 
 _LOG_HEADER = (

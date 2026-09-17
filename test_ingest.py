@@ -172,3 +172,40 @@ def test_roundtrip_through_load_state():
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+# --- local git commit filter -------------------------------------------------
+# Thresholds were set from 30 days of real history (139 commits): median body
+# 634 chars, 8 with no body, 18 chore/style/ci. These pin that intent so a later
+# tweak has to be deliberate rather than accidental.
+
+def test_commit_type_reads_both_conventional_forms():
+    assert ingest_window.commit_type("feat(programmes): adds a gate") == "feat"
+    assert ingest_window.commit_type("fix: stale pidfile") == "fix"
+    assert ingest_window.commit_type("no conventional prefix here") == ""
+
+
+def test_explained_commit_is_kept():
+    assert ingest_window.keep_commit("feat(x): a real change", "why " * 40)
+
+
+def test_bare_one_liner_is_dropped():
+    """8 of 139 real commits had no body. A commit nobody explained is not knowledge."""
+    assert not ingest_window.keep_commit("fix: typo", "")
+    assert not ingest_window.keep_commit("wip", "small")
+
+
+def test_mechanical_chore_needs_a_much_better_reason():
+    filler = "x " * 60          # ~120 chars: enough for a feat, not for a chore
+    assert ingest_window.keep_commit("feat(a): b", filler)
+    assert not ingest_window.keep_commit("chore(deps): bump qs", filler)
+    assert not ingest_window.keep_commit("ci: retry flake", filler)
+    # ...but a chore that genuinely explains itself still earns its place
+    assert ingest_window.keep_commit("chore(deps): bump qs", "because " * 80)
+
+
+def test_git_owns_a_watermark_so_a_failed_scan_holds_its_window():
+    assert "git" in ingest_window.SOURCES
+    st = ingest_window.next_state({s: 100.0 for s in ingest_window.SOURCES}, 200.0, {"git"})
+    assert st["sources"]["git"] == 100.0        # held
+    assert st["sources"]["slack"] == 200.0      # advanced

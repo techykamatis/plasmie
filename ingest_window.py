@@ -15,7 +15,38 @@ import time
 
 # Sources that own an independent watermark. Claude sessions come off the
 # filesystem and can't fail the way a network call can, but share the mechanism.
-SOURCES = ("slack", "confluence", "github", "outlook", "claude")
+SOURCES = ("slack", "confluence", "github", "outlook", "claude", "git")
+
+
+# Local git: which commits are worth keeping. Measured over 30 days of real
+# history (139 commits across 10 repos): median body 634 chars, only 8 with no
+# body at all, 18 chore/style/ci. So the bar is deliberately LOW — the aim is to
+# drop one-liners and mechanical churn, not to curate. A commit nobody bothered
+# to explain is not knowledge; a commit with three paragraphs of reasoning is the
+# best knowledge in the vault.
+#
+# This lives here rather than in loop-ingest.py for the same reason the window
+# arithmetic does: it decides what gets captured, so it has to be testable.
+GIT_MIN_BODY = 80
+GIT_CHORE_MIN_BODY = 400
+GIT_CHORE_TYPES = ("chore", "style", "ci", "build")
+
+
+def commit_type(subject):
+    """Conventional-commit type, or "" — `feat(scope): x` and `fix: y` both work."""
+    if ":" not in subject:
+        return ""
+    return subject.split(":", 1)[0].split("(", 1)[0].strip().lower()
+
+
+def keep_commit(subject, body, min_body=GIT_MIN_BODY):
+    """True if a commit carries enough explanation to be worth ingesting."""
+    body = (body or "").strip()
+    if len(body) < min_body:
+        return False
+    if commit_type(subject) in GIT_CHORE_TYPES and len(body) < GIT_CHORE_MIN_BODY:
+        return False
+    return True
 
 
 def load_state(raw, default):

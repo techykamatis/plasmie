@@ -156,12 +156,45 @@ def check_claude():
     return _result(True, True, f"{n} session file(s) on disk. Always on — no setup needed.")
 
 
+def check_git():
+    """Local clones — no network, no token. The failure mode is not auth but
+    "pointed at the wrong folder", so report what it can actually see."""
+    roots = [os.path.expanduser(r.strip())
+             for r in os.environ.get("PLASMIE_GIT_ROOTS", "~/code").split(",") if r.strip()]
+    missing = [r for r in roots if not os.path.isdir(r)]
+    if missing:
+        return _result(False, False, "Folder not found: " + ", ".join(missing),
+                       "Set PLASMIE_GIT_ROOTS to where your repos live.")
+    repos = [d for r in roots for d in glob.glob(os.path.join(r, "*"))
+             if os.path.isdir(os.path.join(d, ".git"))]
+    if not repos:
+        return _result(False, None, "No git repositories found in " + ", ".join(roots),
+                       "Set PLASMIE_GIT_ROOTS to where your repos live.")
+    git = shutil.which("git") or "/usr/bin/git"
+    recent = 0
+    for d in repos:
+        try:
+            email = subprocess.run([git, "-C", d, "config", "user.email"],
+                                   capture_output=True, text=True, timeout=10).stdout.strip()
+            if not email:
+                continue
+            out = subprocess.run([git, "-C", d, "log", f"--author={email}",
+                                  "--since=30 days ago", "--no-merges", "--oneline"],
+                                 capture_output=True, text=True, timeout=20).stdout
+            recent += len([l for l in out.splitlines() if l.strip()])
+        except Exception:
+            continue
+    return _result(True, True, f"{len(repos)} repo(s) in {', '.join(roots)} — "
+                               f"{recent} of your commits in the last 30 days.")
+
+
 CHECKS = {
     "slack": check_slack,
     "confluence": check_confluence,
     "github": check_github,
     "outlook": check_outlook,
     "claude": check_claude,
+    "git": check_git,
 }
 
 

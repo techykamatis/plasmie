@@ -268,8 +268,10 @@ def test_a_malicious_tag_cannot_write_outside_the_vault(tmp_path):
     tag wrote /tmp/pwned.md before this guard — arbitrary file write."""
     import importlib.util
     spec = importlib.util.spec_from_file_location("ri", "reindex.py")
-    ri = importlib.util.module_from_spec(spec); spec.loader.exec_module(ri)
-    w = tmp_path / "wiki"; w.mkdir()
+    ri = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ri)
+    w = tmp_path / "wiki"
+    w.mkdir()
     outside = tmp_path.parent / "pwned.md"
     if outside.exists():
         outside.unlink()
@@ -286,7 +288,8 @@ def test_a_malicious_tag_cannot_write_outside_the_vault(tmp_path):
 def test_safe_tag_rejects_traversal_and_accepts_normal_tags():
     import importlib.util
     spec = importlib.util.spec_from_file_location("ri", "reindex.py")
-    ri = importlib.util.module_from_spec(spec); spec.loader.exec_module(ri)
+    ri = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ri)
     for bad in ("../x", "../../etc/passwd", "/abs", "a/b", "", "." * 3, "x" * 65):
         assert not ri.safe_tag(bad), bad
     for good in ("orbit", "agent-cli", "how-to", "aws", "v1.2"):

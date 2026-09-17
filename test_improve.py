@@ -112,8 +112,10 @@ def test_related_block_is_added_and_is_idempotent(tmp_path):
     """0.83 links/note was the core defect; a re-run must not stack duplicate blocks."""
     import importlib.util
     spec = importlib.util.spec_from_file_location("kli", "plasmie-improve.py")
-    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-    c = tmp_path / "wiki" / "concepts"; c.mkdir(parents=True)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    c = tmp_path / "wiki" / "concepts"
+    c.mkdir(parents=True)
     _note(c / "a.md", "Postgres pool exhaustion", "postgres connection pool exhausted under load")
     _note(c / "b.md", "Postgres pool tuning", "tuning the postgres connection pool size under load")
     m.link_related(tmp_path, write=True, threshold=0.05)
@@ -127,8 +129,10 @@ def test_unrelated_notes_get_no_links(tmp_path):
     """A link that means nothing is worse than no link — the threshold must bite."""
     import importlib.util
     spec = importlib.util.spec_from_file_location("kli", "plasmie-improve.py")
-    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-    c = tmp_path / "wiki" / "concepts"; c.mkdir(parents=True)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    c = tmp_path / "wiki" / "concepts"
+    c.mkdir(parents=True)
     _note(c / "a.md", "Postgres pooling", "database connection pool sizing")
     _note(c / "b.md", "Office coffee rota", "who buys the milk on thursdays")
     m.link_related(tmp_path, write=True, threshold=0.15)
@@ -138,8 +142,10 @@ def test_unrelated_notes_get_no_links(tmp_path):
 def test_related_block_never_eats_handwritten_text(tmp_path):
     import importlib.util
     spec = importlib.util.spec_from_file_location("kli", "plasmie-improve.py")
-    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-    c = tmp_path / "wiki" / "concepts"; c.mkdir(parents=True)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    c = tmp_path / "wiki" / "concepts"
+    c.mkdir(parents=True)
     _note(c / "a.md", "Postgres pool exhaustion", "postgres connection pool exhausted under load")
     _note(c / "b.md", "Postgres pool tuning", "tuning the postgres connection pool size under load")
     m.link_related(tmp_path, write=True, threshold=0.05)
@@ -147,7 +153,7 @@ def test_related_block_never_eats_handwritten_text(tmp_path):
     assert "postgres connection pool exhausted under load" in (c / "a.md").read_text()
 
 
-from datetime import date, timedelta  # noqa: E402
+from datetime import timedelta  # noqa: E402
 
 
 # --- synthesis: merge proposals + retirement --------------------------------
@@ -155,14 +161,16 @@ from datetime import date, timedelta  # noqa: E402
 def _kli():
     import importlib.util
     spec = importlib.util.spec_from_file_location("kli", "plasmie-improve.py")
-    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
     return m
 
 
 def test_duplicate_stubs_are_proposed_not_applied(tmp_path):
     """Measured: a real dup scores 0.461 and a false one 0.457. Judgement stays human."""
     m = _kli()
-    c = tmp_path / "wiki" / "concepts"; c.mkdir(parents=True)
+    c = tmp_path / "wiki" / "concepts"
+    c.mkdir(parents=True)
     _note(c / "a.md", "Datadog tombstone", "recovery_window_in_days zero bypasses the tombstone")
     _note(c / "b.md", "Datadog tombstone blockage", "recovery_window_in_days zero bypasses the tombstone period")
     pairs = m.propose_merges(tmp_path, write=True, threshold=0.3)
@@ -175,7 +183,8 @@ def test_duplicate_stubs_are_proposed_not_applied(tmp_path):
 def test_retirement_is_dormant_without_enough_usage_evidence(tmp_path):
     """With a day of data every note looks unused — that retires the newest knowledge."""
     m = _kli()
-    c = tmp_path / "wiki" / "concepts"; c.mkdir(parents=True)
+    c = tmp_path / "wiki" / "concepts"
+    c.mkdir(parents=True)
     old = (date.today() - timedelta(days=200)).isoformat()
     (c / "pipeline-success-achieved-after-addressing-stacked-failures.md").write_text(
         f'---\ntype: note\ntitle: "x"\ntimestamp: {old}T00:00:00Z\n---\n\nbody\n')
@@ -190,7 +199,8 @@ def test_retirement_is_dormant_without_enough_usage_evidence(tmp_path):
 def test_generated_links_do_not_protect_a_note_from_retirement(tmp_path):
     """link_related gives nearly every note inbound links; counting them = permanent no-op."""
     m = _kli()
-    c = tmp_path / "wiki" / "concepts"; c.mkdir(parents=True)
+    c = tmp_path / "wiki" / "concepts"
+    c.mkdir(parents=True)
     old = (date.today() - timedelta(days=200)).isoformat()
     target = "pipeline-success-achieved-after-addressing-stacked-failures"
     (c / f"{target}.md").write_text(f'---\ntype: note\ntitle: "x"\ntimestamp: {old}T00:00:00Z\n---\n\nbody\n')

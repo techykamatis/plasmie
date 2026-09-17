@@ -16,10 +16,22 @@ struct Status: Codable {
     var pendingItems = 0
     var notes = "?"
     var recent: [String] = []
+    // Added for the connectors page. Optional on purpose: synthesized Decodable
+    // throws on a missing non-optional key, which would blank the ENTIRE panel if
+    // the installed plasmie-status.py were older than this binary.
+    var errorSources: [String]? = nil
+    var staleMinutes: Int? = nil
+    var sourceAgeHours: [String: Double?]? = nil
     var activity = ""
     var journal = ""
     var vault = ""
     var loop = ""
+}
+
+extension Status {
+    var errSources: [String] { errorSources ?? [] }
+    /// Hours since this source last produced anything; nil = never seen.
+    func age(_ key: String) -> Double? { (sourceAgeHours ?? [:])[key] ?? nil }
 }
 
 // MARK: - shell helpers
@@ -952,7 +964,7 @@ final class SettingsController {
     private var win: NSWindow?
     func show(firstRun: Bool = false) {
         if let w = win { NSApp.activate(ignoringOtherApps: true); w.makeKeyAndOrderFront(nil); return }
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 600),
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 680),
                          styleMask: [.titled, .closable], backing: .buffered, defer: false)
         w.title = firstRun ? "Set up connectors" : "Plasmie Settings"
         w.center(); w.isReleasedWhenClosed = false; w.level = .floating
@@ -965,12 +977,211 @@ final class SettingsController {
     }
 }
 
+// MARK: - connector health
+
+/// One connector's live reachability, from plasmie-doctor.py.
+/// `ok == nil` means "not configured" — unknown, not broken.
+struct ConnectorHealth: Codable {
+    var configured = false
+    var ok: Bool? = nil
+    var detail = ""
+    var hint = ""
+}
+
+/// Static description of a connector: what to call it, which key it uses in
+/// plasmie-doctor.py's output, in plasmie-status.py's sourceAgeHours, and which `*-ERR`
+/// token it prints on a feed.log line.
+struct Connector: Identifiable {
+    let id: String
+    let name: String
+    let symbol: String
+    let ageKey: String
+    let errCode: String
+    let blurb: String
+
+    static let all: [Connector] = [
+        Connector(id: "slack", name: "Slack", symbol: "bubble.left.and.bubble.right.fill",
+                  ageKey: "slack", errCode: "SLACK", blurb: "Messages you sent and received."),
+        Connector(id: "github", name: "GitHub", symbol: "chevron.left.forwardslash.chevron.right",
+                  ageKey: "github", errCode: "GH", blurb: "Pull requests and issues you opened or commented on."),
+        Connector(id: "confluence", name: "Confluence", symbol: "doc.text.fill",
+                  ageKey: "confluence", errCode: "CONF", blurb: "Pages you created or edited."),
+        Connector(id: "outlook", name: "Outlook", symbol: "envelope.fill",
+                  ageKey: "outlook", errCode: "MAIL", blurb: "Mail and calendar."),
+        Connector(id: "claude", name: "Claude Code sessions", symbol: "terminal.fill",
+                  ageKey: "sessions", errCode: "", blurb: "What you worked on, from local session logs."),
+    ]
+}
+
+/// The verdict shown on a card. Three signals are deliberately NOT collapsed
+/// into one:
+///   configured — are there credentials at all?
+///   ok         — can we reach it right now?          (plasmie-doctor.py, live)
+///   age        — when did it last actually produce?  (plasmie-status.py, feed.log)
+/// "Reachable but quiet" is a normal state and must not read as a fault —
+/// conflating the two is what let a dead Confluence ingest look fine for weeks,
+/// and a phantom GitHub error look broken for 43 days.
+enum ConnVerdict {
+    case notSetUp, failing, lastRunFailed, noData, quiet, flowing, checking
+
+    var label: String {
+        switch self {
+        case .notSetUp:       return "Not set up"
+        case .failing:        return "Not working"
+        case .lastRunFailed:  return "Failed last run"
+        case .noData:         return "No data yet"
+        case .quiet:          return "Quiet"
+        case .flowing:        return "Flowing"
+        case .checking:       return "Checking…"
+        }
+    }
+    var color: Color {
+        switch self {
+        case .notSetUp, .quiet: return .secondary
+        case .failing:          return .red
+        case .lastRunFailed,
+             .noData:           return .orange
+        case .flowing:          return .green
+        case .checking:         return .blue
+        }
+    }
+}
+
+func connVerdict(_ c: Connector, health: ConnectorHealth?, status: Status, checking: Bool) -> ConnVerdict {
+    if checking { return .checking }
+    guard let h = health else { return .checking }
+    if !h.configured { return .notSetUp }
+    if h.ok == false { return .failing }
+    if !c.errCode.isEmpty && status.errSources.contains(c.errCode) { return .lastRunFailed }
+    guard let age = status.age(c.ageKey) else { return .noData }
+    return age > 96 ? .quiet : .flowing
+}
+
+/// "38h ago" / "4d ago" / "never" — the answer to "is this actually feeding me?"
+func ageText(_ hours: Double?) -> String {
+    guard let h = hours else { return "no data yet" }
+    if h < 1 { return "just now" }
+    if h < 48 { return "\(Int(h))h ago" }
+    return "\(Int(h / 24))d ago"
+}
+
+/// Runs plasmie-doctor.py off the main thread — each probe is a real network call
+/// with a 15s ceiling, so doing this inline would freeze the window.
+final class ConnectorsModel: ObservableObject {
+    @Published var health: [String: ConnectorHealth] = [:]
+    @Published var checking: Set<String> = []
+    @Published var status = Status()
+
+    private var loop: String { "\(NSHomeDirectory())/.plasmie" }
+    private var python: String {
+        FileManager.default.fileExists(atPath: "\(loop)/.venv/bin/python3")
+            ? "\(loop)/.venv/bin/python3" : "/usr/bin/python3"
+    }
+
+    func refresh(_ sources: [String] = []) {
+        let keys = sources.isEmpty ? Connector.all.map(\.id) : sources
+        checking.formUnion(keys)
+        let py = python, script = "\(loop)/plasmie-doctor.py"
+        DispatchQueue.global().async {
+            let out = runCapture(py, [script] + sources)
+            let parsed = (out.data(using: .utf8)).flatMap {
+                try? JSONDecoder().decode([String: ConnectorHealth].self, from: $0)
+            } ?? [:]
+            let st = loadStatus()
+            DispatchQueue.main.async {
+                for (k, v) in parsed { self.health[k] = v }
+                self.status = st
+                self.checking.subtract(keys)
+            }
+        }
+    }
+}
+
+/// One connector, as a card: verdict, what it pulls, when it last produced,
+/// why it is failing (with the fix), its credential fields, and Test/Disconnect.
+struct ConnectorCard<Fields: View>: View {
+    let c: Connector
+    @ObservedObject var m: ConnectorsModel
+    let onDisconnect: (() -> Void)?
+    @ViewBuilder let fields: () -> Fields
+
+    private var health: ConnectorHealth? { m.health[c.id] }
+    private var isChecking: Bool { m.checking.contains(c.id) }
+    private var verdict: ConnVerdict { connVerdict(c, health: health, status: m.status, checking: isChecking) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            header
+            Text(c.blurb).font(.system(size: 11)).foregroundStyle(.secondary)
+            detailLine
+            fields()
+            controls
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(verdict.color.opacity(0.25), lineWidth: 1))
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Image(systemName: c.symbol).frame(width: 18).foregroundStyle(verdict.color)
+            Text(c.name).font(.system(size: 13, weight: .semibold))
+            Spacer(minLength: 0)
+            HStack(spacing: 5) {
+                if isChecking {
+                    ProgressView().controlSize(.small).scaleEffect(0.6).frame(width: 10, height: 10)
+                } else {
+                    Circle().fill(verdict.color).frame(width: 6, height: 6)
+                }
+                Text(verdict.label).font(.caption2.weight(.semibold))
+            }
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(Capsule().fill(verdict.color.opacity(0.16)))
+            .foregroundStyle(verdict.color)
+        }
+    }
+
+    @ViewBuilder private var detailLine: some View {
+        if let h = health, !h.detail.isEmpty {
+            Text(h.detail).font(.system(size: 11)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+        }
+        // The freshness line is the whole point: it separates "quiet" from "broken".
+        if health?.configured == true {
+            Text("Last new data: " + ageText(m.status.age(c.ageKey)))
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+        if let h = health, h.ok == false || !h.hint.isEmpty, !h.hint.isEmpty {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Image(systemName: "lightbulb.fill").font(.system(size: 9)).foregroundStyle(.orange)
+                Text(h.hint).font(.system(size: 11)).foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.12)))
+        }
+    }
+
+    private var controls: some View {
+        HStack(spacing: 8) {
+            Button("Test") { m.refresh([c.id]) }.disabled(isChecking)
+            if let d = onDisconnect, health?.configured == true {
+                Button("Disconnect", role: .destructive, action: d)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+}
+
 /// One config UI, two roles: the first-run connector wizard and the editable
 /// settings window. Secrets are never loaded back into the UI — a blank token
 /// field keeps the existing value; you only ever type a *new* one.
 struct SettingsView: View {
     let firstRun: Bool
     let onDone: () -> Void
+
+    @StateObject private var conn = ConnectorsModel()
+    @State private var tab = 0
 
     private var loop: String { "\(NSHomeDirectory())/.plasmie" }
 
@@ -980,82 +1191,181 @@ struct SettingsView: View {
     @State private var mirrorDest = ""
     @State private var jiraBase = ""
     @State private var jiraEmail = ""
+    @State private var githubOrgs = ""
     // secret (write-only — blank means "keep")
     @State private var slackToken = ""
     @State private var jiraToken = ""
-    // status (loaded, not the secret itself)
-    @State private var slackSet = false
-    @State private var jiraTokenSet = false
-    @State private var outlookSet = false
+    // transient
     @State private var saved = false
     @State private var outlookLog = ""
     @State private var connecting = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 10) {
-                    Image(nsImage: kLogo)
-                    Text(firstRun ? "Set up your connectors" : "Settings")
-                        .font(.system(size: 16, weight: .semibold))
+        VStack(spacing: 0) {
+            titleBar
+            Picker("", selection: $tab) {
+                Text("Connectors").tag(0)
+                Text("Vault & Sync").tag(1)
+            }
+            .pickerStyle(.segmented).labelsHidden()
+            .padding(.horizontal, 20).padding(.bottom, 12)
+            Divider()
+            ScrollView {
+                Group {
+                    if tab == 0 { connectorsPage } else { vaultPage }
                 }
-                if firstRun {
-                    Text("Choose what Plasmie pulls into your vault. Everything here is optional and can be changed later from the menu.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                .padding(20)
+            }
+            Divider()
+            footer
+        }
+        .frame(width: 560, height: 680)
+        .onAppear { load(); conn.refresh() }
+    }
 
-                group("Vault & sync") {
-                    labeled("Vault folder") { TextField("~/knowledge", text: $vaultDir).textFieldStyle(.roundedBorder) }
-                    Toggle("Sync a copy to OneDrive (for other devices)", isOn: $syncEnabled)
-                    if syncEnabled {
-                        labeled("OneDrive folder") { TextField("…/OneDrive/AI Labs/knowledge", text: $mirrorDest).textFieldStyle(.roundedBorder) }
-                    }
-                }
+    // MARK: header / footer
 
-                group("Connectors") {
-                    row("Slack", ok: slackSet)
-                    SecureField(slackSet ? "Connected — enter a new token to replace" : "Paste SLACK_USER_TOKEN (xoxp-…)", text: $slackToken)
-                        .textFieldStyle(.roundedBorder)
+    private var titleBar: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Image(nsImage: kLogo)
+                Text(firstRun ? "Set up your connectors" : "Settings")
+                    .font(.system(size: 16, weight: .semibold))
+                Spacer()
+            }
+            if firstRun {
+                Text("Choose what Plasmie pulls into your vault. Everything here is optional and can be changed later from the menu.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 12)
+    }
 
-                    Divider().padding(.vertical, 2)
-                    row("Confluence / Jira", ok: jiraTokenSet)
-                    labeled("Site URL") { TextField("https://your-site.atlassian.net", text: $jiraBase).textFieldStyle(.roundedBorder) }
-                    labeled("Email") { TextField("you@company.com", text: $jiraEmail).textFieldStyle(.roundedBorder) }
-                    SecureField(jiraTokenSet ? "Connected — enter a new API token to replace" : "Atlassian API token", text: $jiraToken)
-                        .textFieldStyle(.roundedBorder)
+    private var footer: some View {
+        HStack {
+            if saved { Text("Saved ✓").font(.caption).foregroundStyle(.green) }
+            Spacer()
+            Button(firstRun ? "Finish" : "Save") { save(); if firstRun { onDone() } }
+                .keyboardShortcut(.defaultAction)
+            if !firstRun { Button("Close") { onDone() } }
+        }
+        .padding(.horizontal, 20).padding(.vertical, 12)
+    }
 
-                    Divider().padding(.vertical, 2)
-                    row("Outlook (mail + calendar)", ok: outlookSet)
-                    HStack {
-                        Button(connecting ? "Connecting…" : (outlookSet ? "Reconnect" : "Connect Outlook")) { connectOutlook() }
-                            .disabled(connecting)
-                        Spacer()
-                    }
-                    if !outlookLog.isEmpty {
-                        Text(outlookLog).font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary).textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+    // MARK: connectors page
 
-                    Divider().padding(.vertical, 2)
-                    row("Claude Code sessions", ok: true)
-                    Text("Always on — no setup needed.").font(.system(size: 11)).foregroundStyle(.secondary)
-                }
+    private var connectorsPage: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            summaryBar
+            ForEach(Connector.all) { c in card(for: c) }
+            Text("Changes to tokens take effect on the next hourly ingest. Use Test to check a connector right now.")
+                .font(.system(size: 10.5)).foregroundStyle(.secondary)
+        }
+    }
 
-                HStack {
-                    if saved { Text("Saved ✓").font(.caption).foregroundStyle(.green) }
-                    Spacer()
-                    Button(firstRun ? "Finish" : "Save") { save(); if firstRun { onDone() } }
-                        .keyboardShortcut(.defaultAction)
-                    if !firstRun { Button("Close") { onDone() } }
+    /// The one-glance answer: how many are actually working, and is the loop running
+    /// at all. A connector page that cannot say "3 of 5" makes you open five cards.
+    private var summaryBar: some View {
+        let live = Connector.all.filter { conn.health[$0.id]?.ok == true }.count
+        let broken = Connector.all.filter { conn.health[$0.id]?.ok == false }.count
+        return HStack(spacing: 8) {
+            Image(systemName: broken > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(broken > 0 ? .orange : .green)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(live) of \(Connector.all.count) connectors working"
+                     + (broken > 0 ? " · \(broken) need attention" : ""))
+                    .font(.system(size: 12, weight: .medium))
+                if let mins = conn.status.staleMinutes {
+                    Text("Last ingest run \(mins) min ago").font(.system(size: 10.5)).foregroundStyle(.secondary)
                 }
             }
-            .padding(20)
+            Spacer(minLength: 0)
+            Button("Test all") { conn.refresh() }.disabled(!conn.checking.isEmpty)
         }
-        .frame(width: 480, height: 600)
-        .onAppear(perform: load)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
     }
+
+    @ViewBuilder private func card(for c: Connector) -> some View {
+        switch c.id {
+        case "slack":
+            ConnectorCard(c: c, m: conn, onDisconnect: { disconnect(["SLACK_USER_TOKEN": ""]) }) {
+                SecureField(conn.health["slack"]?.configured == true
+                            ? "Connected — paste a new token to replace"
+                            : "Paste SLACK_USER_TOKEN (xoxp-…)", text: $slackToken)
+                    .textFieldStyle(.roundedBorder)
+            }
+        case "github":
+            ConnectorCard(c: c, m: conn, onDisconnect: nil) {
+                labeled("Organisations (comma-separated)") {
+                    TextField("fabrikam", text: $githubOrgs).textFieldStyle(.roundedBorder)
+                }
+                Text("Signed in with the `gh` CLI. An org you are not a member of fails every run — Test names it.")
+                    .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        case "confluence":
+            ConnectorCard(c: c, m: conn, onDisconnect: { disconnect(["JIRA_API_TOKEN": "", "CONFLUENCE_API_TOKEN": ""]) }) {
+                labeled("Site URL") { TextField("https://your-site.atlassian.net", text: $jiraBase).textFieldStyle(.roundedBorder) }
+                labeled("Email") { TextField("you@company.com", text: $jiraEmail).textFieldStyle(.roundedBorder) }
+                SecureField(conn.health["confluence"]?.configured == true
+                            ? "Connected — paste a new API token to replace"
+                            : "Atlassian API token", text: $jiraToken)
+                    .textFieldStyle(.roundedBorder)
+            }
+        case "outlook":
+            ConnectorCard(c: c, m: conn, onDisconnect: { disconnect(["MS_REFRESH_TOKEN": ""]) }) {
+                HStack {
+                    Button(connecting ? "Connecting…" : (conn.health["outlook"]?.configured == true ? "Reconnect" : "Connect Outlook")) {
+                        connectOutlook()
+                    }
+                    .disabled(connecting)
+                    Spacer()
+                }
+                if !outlookLog.isEmpty {
+                    Text(outlookLog).font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary).textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        default:
+            ConnectorCard(c: c, m: conn, onDisconnect: nil) { EmptyView() }
+        }
+    }
+
+    // MARK: vault page
+
+    private var vaultPage: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            group("Vault & sync") {
+                labeled("Vault folder") { TextField("~/knowledge", text: $vaultDir).textFieldStyle(.roundedBorder) }
+                Toggle("Sync a copy to OneDrive (for other devices)", isOn: $syncEnabled)
+                if syncEnabled {
+                    labeled("OneDrive folder") { TextField("…/OneDrive/AI Labs/knowledge", text: $mirrorDest).textFieldStyle(.roundedBorder) }
+                }
+            }
+            group("Where things live") {
+                pathRow("Vault", conn.status.vault.isEmpty ? vaultDir : conn.status.vault)
+                pathRow("Loop", loop)
+                pathRow("Secrets", "\(NSHomeDirectory())/.claude/.env")
+            }
+        }
+    }
+
+    @ViewBuilder private func pathRow(_ label: String, _ path: String) -> some View {
+        HStack(spacing: 6) {
+            Text(label).font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 54, alignment: .leading)
+            Text(path).font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
+                .lineLimit(1).truncationMode(.middle)
+            Spacer(minLength: 0)
+            Button {
+                openExternal((path as NSString).deletingLastPathComponent)
+            } label: { Image(systemName: "folder") }.buttonStyle(.borderless)
+        }
+    }
+
+    // MARK: helpers
 
     @ViewBuilder private func group<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1069,13 +1379,6 @@ struct SettingsView: View {
             content()
         }
     }
-    @ViewBuilder private func row(_ name: String, ok: Bool) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: ok ? "checkmark.circle.fill" : "circle.dashed")
-                .foregroundStyle(ok ? .green : .secondary)
-            Text(name).font(.system(size: 13, weight: .medium))
-        }
-    }
 
     private func load() {
         let cfg = ConfigStore.read(ConfigStore.configEnv)
@@ -1085,9 +1388,7 @@ struct SettingsView: View {
         let env = ConfigStore.read(ConfigStore.dotEnv)
         jiraBase = env["JIRA_BASE_URL"] ?? ""
         jiraEmail = env["JIRA_EMAIL"] ?? ""
-        slackSet = !(env["SLACK_USER_TOKEN"] ?? "").isEmpty
-        jiraTokenSet = !(env["JIRA_API_TOKEN"] ?? "").isEmpty
-        outlookSet = !(env["MS_REFRESH_TOKEN"] ?? "").isEmpty
+        githubOrgs = env["PLASMIE_GITHUB_ORGS"] ?? "fabrikam"
     }
 
     private func save() {
@@ -1096,9 +1397,13 @@ struct SettingsView: View {
             "MIRROR_DEST": syncEnabled ? mirrorDest.trimmingCharacters(in: .whitespaces) : "",
         ], exportPrefix: false, quoted: true)
 
+        // Connector settings go in ~/.claude/.env, NOT config.env: run-ingest.sh
+        // sources .env under `set -a` (exported, so loop-ingest.py sees it) but
+        // sources config.env without it — a key written there would never arrive.
         var env: [String: String] = [
             "JIRA_BASE_URL": jiraBase.trimmingCharacters(in: .whitespaces),
             "JIRA_EMAIL": jiraEmail.trimmingCharacters(in: .whitespaces),
+            "PLASMIE_GITHUB_ORGS": githubOrgs.trimmingCharacters(in: .whitespaces),
         ]
         if !slackToken.isEmpty { env["SLACK_USER_TOKEN"] = slackToken.trimmingCharacters(in: .whitespaces) }
         if !jiraToken.isEmpty { env["JIRA_API_TOKEN"] = jiraToken.trimmingCharacters(in: .whitespaces) }
@@ -1106,7 +1411,15 @@ struct SettingsView: View {
 
         slackToken = ""; jiraToken = ""; load()
         saved = true
+        conn.refresh()
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { saved = false }
+    }
+
+    /// Empty value removes the key (ConfigStore.upsert contract), so this really
+    /// does disconnect rather than blanking a field in the UI only.
+    private func disconnect(_ keys: [String: String]) {
+        ConfigStore.upsert(ConfigStore.dotEnv, keys, exportPrefix: true, quoted: false, perms: 0o600)
+        conn.refresh()
     }
 
     /// Device-code login (msgraph.py) — streams the "open this URL, enter this code"
@@ -1118,7 +1431,7 @@ struct SettingsView: View {
         runStreaming(py, ["\(loop)/msgraph.py", "login"],
             onStatus: { _ in },
             onChunk: { full in outlookLog = full.trimmingCharacters(in: .whitespacesAndNewlines) },
-            onDone: { connecting = false; load() })
+            onDone: { connecting = false; conn.refresh(["outlook"]) })
     }
 }
 

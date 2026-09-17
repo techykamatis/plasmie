@@ -458,7 +458,10 @@ if GIT_ROOTS:
                         git_dropped += 1
                         continue
                     _b = redact(" ".join(_body.split()))[:GIT_BODY_CAP]
-                    _kept.append(f"- `{_sha}` {redact(' '.join(_subj.split()))[:140]}\n  {_b}")
+                    # commit date on the line: the block header only states the
+                    # window, which says nothing useful across a multi-week backfill.
+                    _d = datetime.datetime.fromtimestamp(float(_ct)).strftime("%Y-%m-%d")
+                    _kept.append(f"- `{_sha}` {_d} {redact(' '.join(_subj.split()))[:140]}\n  {_b}")
                 if _kept:
                     _name = os.path.basename(_repo.rstrip("/"))
                     git_counts.append((_name, len(_kept)))

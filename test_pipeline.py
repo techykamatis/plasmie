@@ -294,3 +294,22 @@ def test_safe_tag_rejects_traversal_and_accepts_normal_tags():
         assert not ri.safe_tag(bad), bad
     for good in ("orbit", "agent-cli", "how-to", "aws", "v1.2"):
         assert ri.safe_tag(good), good
+
+
+def test_generated_maps_are_never_answer_sources(tmp_path):
+    """A MOC lists titles; retrieved as a source it feeds the model headings, not facts."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("ask_mod", "ask.py")
+    ask = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ask)
+    (tmp_path / "wiki/mocs").mkdir(parents=True)
+    (tmp_path / "wiki/mocs/tech.md").write_text("# tech\n* [[a|A]]\n")
+    (tmp_path / "wiki/a.md").write_text("# A\nreal content\n")
+    # exercise the parse filter directly: it is what drops generated navigation
+    import json
+    rows = json.dumps([{"file": "qmd://wiki/mocs/tech.md", "score": 0.9, "title": "tech"},
+                       {"file": "qmd://wiki/a.md", "score": 0.5, "title": "A"}])
+    import unittest.mock as mock
+    with mock.patch.object(ask, "_run_qmd", return_value=mock.Mock(returncode=0, stdout=rows)):
+        got = ask.qmd_hits("q", tmp_path, collection="wiki")
+    assert [h[1]["path"] for h in got] == ["wiki/a.md"], got

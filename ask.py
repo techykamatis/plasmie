@@ -98,7 +98,9 @@ def qmd_hits(question, vault, k=TOP_K, collection=None):
         hits = []
         for r in json.loads(stdout or "[]"):
             rel = (r.get("file") or "").replace("qmd://", "")
-            if not rel or Path(rel).name == "index.md":   # skip generated sub-indexes
+            # skip generated navigation: an index or a map of content is a list of
+            # titles, so as a "source" it hands the model headings instead of facts.
+            if not rel or Path(rel).name == "index.md" or paths.MOCS in rel:
                 continue
             fp = vp / rel
             text = fp.read_text(errors="replace") if fp.exists() else (r.get("snippet") or "")

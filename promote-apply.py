@@ -42,7 +42,8 @@ from scrub import redact as _scrub
 def redact(s):
     return _scrub(s, emails=True)  # promote path also strips emails (PII in durable notes)
 
-TYPE_BY_DIR = {"concepts": "reference", "people": "person", paths.PROJECTS: "project"}
+# Type used to be inferred from the folder a note landed in. With a flat wiki it
+# comes from the same untrusted Target hint, defaulting to note.
 
 
 def slug(title):
@@ -96,10 +97,7 @@ def _yaml_str(s):
 
 
 def note_type(target):
-    for key, t in TYPE_BY_DIR.items():
-        if key in target:
-            return t
-    return "note"
+    return paths.TARGET_TYPES.get(paths.target_tag(target) or "", "note")
 
 
 def plan(item, vault):
@@ -149,8 +147,10 @@ def plan(item, vault):
         # back to the session/thread it came from. The drafter already supplies Source.
         src = redact(f.get("Source", "")).strip()
         src_fm = f"source: {_yaml_str(src)}\n" if src else ""
+        # the Target hint no longer names a folder, so keep it as a tag
+        tag = paths.target_tag(tgt)
         fm = (f"---\ntype: {note_type(tgt)}\ntitle: {ttl}\ndescription: {desc}\n"
-              f"{src_fm}tags: []\ntimestamp: {date.today()}T00:00:00Z\n---\n\n# {rtitle}\n\n{rbody}\n")
+              f"{src_fm}tags: [{tag or ''}]\ntimestamp: {date.today()}T00:00:00Z\n---\n\n# {rtitle}\n\n{rbody}\n")
         def do():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(fm)
@@ -222,17 +222,12 @@ def _near_score(fields):
 
 
 def _norm_create_target(t):
-    """Whitelist the model's target: unknown names land in concepts/, never a new dir.
-
-    areas/ holds hand-curated MOC pages, so it stays a redirect (as before) — the
-    loop may file INTO a category, never auto-create a new area.
-    """
-    dest = paths.resolve_target(t, default=paths.CONCEPTS)
-    return paths.CONCEPTS if dest == paths.AREAS else dest
+    """Every note lands flat in wiki/. The model can no longer invent a directory."""
+    return paths.resolve_target(t)
 
 
 def _norm_move_target(t):
-    return paths.resolve_target(t, default=paths.CLIPPINGS)
+    return paths.resolve_target(t)
 
 
 def _serialize(it):
@@ -313,35 +308,34 @@ def selfcheck():
     with tempfile.TemporaryDirectory() as d:
         v = Path(d)
         (v / paths.RAW_INBOX).mkdir(parents=True)
-        (v / paths.CONCEPTS).mkdir(parents=True)
-        (v / paths.PROJECTS).mkdir(parents=True)
+        (v / paths.WIKI).mkdir(parents=True)
         (v / f"{paths.RAW_INBOX}/doc.pdf").write_text("x")
-        (v / f"{paths.PROJECTS}/orbit.md").write_text("# Orbit\n")
+        (v / f"{paths.WIKI}/orbit.md").write_text("# Orbit\n")
         draft = v / "draft.md"
         draft.write_text(
             "# Draft\n\n"
             f"## Move a doc\nAction: move\nFile: {paths.RAW_INBOX}/doc.pdf\nTarget: {paths.WIKI}\n\n"
-            f"## A new concept\nAction: create\nTarget: {paths.CONCEPTS}\nThe body.\nSource: journal\n\n"
-            f"## Update Orbit\nAction: merge\nMerge-into: {paths.PROJECTS}/orbit.md\nNear: {paths.PROJECTS}/orbit.md (0.5)\nSource: slack · C123 · 2026-09-17\nSummary: migrated to dev\n\n"
+            f"## A new concept\nAction: create\nTarget: {paths.WIKI}\nThe body.\nSource: journal\n\n"
+            f"## Update Orbit\nAction: merge\nMerge-into: {paths.WIKI}/orbit.md\nNear: {paths.WIKI}/orbit.md (0.5)\nSource: slack · C123 · 2026-09-17\nSummary: migrated to dev\n\n"
             "## Noise\nsome summary with no action\n"
         )
         run(draft, v, apply=True)
         assert (v / f"{paths.WIKI}/doc.pdf").exists(), "move failed"
         assert not (v / f"{paths.RAW_INBOX}/doc.pdf").exists(), "source not removed"
-        assert (v / f"{paths.CONCEPTS}/a-new-concept.md").exists(), "create failed"
-        merged = (v / f"{paths.PROJECTS}/orbit.md").read_text()
+        assert (v / f"{paths.WIKI}/a-new-concept.md").exists(), "create failed"
+        merged = (v / f"{paths.WIKI}/orbit.md").read_text()
         assert "migrated to dev" in merged, "merge failed"
         assert "Near:" not in merged, "Near: leaked into merged body"
         assert "Summary:" not in merged, "Summary: prefix leaked into merged body"
         # provenance must survive the apply step, or a note is an unverifiable assertion
         assert "slack \u00b7 C123" in merged, "merge dropped Source"
-        created = (v / f"{paths.CONCEPTS}/a-new-concept.md").read_text()
+        created = (v / f"{paths.WIKI}/a-new-concept.md").read_text()
         assert 'source: "journal"' in created, "create dropped Source"
         assert list((v / paths.RAW_INBOX).iterdir()) == [], "skip leaked"
 
         # idempotency: re-applying the same draft must be a no-op (no double-merge bullet)
         run(draft, v, apply=True)
-        assert (v / f"{paths.PROJECTS}/orbit.md").read_text().count("migrated to dev") == 1, "merge not idempotent"
+        assert (v / f"{paths.WIKI}/orbit.md").read_text().count("migrated to dev") == 1, "merge not idempotent"
 
         # security guards: path escape must be refused for move/create/merge
         outside = v.parent / "ESCAPED.md"
@@ -358,9 +352,9 @@ def selfcheck():
 
         # secret scrubbing on create
         sec = v / "sec.md"
-        sec.write_text(f"## leak\nAction: create\nTarget: {paths.CONCEPTS}\ntoken AKIAABCDEFGHIJKLMNOP and Bearer abcdefghijklmnopqrstuvwxyz123\n")
+        sec.write_text(f"## leak\nAction: create\nTarget: {paths.WIKI}\ntoken AKIAABCDEFGHIJKLMNOP and Bearer abcdefghijklmnopqrstuvwxyz123\n")
         run(sec, v, apply=True)
-        leaked = (v / f"{paths.CONCEPTS}/leak.md").read_text()
+        leaked = (v / f"{paths.WIKI}/leak.md").read_text()
         assert "AKIAABCDEFGHIJKLMNOP" not in leaked and "«redacted" in leaked, "secret not scrubbed"
     print("selfcheck OK")
 

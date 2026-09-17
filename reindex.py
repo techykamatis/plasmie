@@ -59,6 +59,17 @@ def _href(rel):
 
 MOC_MIN = 4          # a tag earns a map of content once 4 notes share it
 
+# A tag is UNTRUSTED: it reaches frontmatter from an LLM-written promotion draft,
+# so it can be "../../../pwned" and a map filename built from it escapes the vault
+# (verified: wrote /tmp/pwned.md from a tag). Everything else in this pipeline
+# confines untrusted input to the vault; MOC generation must too. A tag that is
+# not a clean slug does not get a map — never mangled into one.
+_SAFE_TAG = re.compile(r"[a-z0-9][a-z0-9._-]*\Z")
+
+
+def safe_tag(t):
+    return bool(t) and len(t) <= 64 and bool(_SAFE_TAG.match(t)) and ".." not in t
+
 
 def _tags(text):
     m = re.search(r"(?m)^tags:\s*\[(.*?)\]", text)
@@ -94,9 +105,12 @@ def mocs(vault, write=True, minimum=MOC_MIN):
             if stale.stem not in keep:
                 stale.unlink()
         for t, rows in keep.items():
+            dest = (out / f"{t}.md").resolve()
+            if out.resolve() not in dest.parents:      # unreachable via safe_tag; cheap anyway
+                continue
             body = "\n".join(f"* [[{lk}|{ti}]]" + (f" — {d}" if d else "")
                               for ti, d, lk in sorted(rows))
-            (out / f"{t}.md").write_text(
+            dest.write_text(
                 f"---\ntype: moc\ntitle: \"{t}\"\n"
                 f"description: \"Every note tagged {t} ({len(rows)}).\"\n"
                 f"tags: [moc]\ntimestamp: {time.strftime('%Y-%m-%d')}T00:00:00Z\n---\n\n"
@@ -110,24 +124,21 @@ def catalog(vault, write=True, maps=None):
     all_md = list(vault.rglob("*.md"))
     known = {p.name for p in all_md}          # basenames, for dead-link resolution
 
-    for rel, label in paths.WIKI_CATEGORIES:
-        d = vault / rel
-        if not d.exists():
-            continue
-        files = sorted((p for p in d.rglob("*.md")
-                        if p.name != "index.md" and paths.MOCS not in p.as_posix()),
-                       key=lambda p: p.name.lower())
-        if not files:
-            continue
-        rows = []
-        for p in files:
-            fm = frontmatter(read_text(p))
-            title = fm.get("title") or p.stem
-            desc = fm.get("description", "")
-            link = _href(p.relative_to(vault).as_posix())
-            rows.append(f"* [{title}]({link})" + (f" — {desc}" if desc else ""))
-        sections.append((label, len(files), rows))
-        total += len(files)
+    # wiki/ is flat: one catalogue of everything, with the maps above it doing the
+    # grouping that folders used to pretend to do.
+    files = sorted((p for p in (vault / paths.WIKI).rglob("*.md")
+                    if p.name != "index.md"
+                    and paths.MOCS not in p.as_posix()
+                    and paths.ATTACHMENTS not in p.as_posix()),
+                   key=lambda p: p.name.lower())
+    rows = []
+    for p in files:
+        fm = frontmatter(read_text(p))
+        rows.append(f"* [{fm.get('title') or p.stem}]({_href(p.relative_to(vault).as_posix())})"
+                    + (f" — {fm['description']}" if fm.get("description") else ""))
+    if rows:
+        sections.append(("All notes", len(files), rows))
+        total = len(files)
 
     # dead-link scan over the curated wiki only (basename resolution, like Obsidian
     # wikilinks). Root docs (CLAUDE.md) and raw/ sources are not policed for links.
@@ -183,22 +194,22 @@ def selfcheck():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         v = Path(d)
-        c = v / paths.CONCEPTS
-        pe = v / paths.PEOPLE
+        c = v / paths.WIKI
         c.mkdir(parents=True)
-        pe.mkdir(parents=True)
-        (c / "a.md").write_text('---\ntitle: "Note A"\ndescription: "desc a"\n---\nsee [b](b.md) and [gone](gone.md)')
-        (c / "b.md").write_text('---\ntitle: "Note B"\n---\nbody')
-        (pe / "jo.md").write_text('---\ntitle: "Jo"\n---\nperson')
-        (c / "index.md").write_text("# concepts sub-index\n")  # excluded from catalog
-        total, sections, dead = catalog(v, write=True)
+        (c / "a.md").write_text('---\ntitle: "Note A"\ndescription: "desc a"\ntags: [x]\n---\nsee [b](b.md) and [gone](gone.md)')
+        (c / "b.md").write_text('---\ntitle: "Note B"\ntags: [x]\n---\nbody')
+        (c / "jo.md").write_text('---\ntitle: "Jo"\ntags: [x]\n---\nperson')
+        (c / "index.md").write_text("# stale sub-index\n")   # excluded from catalog
+        maps = mocs(v, write=True, minimum=3)
+        total, sections, dead = catalog(v, write=True, maps=maps)
         out = (v / paths.INDEX).read_text()
         assert total == 3, total
-        assert "## Concepts (2)" in out and "## People (1)" in out, out
-        assert "[Note A](wiki/concepts/a.md) — desc a" in out, out
-        assert "3 wiki notes across 2 categories" in out, out
-        assert ("wiki/concepts/a.md", "gone.md") in dead, dead
-        assert not any(t == "b.md" for _, t in dead), dead  # b.md exists -> not dead
+        assert "## All notes (3)" in out, out
+        assert "[Note A](wiki/a.md) — desc a" in out, out
+        assert "## Maps of content (1)" in out and "[x](wiki/mocs/x.md)" in out, out
+        assert ("wiki/a.md", "gone.md") in dead, dead
+        assert not any(t == "b.md" for _, t in dead), dead   # b.md exists -> not dead
+        assert (v / paths.MOCS / "x.md").exists()
     print("reindex selfcheck OK")
 
 

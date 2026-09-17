@@ -134,7 +134,7 @@ def enrich(draft_text, corpus, idf):
             sugg["Action"], sugg["File"] = "move", f"{paths.RAW_INBOX}/{m_inbox.group(1)}"
             sugg["Target"] = fields.get("Target", paths.WIKI)
         else:
-            sugg["Action"], sugg["Target"] = "create", fields.get("Target", paths.CONCEPTS)
+            sugg["Action"], sugg["Target"] = "create", fields.get("Target", paths.WIKI)
 
         near_str = " · ".join(f"{d['path']} ({sc})" for sc, d in near) or "(none)"
         rebuilt = [f"## {title}", f"Action: {sugg['Action']}"]
@@ -156,10 +156,8 @@ def selfcheck():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         v = Path(d)
-        c = v / paths.CONCEPTS
+        c = v / paths.WIKI
         c.mkdir(parents=True)
-        (v / paths.PEOPLE).mkdir(parents=True)
-        (v / paths.PROJECTS).mkdir(parents=True)
         (c / "rds-cannot-shrink-storage-in-place.md").write_text(
             '---\ntitle: "RDS can\'t shrink allocated storage in place"\ndescription: "storage only grows; reduce via snapshot/dump-restore to a smaller instance"\n---\n')
         (c / "slack-bot-mpdm.md").write_text(
@@ -176,10 +174,10 @@ def selfcheck():
 
         draft = ("# Promotion draft\n\n"
                  f"## RDS storage can't be shrunk in place\nTarget: {paths.WIKI}\nFound that RDS storage only grows.\nSource: journal 2026-06-25\n\n"
-                 f"## A brand new unrelated idea about penguins\nTarget: {paths.CONCEPTS}\nNothing like it exists.\nSource: journal 2026-06-25\n\n"
+                 f"## A brand new unrelated idea about penguins\nTarget: {paths.WIKI}\nNothing like it exists.\nSource: journal 2026-06-25\n\n"
                  f"## An inbox file\nTarget: {paths.WIKI}\nSome doc.\nSource: {paths.RAW_INBOX}/foo.pdf\n")
         e = enrich(draft, corpus, idf)
-        assert "Action: merge" in e and f"Merge-into: {paths.CONCEPTS}/rds-cannot-shrink-storage-in-place.md" in e, e
+        assert "Action: merge" in e and f"Merge-into: {paths.WIKI}/rds-cannot-shrink-storage-in-place.md" in e, e
         assert "## A brand new unrelated idea about penguins\nAction: create" in e, e
         assert "Action: move" in e and f"File: {paths.RAW_INBOX}/foo.pdf" in e, e
     print("selfcheck OK")

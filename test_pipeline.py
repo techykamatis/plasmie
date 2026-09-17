@@ -52,7 +52,7 @@ def vault():
     tmproot = Path(tempfile.mkdtemp(prefix="vault-battletest-"))
     v = tmproot / "knowledge"
     shutil.copytree(real, v, symlinks=True, ignore=shutil.ignore_patterns(".git"))
-    for rel in (paths.CONCEPTS, paths.PROJECTS, paths.RAW_INBOX, paths.ARCHIVE):
+    for rel in (paths.WIKI, paths.RAW_INBOX, paths.ARCHIVE):
         (v / rel).mkdir(parents=True, exist_ok=True)
     yield v
     shutil.rmtree(tmproot, ignore_errors=True)
@@ -60,7 +60,7 @@ def vault():
 
 @pytest.fixture
 def concepts(vault):
-    return vault / paths.CONCEPTS
+    return vault / paths.WIKI
 
 
 def item(title, **fields):
@@ -84,28 +84,30 @@ def quiet_run(draft, vault, apply=True):
     "Project", "Technical", "Concepts", "tech",          # observed in promote.log
     "Resources", "", "wiki", "Areas", "How-Tos", "Security",
     "projects/", "wiki/Projects", "Engineering", "SomethingInvented", None,
+    "../../etc", "/etc/passwd", "wiki/../../tmp",        # outright hostile
 ])
 def test_create_target_stays_in_wiki(target):
-    known = {c for c, _ in paths.WIKI_CATEGORIES}
-    dest = PA._norm_create_target(target)
-    assert dest.startswith("wiki/"), f"{target!r} escaped wiki/ -> {dest}"
-    assert dest in known, f"{target!r} resolved to unknown category {dest}"
+    """Since the folder collapse there is exactly ONE legal destination, which
+    retires this whole class of bug: a Target can no longer name a place at all,
+    only (via target_tag) a tag."""
+    for dest in (PA._norm_create_target(target), PA._norm_move_target(target)):
+        assert dest == paths.WIKI, f"{target!r} resolved to {dest}"
 
 
-def test_legacy_targets_map_to_right_category():
-    assert PA._norm_create_target("Project") == paths.PROJECTS
-    assert PA._norm_create_target("Technical") == paths.TECH
-    assert PA._norm_create_target("Concepts") == paths.CONCEPTS
-    assert PA._norm_create_target("Security") == paths.SECURITY
-    # areas/ holds hand-curated MOCs — the loop files into it, never auto-creates
-    assert PA._norm_create_target("wiki/areas") == paths.CONCEPTS
-    assert PA._norm_move_target("Resources") == paths.CLIPPINGS
+def test_legacy_targets_survive_as_tags():
+    """The category a target used to name is kept as a tag, so the model's filing
+    intent survives even though it no longer picks a directory."""
+    assert paths.target_tag("Project") == "project"
+    assert paths.target_tag("Technical") == "tech"
+    assert paths.target_tag("Concepts") == "concept"
+    assert paths.target_tag("Security") == "security"
+    assert paths.target_tag("SomethingInvented") is None
 
 
-def test_every_catalog_category_is_a_legal_target():
-    """A category you can browse must also be one the loop can write to."""
-    for rel, _ in paths.WIKI_CATEGORIES:
-        assert paths.resolve_target(rel) == rel, f"{rel} is cataloged but unwritable"
+def test_note_type_comes_from_the_hint_not_the_folder():
+    assert PA.note_type("People") == "person"
+    assert PA.note_type("Projects") == "project"
+    assert PA.note_type("SomethingInvented") == "note"
 
 
 # --------------------------------------------------------------------------
@@ -120,12 +122,12 @@ def test_path_containment(vault, concepts):
     src = vault / paths.RAW_INBOX / "src.tmp"
     src.write_text("payload")
     assert PA.plan(item("e", Action="move", File=f"{paths.RAW_INBOX}/src.tmp", Target="/tmp"), vault)[2] is None
-    assert PA.plan(item("e", Action="move", File="../../etc/passwd", Target=paths.CONCEPTS), vault)[2] is None
+    assert PA.plan(item("e", Action="move", File="../../etc/passwd", Target=paths.WIKI), vault)[2] is None
 
     link = concepts / "evil-link"
     if not link.exists():
         os.symlink("/etc", link)
-    assert PA.plan(item("e", Action="create", Target=f"{paths.CONCEPTS}/evil-link/x.md"), vault)[2] is None
+    assert PA.plan(item("e", Action="create", Target=f"{paths.WIKI}/evil-link/x.md"), vault)[2] is None
     link.unlink()
     src.unlink()
     assert not outside.exists(), "sentinel created outside vault"
@@ -135,15 +137,15 @@ def test_path_containment(vault, concepts):
 # C2 — no data loss
 # --------------------------------------------------------------------------
 def test_no_data_loss(vault):
-    orbit = vault / paths.PROJECTS / "orbit.md"
+    orbit = vault / paths.WIKI / "orbit.md"
     orbit.write_text("# Orbit\n")
     before = orbit.read_text()
 
-    verb, _, do, _ = PA.plan(item("x", Action="create", Target=f"{paths.PROJECTS}/orbit.md"), vault)
+    verb, _, do, _ = PA.plan(item("x", Action="create", Target=f"{paths.WIKI}/orbit.md"), vault)
     assert verb == "skip" and do is None and orbit.read_text() == before, "create overwrote"
 
     _, _, do2, _ = PA.plan(item("status note", Action="merge",
-                                **{"Merge-into": f"{paths.PROJECTS}/orbit.md"}, body="a new line"), vault)
+                                **{"Merge-into": f"{paths.WIKI}/orbit.md"}, body="a new line"), vault)
     do2()
     after = orbit.read_text()
     assert after.startswith(before.rstrip()) and "a new line" in after, "merge lost content"
@@ -187,13 +189,13 @@ def test_malformed_drafts(vault, concepts):
 # C4 — idempotency
 # --------------------------------------------------------------------------
 def test_idempotency(vault, concepts):
-    orbit = vault / paths.PROJECTS / "orbit.md"
+    orbit = vault / paths.WIKI / "orbit.md"
     orbit.write_text("# Orbit\n")
     before = orbit.read_text()
     draft = vault / "idem.md"
     draft.write_text(
-        f"## Idem create\nAction: create\nTarget: {paths.CONCEPTS}\nidempotent body\n\n"
-        f"## Idem merge\nAction: merge\nMerge-into: {paths.PROJECTS}/orbit.md\nidem merge line\n"
+        f"## Idem create\nAction: create\nTarget: {paths.WIKI}\nidempotent body\n\n"
+        f"## Idem merge\nAction: merge\nMerge-into: {paths.WIKI}/orbit.md\nidem merge line\n"
     )
     quiet_run(draft, vault)
     quiet_run(draft, vault)  # second apply must be a no-op
@@ -220,7 +222,7 @@ def test_secrets_scrubbed(vault, concepts):
     draft = vault / "leak.md"
     secrets = ("AKIAABCDEFGHIJKLMNOP Bearer abcdefghijklmnopqrstuvwxyz123 "
                "sk-abcdefghijklmnopqrstuv jane@example.com")
-    draft.write_text(f"## Leaky create\nAction: create\nTarget: {paths.CONCEPTS}\n{secrets}\n")
+    draft.write_text(f"## Leaky create\nAction: create\nTarget: {paths.WIKI}\n{secrets}\n")
     quiet_run(draft, vault)
     note = (concepts / "leaky-create.md").read_text()
     for raw in ["AKIAABCDEFGHIJKLMNOP", "abcdefghijklmnopqrstuvwxyz123",
@@ -235,11 +237,10 @@ def test_secrets_scrubbed(vault, concepts):
 # C6 — catalog correctness
 # --------------------------------------------------------------------------
 def test_catalog_counts_every_wiki_note(vault):
-    on_disk = set()
-    for rel, _ in paths.WIKI_CATEGORIES:
-        d = vault / rel
-        if d.exists():
-            on_disk |= {p for p in d.rglob("*.md") if p.name != "index.md"}
+    on_disk = {p for p in (vault / paths.WIKI).rglob("*.md")
+               if p.name != "index.md"
+               and paths.MOCS not in p.as_posix()
+               and paths.ATTACHMENTS not in p.as_posix()}
     with contextlib.redirect_stdout(io.StringIO()):
         total, _, _ = RI.catalog(vault, write=False)
     assert total == len(on_disk), f"catalog counted {total}, disk has {len(on_disk)}"
@@ -258,3 +259,35 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         os.environ["PLASMIE_VAULT"] = sys.argv[1]
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+# --- MOC generation: tags are untrusted input --------------------------------
+
+def test_a_malicious_tag_cannot_write_outside_the_vault(tmp_path):
+    """A tag reaches frontmatter from an LLM-written draft. `../../../pwned` as a
+    tag wrote /tmp/pwned.md before this guard — arbitrary file write."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("ri", "reindex.py")
+    ri = importlib.util.module_from_spec(spec); spec.loader.exec_module(ri)
+    w = tmp_path / "wiki"; w.mkdir()
+    outside = tmp_path.parent / "pwned.md"
+    if outside.exists():
+        outside.unlink()
+    for i in range(5):
+        (w / f"n{i}.md").write_text(
+            f'---\ntype: note\ntitle: "n{i}"\ndescription: "d"\n'
+            f'tags: [../../pwned, ok-tag]\ntimestamp: 2026-01-01T00:00:00Z\n---\n\nbody\n')
+    ri.mocs(tmp_path, write=True)
+    assert not outside.exists(), "tag escaped the vault"
+    assert not list(tmp_path.glob("*.md")), "tag escaped wiki/mocs/"
+    assert (tmp_path / "wiki/mocs/ok-tag.md").exists(), "clean tags must still work"
+
+
+def test_safe_tag_rejects_traversal_and_accepts_normal_tags():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("ri", "reindex.py")
+    ri = importlib.util.module_from_spec(spec); spec.loader.exec_module(ri)
+    for bad in ("../x", "../../etc/passwd", "/abs", "a/b", "", "." * 3, "x" * 65):
+        assert not ri.safe_tag(bad), bad
+    for good in ("orbit", "agent-cli", "how-to", "aws", "v1.2"):
+        assert ri.safe_tag(good), good

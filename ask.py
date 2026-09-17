@@ -336,8 +336,8 @@ def selfcheck():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         v = Path(d)
-        (v / paths.CONCEPTS).mkdir(parents=True)
-        (v / paths.CONCEPTS / "rds.md").write_text(
+        (v / paths.WIKI).mkdir(parents=True)
+        (v / paths.WIKI / "rds.md").write_text(
             '---\ntitle: "RDS storage only grows"\n---\n'
             "RDS allocated storage cannot shrink in place; snapshot and restore smaller.")
 

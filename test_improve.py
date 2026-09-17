@@ -81,8 +81,8 @@ def test_run_writes_a_timestamped_heartbeat(tmp_path, monkeypatch):
     audit = logs / f"audit-{date.today():%Y-%m-%d}.log"
     before = audit.read_text() if audit.exists() else ""
 
-    (tmp_path / paths.CONCEPTS).mkdir(parents=True, exist_ok=True)
-    (tmp_path / paths.CONCEPTS / "a.md").write_text('---\ntitle: "A"\n---\nbody')
+    (tmp_path / paths.WIKI).mkdir(parents=True, exist_ok=True)
+    (tmp_path / paths.WIKI / "a.md").write_text('---\ntitle: "A"\n---\nbody')
     monkeypatch.setattr(KI, "resolve_gaps", lambda *a, **k: [])  # no network
 
     KI.run(str(tmp_path), write=True)

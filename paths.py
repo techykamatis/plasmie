@@ -7,8 +7,8 @@ grepping ten files.
 Layout (llm-wiki):
   raw/      immutable source material, one subdir per source — the loop appends,
             never rewrites. qmd collection "raw".
-  wiki/     LLM-owned synthesized pages (concepts/people/projects/tech/areas).
-            qmd collection "wiki".
+  wiki/     LLM-owned synthesized pages, FLAT. Structure is tags + generated
+            maps of content in wiki/mocs/. qmd collection "wiki".
   archive/  done / dead.
   meta/     templates, promotion drafts, loop bookkeeping.
 """
@@ -27,15 +27,12 @@ RAW_INBOX = "raw/inbox"
 RAW_JOURNAL = "raw/journal"      # legacy combined digests (pre-refactor, read-only)
 
 # --- wiki (qmd collection "wiki") ---
+# FLAT since 2026-09-17: notes live directly in wiki/, and the taxonomy is tags +
+# generated maps of content (wiki/mocs/). Folders were a second, redundant axis —
+# every note now carries its old folder as a tag, so nothing was lost.
 WIKI = "wiki"
-CONCEPTS = "wiki/concepts"
-PEOPLE = "wiki/people"
-PROJECTS = "wiki/projects"
-TECH = "wiki/tech"
-CLIPPINGS = "wiki/clippings"
-AREAS = "wiki/areas"
-HOWTOS = "wiki/how-tos"
-SECURITY = "wiki/security"
+MOCS = "wiki/mocs"              # generated per-tag maps; not hand-authored notes
+ATTACHMENTS = "wiki/attachments"  # pdfs/html/svg that notes refer to
 
 ARCHIVE = "archive"
 META = "meta"
@@ -43,57 +40,45 @@ DRAFTS = "meta/promotion-drafts"
 TEMPLATES = "meta/templates"
 GAPS = "meta/coverage-gaps.md"
 IMPROVE_LOG = "meta/improvement-loop.md"
+USAGE = "meta/usage.tsv"
 
 INDEX = "index.md"
 LOG = "log.md"
 
-# wiki categories to catalog, in display order: (relpath, human label).
-# This list IS the whitelist of legal promotion targets (see promote-apply.py) —
-# a category missing here is invisible to index.md AND unwritable by the loop.
-MOCS = "wiki/mocs"          # generated per-tag maps of content; not hand-authored notes
-
-WIKI_CATEGORIES = [
-    (CONCEPTS, "Concepts"),
-    (PEOPLE, "People"),
-    (PROJECTS, "Projects"),
-    (TECH, "Tech"),
-    (HOWTOS, "How-tos"),
-    (SECURITY, "Security"),
-    (CLIPPINGS, "Clippings"),
-    (AREAS, "Areas"),
-]
-
-# Legacy / model-invented target names → the real category. The promotion draft
-# is LLM-written, so `Target:` is untrusted input: a local model reliably emits
-# capitalised pre-refactor names ("Project", "Technical"), which used to be
-# passed through verbatim and created top-level dirs OUTSIDE wiki/ — invisible
-# to the "wiki" qmd collection and therefore unanswerable by ask.py.
-# Matched on the final path segment, lowercased.
-TARGET_ALIASES = {
-    "concept": CONCEPTS, "concepts": CONCEPTS, "note": CONCEPTS, "notes": CONCEPTS,
-    "person": PEOPLE, "people": PEOPLE,
-    "project": PROJECTS, "projects": PROJECTS,
-    "tech": TECH, "technical": TECH, "technology": TECH, "engineering": TECH,
-    "how-to": HOWTOS, "how-tos": HOWTOS, "howto": HOWTOS, "howtos": HOWTOS,
-    "guide": HOWTOS, "guides": HOWTOS, "runbook": HOWTOS, "runbooks": HOWTOS,
-    "security": SECURITY,
-    "clipping": CLIPPINGS, "clippings": CLIPPINGS,
-    "area": AREAS, "areas": AREAS,
+# A promotion draft is LLM-written, so `Target:` is untrusted input — a local
+# model reliably invents names ("03 Resources", "Technical") and used to create
+# directories OUTSIDE wiki/, invisible to the qmd collection and therefore
+# unanswerable by ask.py. With a flat wiki there is exactly one legal
+# destination, which removes that whole class: Target can no longer name a place,
+# only a tag. resolve_target stays as the single chokepoint.
+TARGET_TAGS = {
+    "concept": "concept", "concepts": "concept", "note": "concept", "notes": "concept",
+    "person": "person", "people": "person",
+    "project": "project", "projects": "project",
+    "tech": "tech", "technical": "tech", "technology": "tech", "engineering": "tech",
+    "how-to": "how-to", "how-tos": "how-to", "howto": "how-to", "howtos": "how-to",
+    "guide": "how-to", "guides": "how-to", "runbook": "how-to", "runbooks": "how-to",
+    "security": "security",
+    "clipping": "clipping", "clippings": "clipping",
+    "area": "area", "areas": "area",
 }
 
+# Target string -> frontmatter type. Type used to be inferred from the folder a
+# note landed in; with one folder it comes from the same hint, defaulting to note.
+TARGET_TYPES = {"person": "person", "project": "project", "concept": "reference",
+                "tech": "reference", "how-to": "reference", "security": "reference"}
 
-def resolve_target(t, default=CONCEPTS):
-    """Map an untrusted `Target:` string onto a real wiki category.
 
-    Returns a path guaranteed to sit under wiki/. Anything unrecognised falls
-    back to `default` rather than being trusted as a path — the promotion path
-    must never be able to invent a directory outside the indexed tree.
-    """
+def resolve_target(t, default=WIKI):
+    """Every promoted note lands in wiki/. Kept as the one place that decides."""
+    return WIKI
+
+
+def target_tag(t):
+    """The tag an untrusted `Target:` hint maps to, or None if it means nothing."""
     seg = (t or "").strip().strip("/").split("/")[-1].lower()
-    known = {c for c, _ in WIKI_CATEGORIES}
-    if (t or "").strip().strip("/") in known:
-        return (t or "").strip().strip("/")
-    return TARGET_ALIASES.get(seg, default)
+    return TARGET_TAGS.get(seg)
+
 
 # dirs the Q&A corpus / catalog skips (scaffolding, not knowledge)
 SKIP_DIRS = {"meta", "archive", "raw", ".git", ".obsidian", ".ruff_cache", ".claude"}

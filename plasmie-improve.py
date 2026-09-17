@@ -311,7 +311,7 @@ def normalize_tags(vault, write=True):
     changed = 0
     for p in notes:
         text = p.read_text(errors="replace")
-        have = set(_tags_of(text))
+        have = {t for t in _tags_of(text) if reindex.safe_tag(t)}
         want = set(have)
         rel = p.relative_to(vroot / "wiki").parts
         if rel[:-1]:
@@ -513,7 +513,7 @@ def selfcheck():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         v = Path(d)
-        c = v / paths.CONCEPTS
+        c = v / paths.WIKI
         c.mkdir(parents=True)
         (c / "a.md").write_text('---\ntitle: "A"\n---\nbody')
         (c / "b.md").write_text('---\ntitle: "B"\n---\nbody')

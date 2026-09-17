@@ -145,3 +145,60 @@ def test_related_block_never_eats_handwritten_text(tmp_path):
     m.link_related(tmp_path, write=True, threshold=0.05)
     m.link_related(tmp_path, write=True, threshold=0.05)
     assert "postgres connection pool exhausted under load" in (c / "a.md").read_text()
+
+
+from datetime import date, timedelta  # noqa: E402
+
+
+# --- synthesis: merge proposals + retirement --------------------------------
+
+def _kli():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("kli", "plasmie-improve.py")
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    return m
+
+
+def test_duplicate_stubs_are_proposed_not_applied(tmp_path):
+    """Measured: a real dup scores 0.461 and a false one 0.457. Judgement stays human."""
+    m = _kli()
+    c = tmp_path / "wiki" / "concepts"; c.mkdir(parents=True)
+    _note(c / "a.md", "Datadog tombstone", "recovery_window_in_days zero bypasses the tombstone")
+    _note(c / "b.md", "Datadog tombstone blockage", "recovery_window_in_days zero bypasses the tombstone period")
+    pairs = m.propose_merges(tmp_path, write=True, threshold=0.3)
+    assert pairs, "duplicate stubs should be proposed"
+    assert (c / "a.md").exists() and (c / "b.md").exists(), "propose must never apply"
+    draft = next((tmp_path / "meta/promotion-drafts").glob("*.merge.md")).read_text()
+    assert "Action: merge" in draft and "Merge-into:" in draft
+
+
+def test_retirement_is_dormant_without_enough_usage_evidence(tmp_path):
+    """With a day of data every note looks unused — that retires the newest knowledge."""
+    m = _kli()
+    c = tmp_path / "wiki" / "concepts"; c.mkdir(parents=True)
+    old = (date.today() - timedelta(days=200)).isoformat()
+    (c / "pipeline-success-achieved-after-addressing-stacked-failures.md").write_text(
+        f'---\ntype: note\ntitle: "x"\ntimestamp: {old}T00:00:00Z\n---\n\nbody\n')
+    assert m.retire_stale(tmp_path, write=False) == []
+    (tmp_path / "meta").mkdir(exist_ok=True)
+    (tmp_path / "meta/usage.tsv").write_text(
+        f"# date\tquery\trank\tscore\tpath\n{old}\tq\t1\t0.9\twiki/concepts/other.md\n"
+        f"{date.today().isoformat()}\tq\t1\t0.9\twiki/concepts/other.md\n")
+    assert len(m.retire_stale(tmp_path, write=False)) == 1, "should fire once evidence is mature"
+
+
+def test_generated_links_do_not_protect_a_note_from_retirement(tmp_path):
+    """link_related gives nearly every note inbound links; counting them = permanent no-op."""
+    m = _kli()
+    c = tmp_path / "wiki" / "concepts"; c.mkdir(parents=True)
+    old = (date.today() - timedelta(days=200)).isoformat()
+    target = "pipeline-success-achieved-after-addressing-stacked-failures"
+    (c / f"{target}.md").write_text(f'---\ntype: note\ntitle: "x"\ntimestamp: {old}T00:00:00Z\n---\n\nbody\n')
+    (c / "other.md").write_text(
+        f'---\ntype: note\ntitle: "o"\ntimestamp: {old}T00:00:00Z\n---\n\nbody\n\n'
+        f'<!-- related:start -->\n## Related\n- [[{target}]]\n<!-- related:end -->\n')
+    (tmp_path / "meta").mkdir(exist_ok=True)
+    (tmp_path / "meta/usage.tsv").write_text(
+        f"# date\tquery\trank\tscore\tpath\n{old}\tq\t1\t0.9\twiki/concepts/other.md\n"
+        f"{date.today().isoformat()}\tq\t1\t0.9\twiki/concepts/other.md\n")
+    assert any(target in r for r in m.retire_stale(tmp_path, write=False))

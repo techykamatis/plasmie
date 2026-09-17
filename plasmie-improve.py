@@ -273,6 +273,134 @@ def link_related(vault, write=True, threshold=RELATED_AT, k=RELATED_K):
     return linked
 
 
+MERGE_PROPOSE_AT = 0.45   # dedupe's own merge bar; below this nothing is a duplicate
+
+
+def propose_merges(vault, write=True, threshold=MERGE_PROPOSE_AT):
+    """Draft merge candidates for duplicate stubs — propose only, never apply.
+
+    Auto-merging on a score cannot work on this corpus: measured on the live
+    vault, a REAL duplicate pair (the two datadog tombstone notes) scores 0.461
+    while a FALSE one (PR #36 CI-green vs PR #36 security-audit — different
+    facts, same PR) scores 0.457. Four thousandths apart, opposite verdicts. No
+    threshold separates them, so the judgement stays human and this writes into
+    the hold queue that already exists for it, in promote-apply's own format.
+
+    Only stub-vs-stub pairs are offered: the big notes that score high
+    (stripe-minions architecture vs replication, 0.681) are a document set, not
+    duplicates, and merging them would destroy both.
+    """
+    import dedupe
+    vroot = Path(vault)
+    corpus, idf = dedupe.build_corpus(vroot)
+
+    def body(rel):
+        t = (vroot / rel).read_text(errors="replace")
+        t = re.sub(r"(?s)^---.*?\n---", "", t)
+        return _REL.sub("", t).strip()
+
+    stub = {e["path"] for e in corpus if len(body(e["path"]).split()) < 60}
+    pairs, seen = [], set()
+    for e in corpus:
+        q = f"{e['title']} " + " ".join(e["toks"])
+        for score, other in dedupe.nearest(q, corpus, idf, 4):
+            a, b = sorted((e["path"], other["path"]))
+            if a == b or score < threshold or (a, b) in seen:
+                continue
+            if a not in stub or b not in stub:
+                continue
+            seen.add((a, b))
+            pairs.append((score, a, b))
+    if not pairs:
+        return []
+    pairs.sort(reverse=True)
+
+    items = []
+    for score, a, b in pairs:
+        keep, drop = (a, b) if len(body(a).split()) >= len(body(b).split()) else (b, a)
+        items.append(f"## {Path(drop).stem}\nAction: merge\nMerge-into: {keep}\n"
+                     f"Near: {keep} ({score:.3f})\nSummary: {' '.join(body(drop).split())[:400]}\n"
+                     f"Source: {drop}")
+    out = vroot / DRAFTS / f"{date.today()}.merge.md"
+    if write:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(
+            f"---\ntype: note\ntitle: merge candidates {date.today()}\ntags: [promotion-hold]\n"
+            f"timestamp: {date.today()}T00:00:00Z\n---\n\n# Duplicate stubs — review before applying\n"
+            "_Scores cannot separate real duplicates from same-subject-different-fact pairs "
+            "(0.461 real vs 0.457 false, measured). Delete the items you reject, then:_\n"
+            f"`promote-apply.py {out.name} --apply`\n\n" + "\n\n".join(items) + "\n")
+    return pairs
+
+
+RETIRE_AFTER_DAYS = 90
+USAGE_EVIDENCE_DAYS = 30   # retirement stays dormant until usage data is old enough
+_EVENT_WORDS = ("success", "successful", "completed", "complete", "achieved", "passed",
+                "milestone", "confirmed", "verified", "resolved", "fixed", "merge-check")
+
+
+def retire_stale(vault, write=True, days=RETIRE_AFTER_DAYS):
+    """Archive event-shaped notes nobody links to and nobody has ever retrieved.
+
+    An announcement ("pipeline-success-achieved-after-addressing-stacked-failures")
+    is a log entry wearing wiki clothes; log.md already holds the event, so the
+    wiki should keep the lesson or nothing. Archived, never deleted.
+
+    Two guards, both learned the hard way:
+      * Inbound links are counted EXCLUDING the generated Related block —
+        link_related() gives almost every note inbound links, which would
+        otherwise make "no inbound links" permanently false and this a no-op.
+      * It refuses to run until meta/usage.tsv spans USAGE_EVIDENCE_DAYS. With a
+        day of data every note looks unused, and "never retrieved" would mean
+        "written recently" — that deletes the newest knowledge first.
+    """
+    vroot = Path(vault)
+    usage = vroot / "meta/usage.tsv"
+    seen_dates, used = set(), set()
+    if usage.exists():
+        for ln in usage.read_text(errors="replace").splitlines():
+            if ln.startswith("#") or "\t" not in ln:
+                continue
+            f = ln.split("\t")
+            seen_dates.add(f[0])
+            used.add(f[-1])
+    span = 0
+    if seen_dates:
+        span = (date.fromisoformat(max(seen_dates)) - date.fromisoformat(min(seen_dates))).days
+    if span < USAGE_EVIDENCE_DAYS:
+        return []          # dormant by design — not enough evidence to call anything dead
+
+    notes = list((vroot / "wiki").rglob("*.md"))
+    inbound = {p: 0 for p in notes}
+    by_name = {}
+    for p in notes:
+        by_name.setdefault(p.stem.lower(), []).append(p)
+    for p in notes:
+        hand = _REL.sub("", p.read_text(errors="replace"))   # generated links don't count
+        for l in re.findall(r"\[\[([^\]|#]+)", hand):
+            for t in by_name.get(l.strip().lower().removesuffix(".md"), []):
+                inbound[t] += 1
+
+    cutoff = date.today() - timedelta(days=days)
+    retired = []
+    for p in notes:
+        rel = str(p.relative_to(vroot))
+        if p.name == "index.md" or inbound[p] or rel in used:
+            continue
+        stem = p.stem.lower()
+        if not (len(stem.split("-")) >= 7 or any(w in stem for w in _EVENT_WORDS)):
+            continue
+        m = re.search(r"(?m)^timestamp:\s*(\d{4}-\d{2}-\d{2})", p.read_text(errors="replace"))
+        if not m or date.fromisoformat(m.group(1)) >= cutoff:
+            continue
+        retired.append(rel)
+        if write:
+            dest = vroot / "archive/retired" / p.name
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(p), str(dest))
+    return retired
+
+
 def run(vault="~/knowledge", write=True):
     vault = str(Path(vault).expanduser())
     total, sections, dead = reindex.catalog(vault, write=write)
@@ -280,6 +408,8 @@ def run(vault="~/knowledge", write=True):
     pruned = prune_raw(vault, write=write)
     closed = resolve_gaps(vault, write=write)
     linked = link_related(vault, write=write)
+    cands = propose_merges(vault, write=write)
+    retired = retire_stale(vault, write=write)
     gaps = count_gaps(vault)
 
     # Memory + audit log record vault-changing events only; the count is context.
@@ -293,6 +423,10 @@ def run(vault="~/knowledge", write=True):
                       + ", ".join(f"{s} -> {t}" for s, t in dead))
     if closed:
         events.append(f"closed {len(closed)} coverage gap(s) the vault now answers")
+    if cands:
+        events.append(f"{len(cands)} duplicate stub pair(s) awaiting review")
+    if retired:
+        events.append(f"retired {len(retired)} unlinked, unread event note(s)")
     if events:
         remember(vault, "; ".join(events) + f" — {total} wiki notes", write=write)
     if pruned and write:
@@ -300,7 +434,7 @@ def run(vault="~/knowledge", write=True):
                         pruned[:25])
 
     line = (f"{total} wiki notes · {len(dead)} dead links · {len(moved)} archived · "
-            f"{len(pruned)} pruned · {linked} linked · {gaps} coverage gaps"
+            f"{len(pruned)} pruned · {linked} linked · {len(retired)} retired · {gaps} coverage gaps"
             + (f" ({len(closed)} closed)" if closed else "")
             + (" · (dry)" if not write else ""))
     print(line)

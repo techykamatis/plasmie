@@ -19,6 +19,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -197,6 +198,24 @@ CHECKS = {
     "git": check_git,
 }
 
+# Reachable is not the same as arriving. Confluence sat green for 2.5 months while its
+# mirror hadn't moved since 2026-07-02 — the same phantom-green class this file was
+# written to kill. So also ask: when did this source last actually land a file?
+RAW_DIR = {
+    "slack": "raw/slack", "confluence": "raw/confluence", "github": "raw/github",
+    "outlook": "raw/outlook", "claude": "raw/claude", "git": "raw/git",
+}
+STALE_AFTER_DAYS = int(os.environ.get("PLASMIE_STALE_AFTER_DAYS", "7"))
+
+
+def _age_days(name):
+    """Days since this source last wrote a file into raw/, or None if it never has."""
+    vault = os.environ.get("VAULT_DIR") or f"{H}/knowledge"
+    d = os.path.join(os.path.expanduser(vault), RAW_DIR.get(name, ""))
+    newest = max((os.path.getmtime(f) for f in glob.iglob(d + "/**/*.md", recursive=True)),
+                 default=None)
+    return None if newest is None else (time.time() - newest) / 86400
+
 
 def main():
     _load_env()
@@ -207,6 +226,16 @@ def main():
             out[name] = CHECKS[name]()
         except Exception as e:                    # a probe must never take the page down
             out[name] = _result(True, False, f"Check failed: {e}")
+        try:                                      # freshness never fails the probe
+            age = _age_days(name)
+        except OSError:
+            age = None
+        r = out[name]
+        r["age_days"] = None if age is None else round(age, 1)
+        r["stale"] = bool(r.get("ok") and age is not None and age > STALE_AFTER_DAYS)
+        if r["stale"]:
+            r["detail"] += f" Last file landed {int(age)}d ago — reachable but not arriving."
+            r["hint"] = r["hint"] or "Credentials work; the ingest for this source is not running."
     print(json.dumps(out))
 
 

@@ -209,3 +209,28 @@ def test_git_owns_a_watermark_so_a_failed_scan_holds_its_window():
     st = ingest_window.next_state({s: 100.0 for s in ingest_window.SOURCES}, 200.0, {"git"})
     assert st["sources"]["git"] == 100.0        # held
     assert st["sources"]["slack"] == 200.0      # advanced
+
+
+# --- log noise: an empty hour is not an event -------------------------------
+import paths  # noqa: E402
+
+
+def test_quiet_hour_is_not_logged():
+    """55% of the audit log was '0 convo / 0 msg'. A clean empty run writes nothing."""
+    assert not paths.ingest_worth_logging(written=[], conf_count=0)
+
+
+def test_anything_written_still_logs():
+    assert paths.ingest_worth_logging(written=[("slack", "x")], conf_count=0)
+    assert paths.ingest_worth_logging(written=[], conf_count=3)
+
+
+def test_a_silent_failure_always_logs():
+    """The whole point of the record: a broken source must never look like a quiet one."""
+    assert paths.ingest_worth_logging([], 0, errors=("slack: token revoked",))
+    assert paths.ingest_worth_logging([], 0, truncated=("slack",))
+
+
+def test_unconfigured_source_is_a_steady_state_not_an_error():
+    """Outlook is permanently unconnected; it must not resurrect the empty-run entry."""
+    assert not paths.ingest_worth_logging([], 0, errors=("outlook: creds not set",))

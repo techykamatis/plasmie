@@ -24,6 +24,7 @@ Usage:
   ask.py --selfcheck
 """
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -62,6 +63,7 @@ RECAP_DIRS = [paths.RAW_SLACK, paths.RAW_CLAUDE, paths.RAW_OUTLOOK, paths.RAW_JO
 # the question — answer tentatively and log a gap. ponytail: tune against eval.py.
 COVERAGE_MIN = 0.35
 GAPS = paths.GAPS
+USAGE = "meta/usage.tsv"
 
 
 def _say(msg):
@@ -140,6 +142,31 @@ def log_gap(vault, question, score, closest):
     line = f'- {datetime.date.today().isoformat()} · ({score:.2f}) "{q}" — closest: {closest}\n'
     path.write_text(existing + line)
     return True
+
+
+def log_usage(vault, question, hits):
+    """Append which notes actually answered something, to meta/usage.tsv.
+
+    log_gap() records what the vault COULDN'T answer; this is the other half —
+    what it did, and with which notes. Without it nothing distinguishes a note
+    that carries the vault from one nobody has opened since it was promoted, so
+    retirement has to guess from link count alone. Append-only TSV: date, query
+    hash (dedup without storing the question), rank, score, path.
+    """
+    path = Path(vault).expanduser() / USAGE
+    qh = hashlib.sha1(" ".join(question.split()).lower().encode()).hexdigest()[:8]
+    today = datetime.date.today().isoformat()
+    rows = "".join(f"{today}\t{qh}\t{i}\t{score}\t{doc['path']}\n"
+                   for i, (score, doc) in enumerate(hits, 1))
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        new = not path.exists()
+        with path.open("a") as fh:
+            if new:
+                fh.write("# date\tquery\trank\tscore\tpath\n")
+            fh.write(rows)
+    except OSError:
+        pass          # usage stats are never worth failing an answer over
 
 
 def build_prompt(question, hits, weak=False):
@@ -293,6 +320,7 @@ def ask(question, vault="~/knowledge", on_chunk=None):
     weak = hits[0][0] < COVERAGE_MIN
     if weak and log_gap(vault, question, hits[0][0], hits[0][1]["path"]):
         _say("No strong match — answering tentatively and logging a coverage gap.")
+    log_usage(vault, question, hits)
     titles = ", ".join(doc["title"] for _, doc in hits[:3])
     _say(f"Found {len(hits)} relevant notes: {titles}")
     if not ensure_up():

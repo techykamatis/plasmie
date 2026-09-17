@@ -272,7 +272,12 @@ def auto(draft_path, vault):
 
         verb, detail, do, reason = plan(decided, vault)
         if do:
-            do(); applied.append((verb, detail)); print(f"[AUTO {verb.upper()}] {detail}")
+            # keep the Source on the applied record: this rewrite is the ONLY copy of
+            # the draft, and dropping it left 3 months of promotions unbackfillable
+            # when provenance was added later. An audit record that forgets its own
+            # evidence is not an audit record.
+            do(); applied.append((verb, detail, decided["fields"].get("Source", "")))
+            print(f"[AUTO {verb.upper()}] {detail}")
         else:
             held.append(it); print(f"[HOLD] {it['title']} ({reason or 'refused'})")
 
@@ -288,7 +293,8 @@ def auto(draft_path, vault):
     elif holdpath.exists():
         holdpath.unlink()
 
-    rec = "\n\n".join(f"## {v.upper()}: {d}" for v, d in applied) or "_nothing applied_"
+    rec = "\n\n".join(f"## {v.upper()}: {d}" + (f"\nSource: {s}" if s else "")
+                      for v, d, s in applied) or "_nothing applied_"
     dp.write_text(
         f"---\ntype: note\ntitle: promotion-draft {base}\ntags: [promotion-draft]\ntimestamp: {today}T00:00:00Z\n---\n\n"
         f"# Promotion draft {base}\n✅ auto-applied {today}: {len(applied)} applied, {len(held)} held"
@@ -297,7 +303,7 @@ def auto(draft_path, vault):
     _reindex(vault)
     if applied:
         paths.log_event(vault, f"promote · {len(applied)} item(s) into wiki",
-                        [f"{verb}: {det}" for verb, det in applied])
+                        [f"{verb}: {det}" for verb, det, _ in applied])
     print(f"\nAUTO: {len(applied)} applied, {len(held)} held")
     return len(applied), len(held)
 

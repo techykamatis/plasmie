@@ -529,7 +529,11 @@ if conf_err and "not set" not in conf_err:
 if truncated:
     bullets.append(f"_TRUNCATED: hit PLASMIE_MAX_PAGES ({MAX_PAGES}) on "
                    f"{', '.join(sorted(set(truncated)))} — raise it or backfill this window_")
-paths.log_event(VAULT, f"ingest · since {since}", bullets)
+# An empty hour is not an event — see paths.ingest_worth_logging.
+if paths.ingest_worth_logging(written, conf_count,
+                              errors=(slack_err, ms_err, gh_err, conf_err),
+                              truncated=truncated):
+    paths.log_event(VAULT, f"ingest · since {since}", bullets)
 
 if not BACKFILL:  # backfill must not move the live incremental watermark
     # Hold the watermark for any source that errored OR was truncated, so the

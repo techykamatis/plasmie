@@ -111,6 +111,19 @@ _LOG_HEADER = (
     "this log is the durable record. Grep it: `grep '^## \\[' log.md | tail`.\n")
 
 
+def ingest_worth_logging(written, conf_count, errors=(), truncated=()):
+    """Policy for log_event: is this ingest run an event, or just a quiet hour?
+
+    1,275 of the first 2,319 entries were "0 convo / 0 msg", making the durable
+    audit 55% noise and slow to grep. Only a CLEAN, genuinely empty run is
+    dropped: any error or truncation still logs, because a silent failure is
+    exactly what this record exists to catch. "Creds not set" is a steady state,
+    not an error, so it does not keep an empty run alive.
+    """
+    real = [e for e in errors if e and "not set" not in e]
+    return bool(written or conf_count or real or truncated)
+
+
 def log_event(vault, header, bullets=()):
     """Append a timestamped event to the durable audit log (log.md).
 

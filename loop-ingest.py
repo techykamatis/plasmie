@@ -278,7 +278,7 @@ else:
 gh_lines = []
 gh_counts = []   # (repo, n)
 gh_err = None
-GH_ORGS = [o.strip() for o in os.environ.get("PLASMIE_GITHUB_ORGS", "fabrikam,Contoso").split(",") if o.strip()]
+GH_ORGS = [o.strip() for o in os.environ.get("PLASMIE_GITHUB_ORGS", "fabrikam").split(",") if o.strip()]
 # launchd runs with a minimal PATH, so resolve the gh binary explicitly.
 import shutil
 GH_BIN = shutil.which("gh") or next((p for p in ("/opt/homebrew/bin/gh", "/usr/local/bin/gh") if os.path.exists(p)), "gh")

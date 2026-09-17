@@ -78,9 +78,14 @@ def parse(text):
     return items
 
 
+def _strip_summary(body):
+    """Drop the drafter's 'Summary:' prefix — it leaks into note bodies otherwise."""
+    return re.sub(r"^Summary:\s*\|?\s*", "", body.strip())
+
+
 def _first_sentence(body, cap=200):
     """First sentence of a note body, for use as a fallback description."""
-    txt = " ".join(re.sub(r"^Summary:\s*\|?\s*", "", body.strip()).split())
+    txt = " ".join(_strip_summary(body).split())
     m = re.search(r"^(.{20,}?[.!?])(\s|$)", txt)
     return (m.group(1) if m else txt)[:cap]
 
@@ -134,12 +139,18 @@ def plan(item, vault):
         if path.exists():
             return ("skip", item["title"], None, f"already exists: {path.relative_to(vroot)} (use merge?)")
         rtitle, rbody = redact(item["title"]), redact(item["body"])
-        ttl = f'"{rtitle}"' if ":" in rtitle else rtitle
+        # always quote: ':' is not the only character that breaks a YAML scalar —
+        # a leading '`' or '#' does too, and those shipped unquoted for months.
+        ttl = _yaml_str(rtitle)
         # description drives both qmd retrieval and dedupe's corpus vectors — never leave it
         # empty. Fall back to the body's first sentence when the drafter omits it.
         desc = _yaml_str(redact(f.get("Description", "")) or _first_sentence(rbody))
+        # provenance: without it a note is an unverifiable assertion — you cannot get
+        # back to the session/thread it came from. The drafter already supplies Source.
+        src = redact(f.get("Source", "")).strip()
+        src_fm = f"source: {_yaml_str(src)}\n" if src else ""
         fm = (f"---\ntype: {note_type(tgt)}\ntitle: {ttl}\ndescription: {desc}\n"
-              f"tags: []\ntimestamp: {date.today()}T00:00:00Z\n---\n\n# {rtitle}\n\n{rbody}\n")
+              f"{src_fm}tags: []\ntimestamp: {date.today()}T00:00:00Z\n---\n\n# {rtitle}\n\n{rbody}\n")
         def do():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(fm)
@@ -159,7 +170,10 @@ def plan(item, vault):
         marker = f"<!-- promoted:{key} -->"
         if marker in t.read_text(errors="replace"):
             return ("skip", item["title"], None, "already merged (idempotent)")
-        add = f"\n- **{date.today()} ({redact(item['title'])}):** {redact(item['body'])} {marker}\n"
+        msrc = redact(f.get("Source", "")).strip()
+        mtail = f" _(source: {msrc})_" if msrc else ""
+        add = (f"\n- **{date.today()} ({redact(item['title'])}):** "
+               f"{_strip_summary(redact(item['body']))}{mtail} {marker}\n")
         def do():
             t.write_text(t.read_text(errors="replace").rstrip() + "\n" + add)
         return ("merge", f"-> {tgt}", do, "")
@@ -302,7 +316,7 @@ def selfcheck():
             "# Draft\n\n"
             f"## Move a doc\nAction: move\nFile: {paths.RAW_INBOX}/doc.pdf\nTarget: {paths.WIKI}\n\n"
             f"## A new concept\nAction: create\nTarget: {paths.CONCEPTS}\nThe body.\nSource: journal\n\n"
-            f"## Update Orbit\nAction: merge\nMerge-into: {paths.PROJECTS}/orbit.md\nNear: {paths.PROJECTS}/orbit.md (0.5)\nmigrated to dev\n\n"
+            f"## Update Orbit\nAction: merge\nMerge-into: {paths.PROJECTS}/orbit.md\nNear: {paths.PROJECTS}/orbit.md (0.5)\nSource: slack · C123 · 2026-09-17\nSummary: migrated to dev\n\n"
             "## Noise\nsome summary with no action\n"
         )
         run(draft, v, apply=True)
@@ -312,6 +326,11 @@ def selfcheck():
         merged = (v / f"{paths.PROJECTS}/orbit.md").read_text()
         assert "migrated to dev" in merged, "merge failed"
         assert "Near:" not in merged, "Near: leaked into merged body"
+        assert "Summary:" not in merged, "Summary: prefix leaked into merged body"
+        # provenance must survive the apply step, or a note is an unverifiable assertion
+        assert "slack \u00b7 C123" in merged, "merge dropped Source"
+        created = (v / f"{paths.CONCEPTS}/a-new-concept.md").read_text()
+        assert 'source: "journal"' in created, "create dropped Source"
         assert list((v / paths.RAW_INBOX).iterdir()) == [], "skip leaked"
 
         # idempotency: re-applying the same draft must be a no-op (no double-merge bullet)

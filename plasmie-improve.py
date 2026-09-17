@@ -249,7 +249,6 @@ def link_related(vault, write=True, threshold=RELATED_AT, k=RELATED_K):
     import dedupe
     vroot = Path(vault)
     corpus, idf = dedupe.build_corpus(vroot)
-    by_path = {e["path"]: e for e in corpus}
     linked = 0
     for e in corpus:
         p = vroot / e["path"]
@@ -271,6 +270,69 @@ def link_related(vault, write=True, threshold=RELATED_AT, k=RELATED_K):
             p.write_text(text + block)
         linked += 1
     return linked
+
+
+# --- tags: the taxonomy that replaces folders --------------------------------
+# 52% of notes had no tags at all and 132 of 220 tags were used exactly once, so
+# tags clustered nothing. They have to carry the structure before folders can stop
+# carrying it, or a collapse just loses the categorisation.
+FOLDER_TAG = {"concepts": "concept", "tech": "tech", "projects": "project",
+              "people": "person", "areas": "area", "security": "security",
+              "how-tos": "how-to", "clippings": "clipping"}
+VOCAB_MIN = 3        # a tag earns a place in the vocabulary at 3 uses
+# structural tags come from folder/type, never from matching words in the body
+_NOT_CONTENT = {"reference", "gotcha", "person", "project", "tech", "domain",
+                "process", "note", "concept", "area", "how-to", "clipping", "work"}
+
+
+def _tags_of(text):
+    m = re.search(r"(?m)^tags:\s*\[(.*?)\]", text)
+    if not m or not m.group(1).strip():
+        return []
+    return [t.strip().strip("\"'") for t in m.group(1).split(",") if t.strip().strip("\"'")]
+
+
+def normalize_tags(vault, write=True):
+    """Give every note a folder tag plus any vocabulary topics its text supports.
+
+    Runs before any folder restructuring on purpose: the folder a note sits in is
+    real curation, and once it becomes a tag the folder is free to go. Only tags
+    already used VOCAB_MIN times are matched, so this consolidates the vocabulary
+    instead of inventing more singletons. Idempotent.
+    """
+    vroot = Path(vault)
+    notes = [p for p in (vroot / "wiki").rglob("*.md")
+             if p.name != "index.md" and paths.MOCS not in p.as_posix()]
+    counts = {}
+    for p in notes:
+        for t in _tags_of(p.read_text(errors="replace")):
+            counts[t] = counts.get(t, 0) + 1
+    vocab = [t for t, n in counts.items() if n >= VOCAB_MIN and t not in _NOT_CONTENT]
+    changed = 0
+    for p in notes:
+        text = p.read_text(errors="replace")
+        have = set(_tags_of(text))
+        want = set(have)
+        rel = p.relative_to(vroot / "wiki").parts
+        if rel[:-1]:
+            want.add(FOLDER_TAG.get(rel[0], rel[0]))
+        hay = " ".join(_REL.sub("", text).lower().split())
+        for t in vocab:
+            if re.search(rf"(?<![a-z0-9-]){re.escape(t)}(?![a-z0-9-])", hay):
+                want.add(t)
+        if want == have:
+            continue
+        new = "tags: [" + ", ".join(sorted(want)) + "]"
+        if re.search(r"(?m)^tags:.*$", text):
+            text = re.sub(r"(?m)^tags:.*$", new, text, count=1)
+        elif re.search(r"(?m)^timestamp:.*$", text):
+            text = re.sub(r"(?m)^(timestamp:.*)$", new + r"\n\1", text, count=1)
+        else:
+            continue     # no frontmatter to write into; don't report a phantom change
+        changed += 1
+        if write:
+            p.write_text(text)
+    return changed
 
 
 MERGE_PROPOSE_AT = 0.45   # dedupe's own merge bar; below this nothing is a duplicate
@@ -370,15 +432,16 @@ def retire_stale(vault, write=True, days=RETIRE_AFTER_DAYS):
     if span < USAGE_EVIDENCE_DAYS:
         return []          # dormant by design — not enough evidence to call anything dead
 
-    notes = list((vroot / "wiki").rglob("*.md"))
+    notes = [p for p in (vroot / "wiki").rglob("*.md")
+             if paths.MOCS not in p.as_posix()]
     inbound = {p: 0 for p in notes}
     by_name = {}
     for p in notes:
         by_name.setdefault(p.stem.lower(), []).append(p)
     for p in notes:
         hand = _REL.sub("", p.read_text(errors="replace"))   # generated links don't count
-        for l in re.findall(r"\[\[([^\]|#]+)", hand):
-            for t in by_name.get(l.strip().lower().removesuffix(".md"), []):
+        for link in re.findall(r"\[\[([^\]|#]+)", hand):
+            for t in by_name.get(link.strip().lower().removesuffix(".md"), []):
                 inbound[t] += 1
 
     cutoff = date.today() - timedelta(days=days)
@@ -403,7 +466,9 @@ def retire_stale(vault, write=True, days=RETIRE_AFTER_DAYS):
 
 def run(vault="~/knowledge", write=True):
     vault = str(Path(vault).expanduser())
-    total, sections, dead = reindex.catalog(vault, write=write)
+    tagged = normalize_tags(vault, write=write)        # tags carry structure, so folders need not
+    maps = reindex.mocs(vault, write=write)
+    total, sections, dead = reindex.catalog(vault, write=write, maps=maps)
     moved = archive_resolved(vault, write=write)
     pruned = prune_raw(vault, write=write)
     closed = resolve_gaps(vault, write=write)
@@ -434,7 +499,8 @@ def run(vault="~/knowledge", write=True):
                         pruned[:25])
 
     line = (f"{total} wiki notes · {len(dead)} dead links · {len(moved)} archived · "
-            f"{len(pruned)} pruned · {linked} linked · {len(retired)} retired · {gaps} coverage gaps"
+            f"{len(pruned)} pruned · {linked} linked · {len(maps)} maps · "
+            f"{tagged} retagged · {len(retired)} retired · {gaps} coverage gaps"
             + (f" ({len(closed)} closed)" if closed else "")
             + (" · (dry)" if not write else ""))
     print(line)

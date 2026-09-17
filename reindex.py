@@ -57,7 +57,54 @@ def _href(rel):
     return rel.replace(" ", "%20")
 
 
-def catalog(vault, write=True):
+MOC_MIN = 4          # a tag earns a map of content once 4 notes share it
+
+
+def _tags(text):
+    m = re.search(r"(?m)^tags:\s*\[(.*?)\]", text)
+    return [x.strip().strip("\"'") for x in m.group(1).split(",") if x.strip()] if m else []
+
+
+def mocs(vault, write=True, minimum=MOC_MIN):
+    """Generate one map-of-content per tag — the finding aid index.md never was.
+
+    A 353-line alphabetical list of every note is a card catalogue: it tells you
+    a note exists but never which notes belong together. `moc` was declared in the
+    vault contract and never used; this is what it was for. Fully generated, so
+    wiki/mocs/ is disposable — delete it and the next pass rebuilds it.
+    """
+    vault = Path(vault).expanduser()
+    groups = {}
+    for p in sorted((vault / paths.WIKI).rglob("*.md")):
+        if p.name == "index.md" or paths.MOCS in p.as_posix():
+            continue
+        text = read_text(p)
+        fm = frontmatter(text)
+        for t in _tags(text):
+            # [[basename|Title]]: a MOC lives in wiki/mocs/, so a vault-relative
+            # markdown link from inside it would resolve to wiki/mocs/wiki/...
+            # Wikilinks resolve by basename from anywhere and survive file moves.
+            groups.setdefault(t, []).append(
+                (fm.get("title") or p.stem, fm.get("description", ""), p.stem))
+    keep = {t: rows for t, rows in groups.items() if len(rows) >= minimum}
+    out = vault / paths.MOCS
+    if write:
+        out.mkdir(parents=True, exist_ok=True)
+        for stale in out.glob("*.md"):      # generated: drop maps whose tag fell away
+            if stale.stem not in keep:
+                stale.unlink()
+        for t, rows in keep.items():
+            body = "\n".join(f"* [[{lk}|{ti}]]" + (f" — {d}" if d else "")
+                              for ti, d, lk in sorted(rows))
+            (out / f"{t}.md").write_text(
+                f"---\ntype: moc\ntitle: \"{t}\"\n"
+                f"description: \"Every note tagged {t} ({len(rows)}).\"\n"
+                f"tags: [moc]\ntimestamp: {time.strftime('%Y-%m-%d')}T00:00:00Z\n---\n\n"
+                f"# {t}\n\n_Generated map of content — {len(rows)} notes._\n\n{body}\n")
+    return keep
+
+
+def catalog(vault, write=True, maps=None):
     vault = Path(vault).expanduser()
     sections, total, known = [], 0, set()
     all_md = list(vault.rglob("*.md"))
@@ -67,7 +114,8 @@ def catalog(vault, write=True):
         d = vault / rel
         if not d.exists():
             continue
-        files = sorted((p for p in d.rglob("*.md") if p.name != "index.md"),
+        files = sorted((p for p in d.rglob("*.md")
+                        if p.name != "index.md" and paths.MOCS not in p.as_posix()),
                        key=lambda p: p.name.lower())
         if not files:
             continue
@@ -104,6 +152,14 @@ def catalog(vault, write=True):
         "",
     ]
     body = []
+    if maps:
+        # A flat list of every note tells you a note exists, never which notes
+        # belong together. The maps are the finding aid; the catalogue follows.
+        body.append(f"## Maps of content ({len(maps)})")
+        body.append("")
+        body += [f"* [{t}]({_href(paths.MOCS + '/' + t + '.md')}) — {len(rows)} notes"
+                 for t, rows in sorted(maps.items(), key=lambda x: (-len(x[1]), x[0]))]
+        body.append("")
     for label, n, rows in sections:
         body.append(f"## {label} ({n})")
         body += rows

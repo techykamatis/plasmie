@@ -50,6 +50,8 @@ LOG = "log.md"
 # wiki categories to catalog, in display order: (relpath, human label).
 # This list IS the whitelist of legal promotion targets (see promote-apply.py) —
 # a category missing here is invisible to index.md AND unwritable by the loop.
+MOCS = "wiki/mocs"          # generated per-tag maps of content; not hand-authored notes
+
 WIKI_CATEGORIES = [
     (CONCEPTS, "Concepts"),
     (PEOPLE, "People"),

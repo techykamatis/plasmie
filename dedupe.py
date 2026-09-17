@@ -66,8 +66,8 @@ def build_corpus(vault):
     docs = []
     for d in CORPUS_DIRS:
         for p in sorted((vault / d).rglob("*.md")):
-            if p.name == "index.md":
-                continue
+            if p.name == "index.md" or paths.MOCS in p.as_posix():
+                continue                      # generated maps, not authored notes
             raw = p.read_text(errors="replace")
             fm = frontmatter(raw)
             # ponytail: fall back to the body when description is missing. Loop-written notes

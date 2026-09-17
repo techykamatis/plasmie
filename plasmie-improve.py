@@ -230,12 +230,56 @@ def _audit(msg):
         pass                                   # never let bookkeeping break the pass
 
 
+# --- synthesis: the stage between "promoted" and "knowledge" -----------------
+# 66% of notes had no inbound link and 59% none at all — 0.83 links/note against a
+# contract that says "link liberally". Meanwhile dedupe computes each note's
+# nearest neighbours for every promotion and throws them away. This spends them.
+RELATED_AT = 0.15     # below this TF-IDF pairs are noise (person notes match anything)
+RELATED_K = 4        # cap only; RELATED_AT is the quality gate
+_REL = re.compile(r"\n*<!-- related:start -->.*?<!-- related:end -->\n*", re.S)
+
+
+def link_related(vault, write=True, threshold=RELATED_AT, k=RELATED_K):
+    """Give every note wikilinks to its nearest neighbours, in a regenerable block.
+
+    Delimited by markers so a re-run replaces exactly its own output and can never
+    eat hand-written text. Idempotent, so it's safe on every pass. Links are
+    [[basename]], which Obsidian resolves by name — they survive file moves.
+    """
+    import dedupe
+    vroot = Path(vault)
+    corpus, idf = dedupe.build_corpus(vroot)
+    by_path = {e["path"]: e for e in corpus}
+    linked = 0
+    for e in corpus:
+        p = vroot / e["path"]
+        if p.name == "index.md" or not p.exists():
+            continue
+        q = f"{e['title']} " + " ".join(e["toks"])
+        near = [n for n in dedupe.nearest(q, corpus, idf, k + 2)
+                if n[1]["path"] != e["path"] and n[0] >= threshold][:k]
+        text = _REL.sub("\n", p.read_text(errors="replace")).rstrip()
+        if not near:
+            if write:
+                p.write_text(text + "\n")
+            continue
+        names = [Path(n[1]["path"]).stem for n in near]
+        block = ("\n\n<!-- related:start -->\n## Related\n"
+                 + "".join(f"- [[{n}]]\n" for n in names)
+                 + "<!-- related:end -->\n")
+        if write:
+            p.write_text(text + block)
+        linked += 1
+    return linked
+
+
 def run(vault="~/knowledge", write=True):
     vault = str(Path(vault).expanduser())
     total, sections, dead = reindex.catalog(vault, write=write)
     moved = archive_resolved(vault, write=write)
     pruned = prune_raw(vault, write=write)
     closed = resolve_gaps(vault, write=write)
+    linked = link_related(vault, write=write)
     gaps = count_gaps(vault)
 
     # Memory + audit log record vault-changing events only; the count is context.
@@ -256,7 +300,7 @@ def run(vault="~/knowledge", write=True):
                         pruned[:25])
 
     line = (f"{total} wiki notes · {len(dead)} dead links · {len(moved)} archived · "
-            f"{len(pruned)} pruned · {gaps} coverage gaps"
+            f"{len(pruned)} pruned · {linked} linked · {gaps} coverage gaps"
             + (f" ({len(closed)} closed)" if closed else "")
             + (" · (dry)" if not write else ""))
     print(line)

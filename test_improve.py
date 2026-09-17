@@ -100,3 +100,48 @@ def test_run_writes_a_timestamped_heartbeat(tmp_path, monkeypatch):
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+# --- synthesis: related-note linking ----------------------------------------
+
+def _note(p, title, body):
+    p.write_text(f'---\ntype: note\ntitle: "{title}"\ndescription: "{body}"\ntags: []\n---\n\n# {title}\n\n{body}\n')
+
+
+def test_related_block_is_added_and_is_idempotent(tmp_path):
+    """0.83 links/note was the core defect; a re-run must not stack duplicate blocks."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("kli", "plasmie-improve.py")
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    c = tmp_path / "wiki" / "concepts"; c.mkdir(parents=True)
+    _note(c / "a.md", "Postgres pool exhaustion", "postgres connection pool exhausted under load")
+    _note(c / "b.md", "Postgres pool tuning", "tuning the postgres connection pool size under load")
+    m.link_related(tmp_path, write=True, threshold=0.05)
+    first = (c / "a.md").read_text()
+    assert "[[b]]" in first and first.count("<!-- related:start -->") == 1
+    m.link_related(tmp_path, write=True, threshold=0.05)
+    assert (c / "a.md").read_text() == first, "re-run must be idempotent"
+
+
+def test_unrelated_notes_get_no_links(tmp_path):
+    """A link that means nothing is worse than no link — the threshold must bite."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("kli", "plasmie-improve.py")
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    c = tmp_path / "wiki" / "concepts"; c.mkdir(parents=True)
+    _note(c / "a.md", "Postgres pooling", "database connection pool sizing")
+    _note(c / "b.md", "Office coffee rota", "who buys the milk on thursdays")
+    m.link_related(tmp_path, write=True, threshold=0.15)
+    assert "<!-- related:start -->" not in (c / "a.md").read_text()
+
+
+def test_related_block_never_eats_handwritten_text(tmp_path):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("kli", "plasmie-improve.py")
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    c = tmp_path / "wiki" / "concepts"; c.mkdir(parents=True)
+    _note(c / "a.md", "Postgres pool exhaustion", "postgres connection pool exhausted under load")
+    _note(c / "b.md", "Postgres pool tuning", "tuning the postgres connection pool size under load")
+    m.link_related(tmp_path, write=True, threshold=0.05)
+    m.link_related(tmp_path, write=True, threshold=0.05)
+    assert "postgres connection pool exhausted under load" in (c / "a.md").read_text()

@@ -157,6 +157,20 @@ def check_claude():
     return _result(True, True, f"{n} session file(s) on disk. Always on — no setup needed.")
 
 
+def check_agentcli():
+    db = os.path.expanduser(os.environ.get("PLASMIE_AGENTCLI_DB", "~/.agentcli/cli/db/db.sqlite"))
+    if not os.path.exists(db):
+        return _result(False, None, "No AgentCLI session database found.", "Install AgentCLI and run a session.")
+    import sqlite3
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5)
+        n = con.execute("select count(*) from session where parent_id is null").fetchone()[0]
+        con.close()
+    except sqlite3.Error as e:
+        return _result(True, False, f"Can't read the session database: {e}")
+    return _result(True, True, f"{n} session(s) on disk. Always on — no setup needed.")
+
+
 def check_git():
     """Local clones — no network, no token. The failure mode is not auth but
     "pointed at the wrong folder", so report what it can actually see."""
@@ -195,6 +209,7 @@ CHECKS = {
     "github": check_github,
     "outlook": check_outlook,
     "claude": check_claude,
+    "agentcli": check_agentcli,
     "git": check_git,
 }
 
@@ -203,7 +218,7 @@ CHECKS = {
 # written to kill. So also ask: when did this source last actually land a file?
 RAW_DIR = {
     "slack": "raw/slack", "confluence": "raw/confluence", "github": "raw/github",
-    "outlook": "raw/outlook", "claude": "raw/claude", "git": "raw/git",
+    "outlook": "raw/outlook", "claude": "raw/claude", "agentcli": "raw/claude", "git": "raw/git",
 }
 STALE_AFTER_DAYS = int(os.environ.get("PLASMIE_STALE_AFTER_DAYS", "7"))
 

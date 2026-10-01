@@ -400,6 +400,44 @@ for f in updated[:40]:
     for s in tail_texts(f):
         sess_lines.append(f"- {s}")
 
+# ---- AgentCLI sessions ----
+# Same shape as Claude sessions, but AgentCLI (OpenCode-style) keeps them in
+# SQLite, not jsonl. Shares the "claude" watermark and raw file: they're the same
+# kind of record, just another harness. Read-only open; skips subagent/side-chat
+# sessions (parent_id set), like glob("*/*.jsonl") skips Claude's subagents.
+agentcli_sids, agentcli_err = [], None
+AGENTCLI_DB = os.path.expanduser(os.environ.get("PLASMIE_AGENTCLI_DB", "~/.agentcli/cli/db/db.sqlite"))
+if os.path.exists(AGENTCLI_DB):
+    import sqlite3
+    try:
+        _db = sqlite3.connect(f"file:{AGENTCLI_DB}?mode=ro", uri=True, timeout=5)
+        _rows = _db.execute(
+            "select id, directory, time_updated from session where parent_id is null"
+            " and time_updated > ? and time_updated <= ? order by time_updated desc",
+            (SRC_MARK["claude"] * 1000, UNTIL * 1000)).fetchall()
+        for sid, d, tu in _rows:
+            proj = "agentcli:" + (os.path.basename(d.rstrip("/")) or "home")
+            proj_counts[proj] = proj_counts.get(proj, 0) + 1
+            agentcli_sids.append(sid)
+            if len(agentcli_sids) > 40:  # same cap as the Claude loop above
+                continue
+            texts = _db.execute(
+                "select json_extract(m.data,'$.role'), json_extract(p.data,'$.text')"
+                " from part p join message m on m.id = p.message_id"
+                " where p.session_id = ? and json_extract(p.data,'$.type') = 'text'"
+                " and coalesce(json_extract(m.data,'$.synthetic'), 0) = 0"
+                " and coalesce(json_extract(p.data,'$.synthetic'), 0) = 0"
+                " order by p.time_created desc limit 2", (sid,)).fetchall()
+            mt = datetime.datetime.fromtimestamp(tu / 1000).strftime("%H:%M")
+            sess_lines.append(f"\n**{proj}** · `{sid[5:13]}` · updated {mt}")
+            for role, t in reversed(texts):
+                t = redact(" ".join((t or "").split()))[:240]
+                if t:
+                    sess_lines.append(f"- {role}: {t}")
+        _db.close()
+    except sqlite3.Error as e:
+        agentcli_err = str(e)
+
 # ---- local git commits ----
 # The CHANGE layer, finer-grained than the GitHub connector's PR/issue records:
 # measured 139 commits in 30 days against 82 PR/issue items in a month, and 2 of
@@ -513,6 +551,7 @@ if git_lines:
 # content is mirrored by the backfill), so they log here, not as raw docs.
 summary = (f"slack {len(slack_counts)} convo / {sum(n for _, n in slack_counts)} msg"
            f" · sessions {len(updated)} file(s)"
+           + (f" · agentcli {len(agentcli_sids)} session(s)" if agentcli_sids else "")
            + (f" · confluence {conf_count} page(s)" if conf_count else "")
            + (f" · outlook {sum(n for _, n in mail_counts)} mail" if mail_counts else "")
            + (f" · github {sum(n for _, n in gh_counts)} item(s)" if gh_counts else ""))
@@ -607,12 +646,14 @@ github_seg = f" · github {ghn} item(s)" if (gh_counts or gh_err) else ""
 gitn = sum(n for _, n in git_counts)
 # dropped count is on the line on purpose: a filter nobody can see is a filter
 # nobody will notice has gone wrong.
+agentcli_seg = f" · agentcli {len(agentcli_sids)} session(s)" if (agentcli_sids or agentcli_err) else ""
 git_seg = (f" · git {gitn} commit(s)" + (f" ({git_dropped} filtered)" if git_dropped else "")) if (git_counts or git_err) else ""
-print(f"SUMMARY: slack {len(slack_counts)} convos / {msgs} msgs{outlook_seg}{github_seg}{git_seg} · confluence {conf_count} pages · sessions {len(updated)} files · raw {len(written)} file(s)"
+print(f"SUMMARY: slack {len(slack_counts)} convos / {msgs} msgs{outlook_seg}{github_seg}{git_seg}{agentcli_seg} · confluence {conf_count} pages · sessions {len(updated)} files · raw {len(written)} file(s)"
       + (f" · SLACK-ERR {slack_err}" if slack_err else "")
       + (f" · MS-ERR {ms_err}" if ms_err else "")
       + (f" · GH-ERR {gh_err}" if gh_err else "")
       + (f" · GIT-ERR {git_err}" if git_err else "")
+      + (f" · AGENTCLI-ERR {agentcli_err}" if agentcli_err else "")
       + (f" · CONF-ERR {conf_err}" if conf_err else "")
       + (f" · TRUNC-ERR hit PLASMIE_MAX_PAGES on {','.join(sorted(set(truncated)))}"
          f" — window too large, material may be unread" if truncated else ""))

@@ -1013,6 +1013,8 @@ struct Connector: Identifiable {
                   ageKey: "outlook", errCode: "MAIL", blurb: "Mail and calendar."),
         Connector(id: "claude", name: "Claude Code sessions", symbol: "terminal.fill",
                   ageKey: "sessions", errCode: "", blurb: "What you worked on, from local session logs."),
+        Connector(id: "agentcli", name: "AgentCLI sessions", symbol: "terminal",
+                  ageKey: "agentcli", errCode: "AGENTCLI", blurb: "What you worked on in AgentCLI, from its local session database."),
     ]
 }
 

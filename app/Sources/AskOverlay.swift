@@ -264,7 +264,10 @@ struct AskOverlay: View {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty, !busy else { return }
         busy = true; answer = ""; status = ""; answerHeight = 0; gapLogged = false
-        runStreaming("/usr/bin/python3", ["\(loop)/ask.py", q, vault],
+        // The venv holds apple_fm_sdk (on-device answers); system python can't import it.
+        let venvPy = "\(loop)/.venv/bin/python3"
+        let py = FileManager.default.fileExists(atPath: venvPy) ? venvPy : "/usr/bin/python3"
+        runStreaming(py, ["\(loop)/ask.py", q, vault],
                      onStatus: { status = $0; if $0.contains("coverage gap") { gapLogged = true } },
                      onChunk: { answer = $0 },
                      onDone: { busy = false; answer = answer.trimmingCharacters(in: .whitespacesAndNewlines); announceDone() })

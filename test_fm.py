@@ -356,3 +356,18 @@ def test_generate_none_on_timeout_busy_and_empty(monkeypatch):
     monkeypatch.setattr(fm, "_guard_ok", lambda: False)
     assert fm.generate("p") is None
     assert fm.generate("   ") is None
+
+
+def test_generate_guard_false_skips_the_background_guard(monkeypatch):
+    """Interactive asks must not be refused by the busy/hot guard."""
+    monkeypatch.setattr(fm, "_guard_ok", lambda: False)
+    monkeypatch.setitem(sys.modules, "apple_fm_sdk", _general_sdk("answer"))
+    assert fm.generate("p") is None
+    assert fm.generate("p", guard=False) == "answer"
+
+
+def test_context_size_reads_live_value(monkeypatch):
+    monkeypatch.setitem(sys.modules, "apple_fm_sdk", _fake_sdk(True, context_size=4096))
+    assert fm.context_size() == 4096
+    monkeypatch.setitem(sys.modules, "apple_fm_sdk", _fake_sdk(False, _Reason("MODEL_NOT_READY")))
+    assert fm.context_size() is None

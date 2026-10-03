@@ -324,8 +324,21 @@ def tag(text: str, max_tags: int = 8,
     return tags
 
 
+def context_size() -> Optional[int]:
+    """Live context window in tokens (None when the model isn't usable).
+
+    Read per call, never hardcoded: Apple documents 4096 and macOS 27 measured
+    8192, so callers that budget prompts must ask the OS.
+    """
+    try:
+        return probe().get("context_size")
+    except Exception:
+        return None
+
+
 def generate(prompt: str, timeout: Optional[float] = None,
-             max_tokens: int = 1024, on_chunk=None) -> Optional[str]:
+             max_tokens: int = 1024, on_chunk=None,
+             guard: bool = True) -> Optional[str]:
     """Free-text answer from the GENERAL on-device model, or None to fall back.
 
     Same contract as tag(): guard first, hard timeout, every outcome audited,
@@ -340,13 +353,17 @@ def generate(prompt: str, timeout: Optional[float] = None,
     Greedy sampling: the same input gives the same digest, so a regenerated
     rollup only changes when the activity did, and A/B runs are reproducible.
 
+    guard=False skips the thermal/load/RAM guard. That guard exists for
+    unattended background jobs; an interactive ask has a person waiting, and a
+    "busy" None would trigger the 5 GB Gemma load — the opposite of the point.
+
     on_chunk(delta) streams. The SDK yields cumulative snapshots, not deltas
     (measured: '1,2' -> '1,2,3,4,5,'), so the delta is the new suffix.
     """
     if not prompt or not prompt.strip():
         return None
     timeout = _default_timeout() if timeout is None else timeout
-    if not _guard_ok():
+    if guard and not _guard_ok():
         _audit("generate skip: machine busy/hot (guard)")
         return None
     try:

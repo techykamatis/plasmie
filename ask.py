@@ -2,22 +2,28 @@
 """Ask anything in the vault — local-only RAG over your notes.
 
 Retrieve the most relevant notes with **qmd** (vector search — measured best on
-this vault; see eval.py), then ask the local Gemma to answer using ONLY those
-notes and cite them. Streams
-straight from the mlx Gemma server (the same model summarize/promote use) over
-its OpenAI-compatible endpoint, token by token — no cloud, no new deps beyond the
-qmd CLI. If the server is down it's kicked up on demand; if it can't load, falls
-back to showing the matching notes so you still get an answer.
+this vault; see eval.py), then answer using ONLY those notes. Synthesis is
+on-device first: Apple's Foundation Model via fm.py (no model load, streams
+immediately). Only when that is unavailable, over its context window, or fails
+before producing anything does it fall back to the local Gemma over the mlx
+server's OpenAI-compatible endpoint (kicked up on demand). If neither can run, it
+falls back to showing the matching notes so you still get an answer.
+
+The model is never asked to cite: the UI shows the real retrieved Sources list
+(printed from retrieval, not from model output), and a model-written citation
+was the one thing FM fabricated in the A/B (docs/fm-baseline.md).
 
 qmd owns retrieval (see the vault's CLAUDE.md); ask.py owns the private
-local-Gemma synthesis and the promote/improve loops that depend on it. Retrieval
+synthesis and the promote/improve loops that depend on it. Retrieval
 is over the **wiki/** collection only — raw/ is immutable source material, not an
 answer source. If vector search can't run yet (models still downloading), it
 falls back to BM25 `qmd search`.
 
 Two output channels so a UI can show live progress:
   stdout = the answer text (streamed), then a "Sources:" list
-  stderr = staged status ("Searching your notes…", "Asking Gemma…")
+  stderr = staged status ("Searching your notes…", "Answering on-device…")
+
+PLASMIE_ASK_BACKEND=gemma forces the Gemma path (A/B runs).
 
 Usage:
   ask.py "how do I shrink RDS storage?" [VAULT]
@@ -35,6 +41,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+import fm
 import paths
 
 SELF = Path(__file__).resolve().parent
@@ -42,9 +49,18 @@ ENDPOINT = os.environ.get("PLASMIE_ENDPOINT", "http://127.0.0.1:8091")   # mlx G
 MODEL = os.environ.get("GEMMA_MODEL", str(SELF / "models/gemma-4-e4b"))
 TIMEOUT = 90          # seconds for the local model
 TOP_K = 4             # notes fed as context
-PER_NOTE = 2000       # chars of each note in the prompt
-JOURNAL_CHARS = 3000  # chars of each daily log in a recap prompt
+PER_NOTE = 4000       # ceiling on chars of one note (the real share is budget-driven)
+JOURNAL_CHARS = 6000  # ceiling on chars of one daily log in a recap prompt
 NUM_PREDICT = 600     # cap answer length so a runaway model can't hang the ask
+FM_TIMEOUT = 60       # seconds for the on-device model (a person is waiting)
+# Conservative: markdown, identifiers and paths tokenize worse than prose. Overshoot
+# makes fm.generate return None (-> Gemma); undershoot just trims a little more.
+CHARS_PER_TOKEN = 3.0
+TEMPLATE_TOKENS = 200  # chat-template/system overhead not counted in our text
+DEFAULT_CONTEXT = 8192  # when fm can't report one (Gemma has no tight window)
+DIGESTS = f"{paths.META}/digests"   # meta/digests/YYYY-MM-DD.md — short on-device rollups
+RECAP_CHARS = 12000   # recap prompts stay well under the window: prefill time scales with it
+LONG_WINDOW_DAYS = 2  # recaps spanning more days read digests, not raw logs
 
 def _find_qmd():
     """Resolve the qmd binary even under launchd's bare PATH (node lives in nvm)."""
@@ -172,16 +188,51 @@ def log_usage(vault, question, hits):
         pass          # usage stats are never worth failing an answer over
 
 
-def build_prompt(question, hits, weak=False):
-    ctx = "\n\n".join(
-        f"--- NOTE: {doc['path']} ---\n{doc['text'][:PER_NOTE]}" for _, doc in hits)
+RULES = """Rules:
+- State only what the notes explicitly say. Never upgrade a status: write merged, deployed, live, fixed or confirmed only if the notes say exactly that. A plan, request or attempt stays a plan, request or attempt.
+- Copy names, numbers and identifiers exactly as written. Never invent people, teams, links, file names, dates or follow-up work.
+- If the notes don't cover the question, say so plainly in one sentence instead of guessing. If they cover it only partly, answer that part and say what is missing.
+- Don't mention note numbers, file names or sources; the reader already sees them separately.
+- Be concise."""
+
+
+def prompt_char_budget(max_tokens=NUM_PREDICT, ctx=None):
+    """Chars available for the whole prompt: live context window minus the answer
+    reserve and template overhead, at a conservative chars/token."""
+    ctx = ctx or fm.context_size() or DEFAULT_CONTEXT
+    return max(1000, int((ctx - max_tokens - TEMPLATE_TOKENS) * CHARS_PER_TOKEN))
+
+
+def fair_shares(lengths, total):
+    """Split `total` chars across items by water-filling: short items keep all of
+    their text and the slack goes to the long ones — nobody is dropped."""
+    shares = [0] * len(lengths)
+    todo = sorted(range(len(lengths)), key=lambda i: lengths[i])
+    left = max(0, total)
+    for k, i in enumerate(todo):
+        share = left // (len(todo) - k)
+        shares[i] = min(lengths[i], share)
+        left -= shares[i]
+    return shares
+
+
+def build_prompt(question, hits, weak=False, budget_chars=None):
+    """Notes first, QUESTION LAST (fm.generate refuses to trim the tail), with the
+    notes trimmed fairly so the whole prompt fits `budget_chars`."""
     warn = ("These notes are only weakly related to the question — they may not "
             "answer it. If they don't, say the vault doesn't cover this yet rather "
             "than forcing an answer.\n\n") if weak else ""
-    return (
-        "Answer the question using ONLY the notes below. Cite the note path(s) you "
-        "used. If the notes don't contain the answer, say so plainly — do not guess.\n\n"
-        f"{warn}{ctx}\n\n=== QUESTION ===\n{question}\n\n=== ANSWER ===\n")
+    head = ("Answer the question using ONLY the notes below.\n"
+            f"{RULES}\n\n{warn}")
+    tail = f"\n\n=== QUESTION ===\n{question}\n\n=== ANSWER ===\n"
+    budget = prompt_char_budget() if budget_chars is None else budget_chars
+    labels = [f"--- NOTE {i}: {doc['title']} ---\n" for i, (_, doc) in enumerate(hits, 1)]
+    seps = 2 * max(0, len(hits) - 1)
+    room = budget - len(head) - len(tail) - sum(map(len, labels)) - seps
+    texts = [doc["text"] for _, doc in hits]
+    caps = fair_shares([min(len(t), PER_NOTE) for t in texts], room)
+    ctx = "\n\n".join(lab + t[:c] for lab, t, c in zip(labels, texts, caps))
+    return f"{head}{ctx}{tail}"
 
 
 def ensure_up():
@@ -195,7 +246,7 @@ def ensure_up():
         return True
     except (urllib.error.URLError, OSError):
         pass
-    _say("Starting the local model…")
+    _say("Starting the local model (Gemma)…")
     try:
         subprocess.run([str(SELF / "mlx-ctl.sh"), "up"], timeout=TIMEOUT, check=True)
         return True
@@ -234,6 +285,45 @@ def stream_model(prompt, on_chunk):
     return "".join(parts).strip()
 
 
+def fm_answer(prompt, on_chunk):
+    """Stream the on-device answer. Returns the text, or None if FM produced nothing.
+
+    Once any text has streamed the user has seen it, so a late FM failure (timeout,
+    refusal) must NOT start a second, different answer from Gemma on top of it:
+    keep what streamed and say it was cut short.
+    """
+    streamed = []
+
+    def tap(t):
+        streamed.append(t)
+        on_chunk(t)
+
+    _say("Answering on-device…")
+    out = fm.generate(prompt, max_tokens=NUM_PREDICT, on_chunk=tap,
+                      timeout=FM_TIMEOUT, guard=False)
+    if out is not None:
+        return out
+    partial = "".join(streamed).strip()
+    if not partial:
+        return None
+    notice = "\n\n(The on-device answer was cut short.)"
+    on_chunk(notice)
+    return partial + notice
+
+
+def synthesize(prompt, on_chunk):
+    """FM first, Gemma only if FM produced nothing. "" when neither could answer."""
+    if os.environ.get("PLASMIE_ASK_BACKEND", "").lower() != "gemma":
+        out = fm_answer(prompt, on_chunk)
+        if out is not None:
+            return out
+        _say("On-device model unavailable — falling back to local Gemma.")
+    if not ensure_up():
+        return ""
+    _say("Asking Gemma…")
+    return stream_model(prompt, on_chunk)
+
+
 def detect_window(query, today=None):
     """Map a temporal question to (label, [YYYY-MM-DD,...]); None if not temporal.
 
@@ -259,36 +349,65 @@ def detect_window(query, today=None):
         return "this week", span(mon, today)
     if re.search(r"\b(recently|lately|past few days|last few days|past week)\b", q):
         return "the past week", span(today - day * 6, today)
+    # "what's new / any new changes / latest updates / what changed" -> a recent
+    # window. Not when a topic follows ("what changed in the RDS upgrade") — that
+    # is a retrieval question, and hijacking it to the logs would be worse.
+    nt = r"(?![\w\s]*\b(?:in|to|on|for|about|with|of|from|regarding|around)\b)"
+    if (re.search(r"\b(?:any|anything|something)\s+(?:new|recent)\b" + nt, q)
+            or re.search(r"\bwhat(?:'s|s| is| has| have)?\s+(?:new|changed|been going on)\b" + nt, q)
+            or re.search(r"\b(?:new|latest|recent)\s+(?:changes|updates|activity|news|developments)\b" + nt, q)
+            or re.search(r"\bcatch me up\b", q)):
+        return "the last two days", span(today - day, today)
     return None
 
 
-def recap_journal(question, vault, window, on_chunk, done, unavailable):
-    """Answer a temporal question from the raw per-source logs. None if none in range."""
-    label, dates = window
+def recap_files(vault, dates):
+    """Files a recap reads. Short windows: raw per-source logs (falling back to that
+    day's digest if there are none). Long windows: the daily digests — already short
+    on-device rollups, where raw logs would be ~100 KB/day — with raw only for days
+    that have no digest yet."""
     vp = Path(vault).expanduser()
+    long_window = len(dates) > LONG_WINDOW_DAYS
     files = []
     for d in dates:
-        for sub in RECAP_DIRS:
-            f = vp / sub / f"{d}.md"
-            if f.exists():
-                files.append(f)
+        raw = [f for sub in RECAP_DIRS if (f := vp / sub / f"{d}.md").exists()]
+        dig = vp / DIGESTS / f"{d}.md"
+        if long_window:
+            files += [dig] if dig.exists() else raw
+        else:
+            files += raw or ([dig] if dig.exists() else [])
+    return files
+
+
+def build_recap_prompt(question, label, files, budget_chars=None):
+    head = (f"These are my work logs for {label}. Summarise concisely what I worked on "
+            "and what happened. Reply with at most 8 short bullets grouped by theme (not by "
+            "source file), merge duplicates, and skip chatter and empty sections.\n"
+            f"{RULES}\n\n")
+    tail = f"\n\n=== QUESTION ===\n{question}\n\n=== SUMMARY ===\n"
+    budget = min(prompt_char_budget(), RECAP_CHARS) if budget_chars is None else budget_chars
+    labels = [f"--- {f.parent.name}/{f.stem} ---\n" for f in files]
+    texts = [f.read_text(errors="replace") for f in files]
+    room = budget - len(head) - len(tail) - sum(map(len, labels)) - 2 * len(files)
+    caps = fair_shares([min(len(t), JOURNAL_CHARS) for t in texts], room)
+    ctx = "\n\n".join(lab + t[:c] for lab, t, c in zip(labels, texts, caps))
+    return f"{head}{ctx}{tail}"
+
+
+def recap_journal(question, vault, window, on_chunk, done, unavailable):
+    """Answer a temporal question from the logs/digests. None if none in range."""
+    label, dates = window
+    vp = Path(vault).expanduser()
+    files = recap_files(vault, dates)
     if not files:
         return None                                  # nothing logged → let retrieval try
     n = len(files)
-    _say(f"Reading raw logs — {label} ({n} file{'s' if n != 1 else ''})…")
-    ctx = "\n\n".join(f"--- {f.parent.name}/{f.stem} ---\n{f.read_text(errors='replace')[:JOURNAL_CHARS]}"
-                      for f in files)
-    prompt = (
-        f"These are my raw work logs for {label}. Summarise concisely what I worked on "
-        "and what happened — group by theme, skip empty/no-activity sections, don't "
-        "invent anything not in the notes.\n\n"
-        f"{ctx}\n\n=== QUESTION ===\n{question}\n\n=== SUMMARY ===\n")
+    kind = "digests" if len(dates) > LONG_WINDOW_DAYS else "logs"
+    _say(f"Reading {kind} — {label} ({n} file{'s' if n != 1 else ''})…")
+    prompt = build_recap_prompt(question, label, files)
     hits = [(None, {"path": str(f.relative_to(vp)), "title": f"{f.parent.name}/{f.stem}"})
             for f in files]
-    if not ensure_up():
-        return done(unavailable, hits)
-    _say("Asking Gemma…")
-    answer = stream_model(prompt, on_chunk)
+    answer = synthesize(prompt, on_chunk)
     if not answer:
         return done(unavailable, hits)
     return answer, hits
@@ -298,7 +417,7 @@ def ask(question, vault=None, on_chunk=None):
     """Retrieve, then stream an answer. on_chunk(text) receives answer tokens live."""
     vault = vault or paths.vault()
     on_chunk = on_chunk or (lambda _t: None)
-    unavailable = "(local model unavailable — showing the most relevant notes below)"
+    unavailable = "(couldn't generate an answer — showing the most relevant notes below)"
 
     def done(msg, hits):     # every answer path must emit the text, not just the stream
         on_chunk(msg)
@@ -327,21 +446,28 @@ def ask(question, vault=None, on_chunk=None):
     log_usage(vault, question, hits)
     titles = ", ".join(doc["title"] for _, doc in hits[:3])
     _say(f"Found {len(hits)} relevant notes: {titles}")
-    if not ensure_up():
-        return done(unavailable, hits)
-    _say("Asking Gemma…")
-    answer = stream_model(build_prompt(question, hits, weak=weak), on_chunk)
-    if not answer:  # model off/unreachable/timed out — fall back to the retrieved notes
+    answer = synthesize(build_prompt(question, hits, weak=weak), on_chunk)
+    if not answer:  # no model could answer — fall back to the retrieved notes
         return done(unavailable, hits)
     return answer, hits
 
 
 def selfcheck():
+    orig_gen = fm.generate
+    fm.generate = lambda *a, **k: None       # selfcheck exercises the Gemma path
+    try:
+        _selfcheck()
+    finally:
+        fm.generate = orig_gen
+    print("ask selfcheck OK")
+
+
+def _selfcheck():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         v = Path(d)
-        (v / paths.WIKI).mkdir(parents=True)
-        (v / paths.WIKI / "rds.md").write_text(
+        (v / paths.WIKI / "concepts").mkdir(parents=True)
+        (v / paths.WIKI / "concepts" / "rds.md").write_text(
             '---\ntitle: "RDS storage only grows"\n---\n'
             "RDS allocated storage cannot shrink in place; snapshot and restore smaller.")
 
@@ -370,7 +496,7 @@ def selfcheck():
             globals()["_run_qmd"] = orig
 
         assert "QUESTION" in build_prompt("q", [(0.5, {"path": "p", "title": "t", "text": "body"})])
-        assert "NOTE: p" in build_prompt("q", [(0.5, {"path": "p", "title": "t", "text": "body"})])
+        assert "NOTE 1: t" in build_prompt("q", [(0.5, {"path": "p", "title": "t", "text": "body"})])
 
         # coverage gap log: writes once, dedups the normalized question, records score+closest
         assert log_gap(str(v), "how do I bake bread?", 0.21, "rds.md") is True
@@ -422,7 +548,6 @@ def selfcheck():
                                  lambda _t: None, lambda m, h: (m, h), "NA") is None
         finally:
             urllib.request.urlopen = origu
-    print("ask selfcheck OK")
 
 
 if __name__ == "__main__":

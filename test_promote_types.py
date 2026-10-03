@@ -55,3 +55,13 @@ def test_folder_style_hint_still_lands_flat_with_its_kind(tmp_path):
 
 def test_unknown_hint_is_a_plain_note(tmp_path):
     assert _auto(tmp_path, "03 Resources")["type"] == "note"
+
+
+def test_untrusted_draft_cannot_create_files_outside_wiki(tmp_path):
+    """A model-written Target must not plant files in meta/, raw/ or the vault root."""
+    (tmp_path / "wiki").mkdir()
+    for bad in ("meta/promotion-drafts/2026-12-31.md", "raw/inbox/planted.md", "planted.md", "archive/x.md"):
+        verb, _, do, reason = PA.plan({"title": "t", "body": "b",
+                                       "fields": {"Action": "create", "Target": bad}}, tmp_path)
+        assert do is None and verb == "skip", bad
+    assert not any(p for p in tmp_path.rglob("*.md"))

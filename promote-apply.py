@@ -139,6 +139,11 @@ def plan(item, vault):
             return ("skip", item["title"], None, f"path escapes vault: {tgt}")
         # an explicit file stays explicit (and is never overwritten); a folder flattens into wiki/
         path = t if t.suffix else vroot / paths.WIKI / f"{slug(item['title'])}.md"
+        # the draft is untrusted: a created file may only ever land inside wiki/ — never in
+        # meta/ (a planted "draft"), raw/, archive/ or the vault root
+        wiki_root = (vroot / paths.WIKI).resolve()
+        if wiki_root not in path.resolve().parents:
+            return ("skip", item["title"], None, f"create target outside wiki/: {tgt}")
         if path.exists():
             return ("skip", item["title"], None, f"already exists: {path.relative_to(vroot)} (use merge?)")
         rtitle, rbody = redact(item["title"]), redact(item["body"])

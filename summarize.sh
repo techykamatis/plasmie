@@ -1,6 +1,6 @@
 #!/bin/bash
 # Hourly: condense today's raw activity (Slack + Claude sessions + Outlook) into a
-# few bullets via the LOCAL Gemma model. Text in / text out — no file tools, no
+# few bullets via the on-device Apple model (local Gemma fallback). Text in / text out — no file tools, no
 # Slack creds. Writes a rolling daily digest to meta/digests/YYYY-MM-DD.md,
 # regenerated each run so it's always current and idempotent (no marker needed).
 set -euo pipefail
@@ -29,7 +29,7 @@ $c"; break; }
   done
 done
 input="$(printf '%s' "$input" | tail -c 20000)"
-[ -n "${input// /}" ] || { echo "no raw activity today"; exit 0; }
+[[ "$input" == *[![:space:]]* ]] || { echo "no raw activity today"; exit 0; }
 
 # The digest is a rolling whole-day rollup, so it is regenerated rather than
 # appended. But regenerating identical input just burns local-LLM cycles and
@@ -44,17 +44,33 @@ if [ -f "$DIGEST" ] && [ -f "$STAMP" ] && [ "$hash" = "$(cat "$STAMP" 2>/dev/nul
   exit 0
 fi
 
-prompt="Condense this raw activity log into 4-8 terse markdown bullets: real decisions, blockers, and who/what changed. No preamble, no headings, bullets only.
+# Faithfulness rules: the bare prompt put an unsupported claim (a plan reported
+# as done, "merged"/"live" nobody said, an invented team) in 14/15 real digests;
+# these cut it to 3/15 and won blind 11-3 (docs/fm-baseline.md, 2026-09-30).
+prompt="Condense this raw activity log into 4-8 terse markdown bullets: real decisions, blockers, and who/what changed.
+Rules:
+- State only what the log explicitly says. Never upgrade a status: write merged, deployed, live, fixed or confirmed only if the log says exactly that. A request, plan or attempt stays a request, plan or attempt.
+- Copy names, PR numbers and identifiers exactly as written. Never invent people, teams, milestones or follow-up work.
+- If unsure, leave it out: fewer accurate bullets beat more guessed ones.
+No preamble, no headings, bullets only.
 
 $input"
 
 # gen.sh handles guard + on-demand load + hard timeout + free. Skips quietly if busy.
-out="$("$SELF/gen.sh" 200 "$prompt")" || { audit "skipped (busy or timed out)"; echo "summarize skipped — retries next hour"; exit 0; }
+# On-device Apple FM first: beat Gemma blind 9-6 on 15 real digests with equal
+# unsupported-claim counts (2026-09-30), and needs no 5GB model load. fm.generate
+# returns "" (-> Gemma) when unavailable, busy, over the context window, or slow.
+model="Apple on-device"
+out="$(printf '%s' "$prompt" | "$SELF/.venv/bin/python3" -c 'import sys; sys.path.insert(0, sys.argv[1]); import fm; print(fm.generate(sys.stdin.read(), timeout=90, max_tokens=800) or "", end="")' "$SELF" 2>>"$SELF/logs/gen.err")" || out=""
+if [ -z "$out" ]; then
+  model="Local-Gemma"
+  out="$("$SELF/gen.sh" 200 "$prompt")" || { audit "skipped (busy or timed out)"; echo "summarize skipped — retries next hour"; exit 0; }
+fi
 
 mkdir -p "$DIGEST_DIR"
-{ printf -- '---\ntype: note\ntitle: digest %s\ntags: [digest]\ntimestamp: %sT00:00:00Z\n---\n\n# Digest · %s\n_Local-Gemma rollup of the day'"'"'s raw activity. Regenerated when raw activity changes._\n\n%s\n' \
-    "$DAY" "$DAY" "$DAY" "$out"; } > "$DIGEST"
+{ printf -- '---\ntype: note\ntitle: digest %s\ntags: [digest]\ntimestamp: %sT00:00:00Z\n---\n\n# Digest · %s\n_%s rollup of the day'"'"'s raw activity. Regenerated when raw activity changes._\n\n%s\n' \
+    "$DAY" "$DAY" "$DAY" "$model" "$out"; } > "$DIGEST"
 printf '%s' "$hash" > "$STAMP"
 n=$(printf '%s\n' "$out" | grep -c . || true)
-audit "ok: wrote ${n}-line digest -> meta/digests/$DAY.md"
+audit "ok: wrote ${n}-line digest ($model) -> meta/digests/$DAY.md"
 echo "wrote digest ($n lines) -> $DIGEST"

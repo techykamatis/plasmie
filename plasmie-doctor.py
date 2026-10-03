@@ -157,6 +157,7 @@ def check_claude():
     return _result(True, True, f"{n} session file(s) on disk. Always on — no setup needed.")
 
 
+
 def check_agentcli():
     db = os.path.expanduser(os.environ.get("PLASMIE_AGENTCLI_DB", "~/.agentcli/cli/db/db.sqlite"))
     if not os.path.exists(db):
@@ -203,6 +204,33 @@ def check_git():
                                f"{recent} of your commits in the last 30 days.")
 
 
+def check_foundationmodels():
+    """Apple's on-device model — a capability, not a data source.
+
+    Reported here because the failure modes are indistinguishable from outside:
+    "no Xcode so the SDK never installed", "Apple Intelligence off" and "model
+    still downloading" all present as silence. `fm.py` owns the distinction.
+
+    Not-set-up reports ok=null (unknown, not broken) so the menu-bar app doesn't
+    paint a red error for a feature nobody enabled; only a Mac that genuinely
+    can't run it, or a probe that blew up, reports ok=false.
+    """
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    try:
+        import fm
+    except ImportError as e:
+        return _result(False, None, f"fm.py not importable: {e}")
+    p = fm.probe()
+    if p["available"] is True:
+        return _result(True, True, p["detail"])
+    # UNKNOWN means the SDK gave no reason — that is a fault, not "the user
+    # hasn't switched it on". Filing it under not-configured would be exactly
+    # the phantom-green this whole file exists to kill.
+    if p["reason"] in ("DEVICE_NOT_ELIGIBLE", "PROBE_FAILED", "UNKNOWN"):
+        return _result(True, False, p["detail"], p["hint"])
+    return _result(False, None, p["detail"], p["hint"])
+
+
 CHECKS = {
     "slack": check_slack,
     "confluence": check_confluence,
@@ -211,6 +239,7 @@ CHECKS = {
     "claude": check_claude,
     "agentcli": check_agentcli,
     "git": check_git,
+    "foundationmodels": check_foundationmodels,
 }
 
 # Reachable is not the same as arriving. Confluence sat green for 2.5 months while its
@@ -224,9 +253,16 @@ STALE_AFTER_DAYS = int(os.environ.get("PLASMIE_STALE_AFTER_DAYS", "7"))
 
 
 def _age_days(name):
-    """Days since this source last wrote a file into raw/, or None if it never has."""
+    """Days since this source last wrote a file into raw/, or None if it never has.
+
+    Not every check is a data source — a capability probe (foundationmodels) has
+    no raw/ dir, and an empty RAW_DIR lookup would glob the whole vault and
+    report unrelated activity as this check's freshness.
+    """
+    if name not in RAW_DIR:
+        return None
     vault = os.environ.get("VAULT_DIR") or f"{H}/knowledge"
-    d = os.path.join(os.path.expanduser(vault), RAW_DIR.get(name, ""))
+    d = os.path.join(os.path.expanduser(vault), RAW_DIR[name])
     newest = max((os.path.getmtime(f) for f in glob.iglob(d + "/**/*.md", recursive=True)),
                  default=None)
     return None if newest is None else (time.time() - newest) / 86400

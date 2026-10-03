@@ -1,0 +1,356 @@
+<title>Plasmie</title>
+<!--
+THESIS: A blob that takes any shape: Plasmie's silhouette IS the pipeline status. Refuses the static mascot-plus-mood-grid sheet.
+OWN-WORLD: Lavender blob, deep-indigo ink face, blush cheeks, on a lavender-tinted ground; rounded Baloo 2 display, Hanken Grotesk text; source dots as the only multicolour.
+STORY: Meet Plasmie, watch it change shape, learn each state and when it appears, see it in the menu bar, take the palette and type.
+FIRST VIEWPORT: Name and one-line thesis left, a large live Plasmie right that morphs through states; state chips under the name drive the morph.
+FORM: Category standard (soft blob) played straight, given its mechanism by the owner: shape-shifting. Seed key 83b79357.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Hanken+Grotesk:wght@400;500;600&display=swap">
+<style>
+/* Layout: an asymmetric hero (name left, live Plasmie right), then a sprite grid, a menu-bar strip, palette and type — one column of sections on a tinted ground. */
+:root {
+  --ground: #F3F0FD; --surface: #FBFAFF; --ink: #241B4D; --ink-2: #4B4380; --ink-3: #6E67A0;
+  --rule: #DCD6F5; --rule-strong: #BDB4EC; --accent: #241B4D; --accent-soft: #E6E0FB;
+  --body: #9C8CF2; --body-hi: #B8ADF7; --face: #241B4D; --blush: #F7A6C8; --off: #B9B5CC;
+  --sweat: #6EC5F0; --spark: #FFC94A;
+  --menubar: #ECEAF3; --menubar-ink: #1D1A26;
+  --display: "Baloo 2", "Arial Rounded MT Bold", ui-rounded, system-ui, sans-serif;
+  --text: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --ground: #15112A; --surface: #1D183A; --ink: #EDEAFF; --ink-2: #C4BEF0; --ink-3: #9C95CF;
+  --rule: #2E2760; --rule-strong: #463D85; --accent: #EDEAFF; --accent-soft: #2B2458;
+  --body: #A99BFF; --body-hi: #C7BEFF; --off: #8A86A3; --menubar: #2A2733; --menubar-ink: #F2F0F7; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --ground: #15112A; --surface: #1D183A; --ink: #EDEAFF; --ink-2: #C4BEF0; --ink-3: #9C95CF;
+  --rule: #2E2760; --rule-strong: #463D85; --accent: #EDEAFF; --accent-soft: #2B2458;
+  --body: #A99BFF; --body-hi: #C7BEFF; --off: #8A86A3; --menubar: #2A2733; --menubar-ink: #F2F0F7; color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { background: var(--ground); color: var(--ink); font: 400 16px/1.55 var(--text); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: clamp(16px, 4vw, 40px); padding-block: 24px 72px; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.02; margin: 0; text-wrap: balance; color: var(--ink); }
+h2 { font-size: clamp(1.7rem, 3.4vw, 2.4rem); font-weight: 800; }
+p { margin: 0; max-width: 62ch; color: var(--ink-2); }
+.eyebrow { font: 600 .74rem/1 var(--text); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+section { padding-block: clamp(48px, 8vw, 88px) 0; display: grid; gap: 18px; }
+
+/* hero */
+.hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: clamp(16px, 4vw, 48px); align-items: center; padding-block: clamp(32px, 6vw, 64px) 0; }
+.hero h1 { font-size: clamp(4.4rem, 13vw, 9.5rem); font-weight: 800; letter-spacing: -.02em; }
+.hero .lede { font-size: clamp(1.08rem, 1.7vw, 1.3rem); color: var(--ink-2); margin-top: 14px; max-width: 34ch; }
+.hero .descriptor { margin-top: 10px; font-size: .92rem; color: var(--ink-3); }
+.stage { position: relative; aspect-ratio: 1; width: min(100%, 460px); justify-self: center; }
+.stage svg { width: 100%; height: 100%; overflow: visible; }
+.caption { margin-top: 6px; text-align: center; font: 600 1rem/1.3 var(--display); color: var(--ink-2); min-height: 2.6em; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; }
+.chip { appearance: none; border: 1.5px solid var(--rule-strong); background: var(--surface); color: var(--ink);
+  font: 600 .88rem/1 var(--text); padding: 9px 13px; border-radius: 999px; cursor: pointer; transition: background .15s, border-color .15s; }
+.chip:hover { border-color: var(--ink-3); }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.chip:focus-visible, .theme button:focus-visible { outline: 3px solid var(--body); outline-offset: 2px; }
+
+/* sprite grid */
+.sprites { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 168px), 1fr)); gap: 14px; }
+.sprite { background: var(--surface); border: 1px solid var(--rule); border-radius: 18px; padding: 14px 16px 16px; display: grid; gap: 4px; min-width: 0; }
+.sprite svg { width: 100%; height: 132px; overflow: visible; }
+.sprite h3 { font-size: 1.28rem; font-weight: 700; }
+.sprite .when { font: 500 .74rem/1.3 var(--text); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.sprite p { font-size: .93rem; }
+
+/* menu bar */
+.bars { display: grid; gap: 12px; }
+.menubar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; background: var(--menubar); color: var(--menubar-ink);
+  border-radius: 10px; padding: 6px 12px; font: 500 13px/1 -apple-system, system-ui, sans-serif; }
+.menubar.dark { background: #2A2733; color: #F2F0F7; }
+.menubar.light { background: #ECEAF3; color: #1D1A26; }
+.menubar .slot { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; }
+.menubar .slot svg { width: 22px; height: 18px; }
+.menubar .slot span { font-size: 11px; opacity: .72; }
+.menubar .clock { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* palette + type */
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 140px), 1fr)); gap: 12px; }
+.swatch { border-radius: 16px; border: 1px solid var(--rule); background: var(--surface); overflow: hidden; }
+.swatch i { display: block; height: 76px; }
+.swatch div { padding: 10px 12px 12px; display: grid; gap: 2px; }
+.swatch b { font: 700 1rem/1.2 var(--display); color: var(--ink); }
+.swatch code { font: 500 .78rem/1.3 var(--mono); color: var(--ink-3); }
+.swatch small { font-size: .82rem; color: var(--ink-2); }
+.dots { display: flex; flex-wrap: wrap; gap: 10px 22px; }
+.dot { display: inline-flex; align-items: center; gap: 8px; font-size: .92rem; color: var(--ink-2); }
+.dot i { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+.type { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 14px; }
+.spec { background: var(--surface); border: 1px solid var(--rule); border-radius: 18px; padding: 18px 20px; display: grid; gap: 8px; min-width: 0; }
+.spec .big { font: 800 3.4rem/1 var(--display); color: var(--ink); }
+.spec .txt { font: 400 1.05rem/1.5 var(--text); color: var(--ink); }
+.names { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 14px; }
+.names div { border-top: 2px solid var(--rule-strong); padding-top: 12px; display: grid; gap: 4px; }
+.names b { font: 800 1.6rem/1 var(--display); }
+footer { margin-top: 72px; padding-top: 18px; border-top: 1px solid var(--rule); font-size: .86rem; color: var(--ink-3); }
+footer code { font: 500 .82rem var(--mono); }
+
+@media (max-width: 760px) {
+  .hero { grid-template-columns: minmax(0, 1fr); }
+  .stage { width: min(100%, 340px); order: -1; }
+}
+@media (prefers-reduced-motion: reduce) { .chip { transition: none; } }
+</style>
+
+<!--THEME_TOGGLE-->
+
+<main class="wrap">
+  <header class="hero">
+    <div>
+      <p class="eyebrow">Your private work memory</p>
+      <h1>Plasmie</h1>
+      <p class="lede">A soft little blob that keeps your work day, and changes shape to tell you what it's doing.</p>
+      <p class="descriptor">Formerly Plasmie. Everything stays on this Mac.</p>
+      <div class="chips" role="group" aria-label="Show Plasmie in a state" id="chips"></div>
+    </div>
+    <div>
+      <div class="stage" id="stage" role="img" aria-live="polite"></div>
+      <p class="caption" id="caption"></p>
+    </div>
+  </header>
+
+  <section aria-labelledby="h-states">
+    <p class="eyebrow">Status sprites</p>
+    <h2 id="h-states">Every state is a shape</h2>
+    <p>Plasmie never needs a status label to be understood. Its silhouette carries the state, its face carries the mood, and one small prop says what it's holding. All eleven come from the same twelve points, so any state melts into any other.</p>
+    <div class="sprites" id="sprites"></div>
+  </section>
+
+  <section aria-labelledby="h-bar">
+    <p class="eyebrow">At 18 points</p>
+    <h2 id="h-bar">In the menu bar</h2>
+    <p>The menu-bar Plasmie is a single-colour template silhouette with its face knocked out, so it follows light and dark menu bars like any system icon. It only animates while a job is running.</p>
+    <div class="bars">
+      <div class="menubar light" id="bar-light"></div>
+      <div class="menubar dark" id="bar-dark"></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-colour">
+    <p class="eyebrow">Colour</p>
+    <h2 id="h-colour">Lavender body, indigo face</h2>
+    <p>One body colour, one ink. The only multicolour moment is the source dots Plasmie catches while ingesting, one colour per connector.</p>
+    <div class="swatches" id="swatches"></div>
+    <div class="dots" id="dots"></div>
+  </section>
+
+  <section aria-labelledby="h-type">
+    <p class="eyebrow">Type</p>
+    <h2 id="h-type">Round where it speaks, plain where it works</h2>
+    <div class="type">
+      <div class="spec"><span class="eyebrow">Display · Baloo 2 ExtraBold</span><span class="big">All flowing</span><p>Names, headings and Plasmie's own status lines.</p></div>
+      <div class="spec"><span class="eyebrow">Text · Hanken Grotesk · in-app: SF Pro</span><span class="txt">Ask your vault — 350 notes. Last new data: 28h ago, usual: every ~3 days.</span><p>Running text on this page. The app keeps the system font so it stays native.</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-name">
+    <p class="eyebrow">Name</p>
+    <h2 id="h-name">Why Plasmie</h2>
+    <div class="names">
+      <div><b>Plasmie</b><p>The chosen name. It keeps the loop from Plasmie (capture hourly, file nightly, ask any time) and sounds like the soft, slightly silly creature it is.</p></div>
+      <div><b>Mochi</b><p>Considered. Perfect for a squishy blob, but says nothing about remembering or looping.</p></div>
+      <div><b>Putty</b><p>Considered. Nails "any shape", but reads as a tool rather than a companion.</p></div>
+    </div>
+  </section>
+
+  <footer>Plasmie's eleven shapes are generated by <code>app/brand/gen_shapes.py</code>. The menu-bar app and this page draw from the same twelve anchors, so the brand and the product can't drift apart.</footer>
+</main>
+
+<script>
+const DATA = /*SHAPES_JSON*/;
+const STATES = [
+  ["idle", "Resting", "Between jobs", "Breathing quietly. Everything is flowing and nothing needs you."],
+  ["ingest", "Catching", "Hourly at :07", "Opens wide to catch new activity: one coloured dot per source (Slack, GitHub, git…)."],
+  ["summarize", "Kneading", "Hourly at :15", "Squishes the day into a short on-device digest."],
+  ["promote", "Filing", "Nightly at 02:30", "Turns into a little box and files durable notes into the wiki."],
+  ["ask", "Thinking", "When you press ⌃⌥⌘K", "Becomes a lightbulb while it answers from your vault, on-device."],
+  ["held", "Raising a hand", "Drafts on hold", "Some promotions need your yes before they're filed."],
+  ["error", "Melting", "A connector is failing", "A source stopped delivering. Settings names the fix."],
+  ["busy", "Waiting", "Mac is hot or busy", "Jobs politely defer until the machine has room."],
+  ["quiet", "Napping", "No new data for a while", "Nothing new arrived. Normal on weekends."],
+  ["off", "Curled up", "Everything switched off", "All connectors are off. Nothing is captured."],
+  ["success", "Ta-da", "A job just finished", "A quick sparkle, then back to resting."],
+];
+const DOTS = [["Slack", "#E8578A"], ["GitHub", "#3A3F58"], ["Local git", "#F07A3E"], ["Confluence", "#3D7BE0"], ["Claude Code", "#D97757"], ["AgentCLI", "#2BB3A0"], ["Outlook", "#5B8DEF"]];
+const SWATCHES = [["Body", "--body", "#9C8CF2", "Plasmie itself"], ["Highlight", "--body-hi", "#B8ADF7", "Belly and morph sheen"], ["Ink", "--face", "#241B4D", "Eyes, mouth, text"], ["Blush", "--blush", "#F7A6C8", "Cheeks when happy"], ["Spark", "--spark", "#FFC94A", "Success only"], ["Sweat", "--sweat", "#6EC5F0", "Worry only"]];
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const NS = "http://www.w3.org/2000/svg";
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+function curve(p) {
+  const n = p.length; let d = `M${p[0][0]},${p[0][1]}`;
+  for (let i = 0; i < n; i++) {
+    const a = p[(i - 1 + n) % n], b = p[i], c = p[(i + 1) % n], e = p[(i + 2) % n];
+    d += ` C${(b[0] + (c[0] - a[0]) / 6).toFixed(2)},${(b[1] + (c[1] - a[1]) / 6).toFixed(2)} ${(c[0] - (e[0] - b[0]) / 6).toFixed(2)},${(c[1] - (e[1] - b[1]) / 6).toFixed(2)} ${c[0]},${c[1]}`;
+  }
+  return d + "Z";
+}
+const lerp = (a, b, k) => a.map((p, i) => [p[0] + (b[i][0] - p[0]) * k, p[1] + (b[i][1] - p[1]) * k]);
+const easeOut = k => 1 - Math.pow(1 - k, 5);
+function bbox(p) { const xs = p.map(q => q[0]), ys = p.map(q => q[1]);
+  return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }; }
+function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent && parent.appendChild(e); return e; }
+
+/* One Plasmie renderer. mode "color" or "template" (single ink, face knocked out). */
+function makePlasmie(svg, mode) {
+  svg.setAttribute("viewBox", "-6 -14 112 120");
+  const g = el("g", {}, svg);
+  const body = el("path", {}, g), hi = el("path", { opacity: .55 }, g);
+  const face = el("g", {}, g), prop = el("g", {}, g);
+  return { svg, mode, g, body, hi, face, prop, pts: DATA.shapes.idle.map(q => q.slice()), state: "idle" };
+}
+
+function drawFace(L, st, b, t) {
+  const f = DATA.faces[st], ink = L.mode === "template" ? "#000" : "var(--face)";
+  const knock = L.mode === "template";
+  L.face.replaceChildren(); L.prop.replaceChildren();
+  const cx = b.x + b.w / 2, ey = b.y + Math.min(b.h * 0.42, b.h - 14), gap = Math.min(b.w * 0.17, 13), r = 4.6;
+  const col = knock ? "#fff" : ink;
+  const eye = (x) => {
+    switch (f.eyes) {
+      case "happy": return el("path", { d: `M${x - 5},${ey + 1.5} Q${x},${ey - 5} ${x + 5},${ey + 1.5}`, fill: "none", stroke: col, "stroke-width": 3, "stroke-linecap": "round" }, L.face);
+      case "closed": return el("path", { d: `M${x - 5},${ey} Q${x},${ey + 4.5} ${x + 5},${ey}`, fill: "none", stroke: col, "stroke-width": 3, "stroke-linecap": "round" }, L.face);
+      case "flat": return el("path", { d: `M${x - 4.5},${ey} H${x + 4.5}`, stroke: col, "stroke-width": 3.2, "stroke-linecap": "round" }, L.face);
+      case "up": el("circle", { cx: x, cy: ey, r, fill: col }, L.face); return knock ? null : el("circle", { cx: x + 1.2, cy: ey - 2.4, r: 1.7, fill: "#fff" }, L.face);
+      case "worried": el("circle", { cx: x, cy: ey + 1, r: r - .4, fill: col }, L.face);
+        return el("path", { d: `M${x - 5},${ey - 6 + (x < cx ? 2 : 0)} L${x + 5},${ey - 6 + (x < cx ? 0 : 2)}`, stroke: col, "stroke-width": 2.4, "stroke-linecap": "round" }, L.face);
+      case "wink": if (x > cx) return el("path", { d: `M${x - 5},${ey} Q${x},${ey - 4} ${x + 5},${ey}`, fill: "none", stroke: col, "stroke-width": 3, "stroke-linecap": "round" }, L.face);
+      default: el("circle", { cx: x, cy: ey, r, fill: col }, L.face);
+        return knock ? null : el("circle", { cx: x + 1.4, cy: ey - 1.6, r: 1.6, fill: "#fff" }, L.face);
+    }
+  };
+  eye(cx - gap); eye(cx + gap);
+  const my = ey + 9;
+  if (!knock && ["idle", "success", "held", "promote"].includes(st)) for (const s of [-1, 1])
+    el("ellipse", { cx: cx + s * (gap + 9), cy: my - 2, rx: 5.5, ry: 3.2, fill: "var(--blush)", opacity: .8 }, L.face);
+  const m = { stroke: col, "stroke-width": 3, fill: "none", "stroke-linecap": "round" };
+  switch (f.mouth) {
+    case "smile": el("path", { d: `M${cx - 5},${my} Q${cx},${my + 5} ${cx + 5},${my}`, ...m }, L.face); break;
+    case "grin": el("path", { d: `M${cx - 7},${my - 1} Q${cx},${my + 8} ${cx + 7},${my - 1}Z`, fill: col }, L.face); break;
+    case "o": el("ellipse", { cx, cy: my + 1, rx: 3.6, ry: 4.4, fill: col }, L.face); break;
+    case "small": el("path", { d: `M${cx - 3},${my} Q${cx},${my + 2.5} ${cx + 3},${my}`, ...m }, L.face); break;
+    case "flat": el("path", { d: `M${cx - 4},${my} H${cx + 4}`, ...m }, L.face); break;
+    case "wobble": el("path", { d: `M${cx - 6},${my + 1} q2,-3 4,0 t4,0 t4,0`, ...m }, L.face); break;
+  }
+  if (knock) return;                     // template glyphs stay silhouette + face only
+  const T = reduce ? 0.35 : t;
+  switch (f.prop) {
+    case "dots": DOTS.slice(0, 3).forEach(([, c], i) => {
+      const k = (T * 0.7 + i / 3) % 1, x = cx + (i - 1) * 9 * (1 - k), y = b.y - 22 + k * 30;
+      el("circle", { cx: x, cy: y, r: 4, fill: c, opacity: Math.min(1, (1 - k) * 2.2) }, L.prop); }); break;
+    case "card": { const k = (T * 0.45) % 1, y = b.y - 26 + easeOut(Math.min(1, k * 1.6)) * 22;
+      el("rect", { x: cx - 9, y, width: 18, height: 13, rx: 2.5, fill: "var(--surface)", stroke: "var(--face)", "stroke-width": 2, opacity: k > .85 ? (1 - k) / .15 : 1 }, L.prop);
+      el("path", { d: `M${cx - 5},${y + 5} H${cx + 5} M${cx - 5},${y + 9} H${cx + 2}`, stroke: "var(--face)", "stroke-width": 1.6, "stroke-linecap": "round" }, L.prop); break; }
+    case "spark": { const s = 1 + 0.25 * Math.sin(T * 6), x = cx + b.w * 0.36, y = b.y - 6;
+      el("path", { d: `M${x},${y - 7 * s} L${x + 2 * s},${y - 2 * s} L${x + 7 * s},${y} L${x + 2 * s},${y + 2 * s} L${x},${y + 7 * s} L${x - 2 * s},${y + 2 * s} L${x - 7 * s},${y} L${x - 2 * s},${y - 2 * s}Z`, fill: "var(--spark)", stroke: "var(--face)", "stroke-width": 1.2 }, L.prop); break; }
+    case "bang": { const y = b.y - 14 + 2.5 * Math.sin(T * 4), x = b.x + b.w + 2;
+      el("circle", { cx: x, cy: y, r: 8.5, fill: "var(--spark)", stroke: "var(--face)", "stroke-width": 2 }, L.prop);
+      el("path", { d: `M${x},${y - 4.5} V${y + 1}`, stroke: "var(--face)", "stroke-width": 2.6, "stroke-linecap": "round" }, L.prop);
+      el("circle", { cx: x, cy: y + 4.4, r: 1.4, fill: "var(--face)" }, L.prop); break; }
+    case "sweat": { const k = (T * 0.6) % 1, x = b.x + b.w * 0.86, y = b.y + 2 + k * 14;
+      el("path", { d: `M${x},${y - 6} Q${x + 4.5},${y + 1} ${x},${y + 3.5} Q${x - 4.5},${y + 1} ${x},${y - 6}Z`, fill: "var(--sweat)", opacity: 1 - k * 0.6 }, L.prop); break; }
+    case "sand": for (let i = 0; i < 3; i++) { const k = (T * 0.8 + i / 3) % 1;
+      el("circle", { cx: cx, cy: 44 + k * 20, r: 1.8, fill: "var(--spark)" }, L.prop); } break;
+    case "zzz": for (let i = 0; i < 3; i++) { const k = (T * 0.35 + i / 3) % 1;
+      const z = el("text", { x: cx + 18 + k * 16, y: b.y - 4 - k * 22, "font-family": "Baloo 2, sans-serif", "font-weight": 800, "font-size": 9 + k * 6, fill: "var(--ink-3)", opacity: Math.sin(k * Math.PI) }, L.prop); z.textContent = "z"; } break;
+    case "sparkles": [[-1, -0.2], [1, -0.4], [0.7, 0.9]].forEach(([sx, sy], i) => {
+      const k = (T * 0.9 + i * 0.33) % 1, s = Math.sin(k * Math.PI) * 5 + 1, x = cx + sx * (b.w / 2 + 6), y = b.y + b.h / 2 + sy * (b.h / 2 + 6);
+      el("path", { d: `M${x},${y - s} L${x + s * .35},${y - s * .35} L${x + s},${y} L${x + s * .35},${y + s * .35} L${x},${y + s} L${x - s * .35},${y + s * .35} L${x - s},${y} L${x - s * .35},${y - s * .35}Z`, fill: "var(--spark)" }, L.prop); }); break;
+  }
+}
+
+function frame(L, t) {
+  const st = L.state; let p = L.pts;
+  if (!reduce) {                                       // per-state life on top of the shape
+    const c = bbox(p), cx = c.x + c.w / 2, cy = c.y + c.h / 2;
+    let sx = 1 + 0.018 * Math.sin(t * 2.6), sy = 1 - 0.018 * Math.sin(t * 2.6), dx = 0;
+    if (st === "summarize") { sx = 1 + 0.06 * Math.sin(t * 3); sy = 1 - 0.06 * Math.sin(t * 3); }
+    if (st === "error") dx = 1.6 * Math.sin(t * 9);
+    if (st === "success") { const h = Math.max(0, Math.sin(t * 4)); sy *= 1 + 0.04 * h; }
+    p = p.map(([x, y]) => [cx + (x - cx) * sx + dx, cy + (y - cy) * sy]);
+  }
+  const d = curve(p);
+  if (L.mode === "template") { L.body.setAttribute("d", d); L.body.setAttribute("fill", "currentColor"); L.hi.setAttribute("d", ""); }
+  else {
+    L.body.setAttribute("d", d);
+    L.body.setAttribute("fill", st === "off" ? "var(--off)" : "var(--body)");
+    L.body.setAttribute("stroke", "var(--face)"); L.body.setAttribute("stroke-width", "2.4");
+    const b = bbox(p); // belly sheen: a smaller copy of the same outline, low and soft
+    L.hi.setAttribute("d", curve(p.map(([x, y]) => [b.x + b.w / 2 + (x - b.x - b.w / 2) * .55, b.y + b.h * .62 + (y - b.y - b.h / 2) * .38])));
+    L.hi.setAttribute("fill", "var(--body-hi)");
+  }
+  drawFace(L, st, bbox(p), t);
+  if (L.mode === "template") L.face.querySelectorAll("*").forEach(n => { n.setAttribute("fill", n.getAttribute("fill") === "none" ? "none" : "var(--knock)"); if (n.getAttribute("stroke")) n.setAttribute("stroke", "var(--knock)"); });
+}
+
+function morph(L, to, ms = 650) {
+  const from = L.pts.map(q => q.slice()), target = DATA.shapes[to], t0 = performance.now();
+  L.state = to;
+  if (reduce) { L.pts = target.map(q => q.slice()); return; }
+  L.tween = now => { const k = Math.min(1, (now - t0) / ms); L.pts = lerp(from, target, easeOut(k)); if (k >= 1) L.tween = null; };
+}
+
+/* build */
+const stage = makePlasmie(el("svg", { "aria-hidden": "true" }, document.getElementById("stage")), "color");
+const caption = document.getElementById("caption"), chipsEl = document.getElementById("chips");
+let auto = true, idx = 0;
+function show(i, fromUser) {
+  idx = i; const [key, name, when] = STATES[i];
+  morph(stage, key);
+  caption.textContent = `${name} · ${when}`;
+  document.getElementById("stage").setAttribute("aria-label", `Plasmie, ${name.toLowerCase()}: ${STATES[i][3]}`);
+  chipsEl.querySelectorAll(".chip").forEach((c, j) => c.setAttribute("aria-pressed", j === i ? "true" : "false"));
+  if (fromUser) auto = false;
+  if (reduce) frame(stage, 0);
+}
+STATES.forEach(([key, name], i) => { const b = document.createElement("button");
+  b.type = "button"; b.className = "chip"; b.id = "chip-" + key; b.textContent = name; b.addEventListener("click", () => show(i, true)); chipsEl.appendChild(b); });
+
+const sprites = [];
+const grid = document.getElementById("sprites");
+for (const [key, name, when, what] of STATES) {
+  const card = document.createElement("article"); card.className = "sprite";
+  const svg = el("svg", { role: "img", "aria-label": `Plasmie ${name.toLowerCase()}` }, card);
+  card.insertAdjacentHTML("beforeend", `<span class="when">${when}</span><h3>${name}</h3><p>${what}</p>`);
+  grid.appendChild(card);
+  const L = makePlasmie(svg, "color"); L.state = key; L.pts = DATA.shapes[key].map(q => q.slice()); sprites.push(L);
+}
+const bars = [];
+for (const id of ["bar-light", "bar-dark"]) {
+  const bar = document.getElementById(id);
+  for (const [key, name] of STATES) {
+    const slot = document.createElement("span"); slot.className = "slot";
+    const svg = el("svg", { role: "img", "aria-label": `Menu bar: ${name}` }, slot);
+    svg.style.setProperty("--knock", id === "bar-light" ? "#ECEAF3" : "#2A2733");
+    slot.insertAdjacentHTML("beforeend", `<span>${name}</span>`);
+    bar.appendChild(slot);
+    const L = makePlasmie(svg, "template"); L.state = key; L.pts = DATA.shapes[key].map(q => q.slice()); bars.push(L);
+  }
+  bar.insertAdjacentHTML("beforeend", `<span class="clock">Sat 3 Oct 21:40</span>`);
+}
+document.getElementById("swatches").innerHTML = SWATCHES.map(([n, v, hex, role]) =>
+  `<div class="swatch"><i style="background:var(${v})"></i><div><b>${n}</b><code>${hex}</code><small>${role}</small></div></div>`).join("");
+document.getElementById("dots").innerHTML = DOTS.map(([n, c]) => `<span class="dot"><i style="background:${c}"></i>${n}</span>`).join("");
+
+show(0, false);
+let last = 0;
+function loop(now) {
+  const t = now / 1000;
+  if (auto && now - last > 2600) { last = now; show((idx + 1) % STATES.length, false); }
+  if (stage.tween) stage.tween(now);
+  frame(stage, t); sprites.forEach(L => frame(L, t)); bars.forEach(L => frame(L, 0));
+  if (!reduce) requestAnimationFrame(loop);
+}
+if (reduce) { frame(stage, 0); sprites.forEach(L => frame(L, 0)); bars.forEach(L => frame(L, 0)); }
+else requestAnimationFrame(loop);
+</script>

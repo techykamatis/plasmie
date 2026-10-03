@@ -117,3 +117,14 @@ def test_patterns_noticed_before_the_rename_still_count(tmp_path):
     (v / "wiki" / "old.md").write_text("---\ntype: pattern\nsource: \"Plasmie noticed · 3 days\"\ntimestamp: 2026-10-03T00:00:00Z\n---\n")
     r, _ = A.evaluate(v, today=D(2026, 10, 4))
     assert _by_id(r)["pattern-spotter"]["unlocked"]
+
+
+def test_every_stage_reports_when_it_was_reached_and_dates_stick(tmp_path):
+    v = _vault(tmp_path, ingest_days=["2026-07-02"], notes=120)
+    r, st = A.evaluate(v, today=D(2026, 10, 3))
+    by = {s["id"]: s for s in r["stages"]}
+    assert by["hatchling"]["reached"] == "2026-07-02"                 # born = first ingest
+    assert by["sprout"]["reached"] == "2026-07-09"                    # 7 days later (notes already there)
+    assert by["scholar"]["reached"] is None and by["scholar"]["notesLeft"] == 130
+    r2, _ = A.evaluate(v, today=D(2026, 12, 1), state=st)
+    assert {s["id"]: s["reached"] for s in r2["stages"]}["sprout"] == "2026-07-09"

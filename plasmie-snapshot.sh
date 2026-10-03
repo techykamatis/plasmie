@@ -27,3 +27,6 @@ if git remote get-url origin >/dev/null 2>&1; then
     echo "$(date '+%F %T') | WARN push failed (offline or auth) — commit is safe locally"
   fi
 fi
+
+# soak ledger: one line per finished day of scheduled-run health (see plasmie-soak.py)
+"$PY" "$PLASMIE_ENGINE/plasmie-soak.py" --record >/dev/null 2>&1 || true

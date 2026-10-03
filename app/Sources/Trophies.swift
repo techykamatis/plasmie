@@ -15,6 +15,17 @@ struct Achievements: Decodable {
     var total: Int?
     var trophies: [Trophy]?
     var newly: [String]?
+    var stages: [AchStageInfo]?
+}
+
+/// One evolution and when it was reached (nil = not yet; daysLeft/notesLeft say how far).
+struct AchStageInfo: Decodable {
+    var id: String?
+    var reached: String?
+    var days: Int?
+    var notes: Int?
+    var daysLeft: Int?
+    var notesLeft: Int?
 }
 
 struct AchStage: Decodable {
@@ -199,7 +210,7 @@ struct TrophiesContent: View {
             if let r = report {
                 VStack(alignment: .leading, spacing: 22) {
                     TrophyHeader(report: r, plasmie: plasmie)
-                    EvolutionStrip(current: r.stageIndex)
+                    EvolutionStrip(current: r.stageIndex, info: r.stages ?? [])
                     shelf("Earned", r.earned)
                     shelf("Still to earn", r.locked)
                 }
@@ -266,28 +277,60 @@ private struct TrophyHeader: View {
     }
 }
 
+// Each evolution is a button: pick one to see when Plasmie reached it, or how far away it is.
 private struct EvolutionStrip: View {
     let current: Int
+    let info: [AchStageInfo]
+    @State private var selected: Int?
+
+    private var shown: Int { selected ?? current }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            ForEach(Array(PlasmieStage.all.enumerated()), id: \.element.id) { i, s in
-                VStack(spacing: 5) {
-                    PlasmieView(state: .idle, size: 40, frozenAt: 0.35, accessory: s.accessory)
-                        .grayscale(i > current ? 1 : 0)
-                        .opacity(i > current ? 0.35 : 1)
-                        .padding(4)
-                        .overlay(Circle().strokeBorder(Color.plasmieBlush, lineWidth: i == current ? 2.5 : 0))
-                    Text(s.name).font(.klMeta.weight(i == current ? .semibold : .regular))
-                        .foregroundStyle(i > current ? .secondary : .primary)
-                        .lineLimit(1).minimumScaleFactor(0.9)
+        VStack(spacing: 10) {
+            HStack(alignment: .top, spacing: 0) {
+                ForEach(Array(PlasmieStage.all.enumerated()), id: \.element.id) { i, s in
+                    Button { selected = i } label: { chip(i, s) }
+                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityLabel("\(s.name). \(detail(i))")
+                        .accessibilityAddTraits(i == shown ? .isSelected : [])
                 }
-                .frame(maxWidth: .infinity)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(s.name), \(i < current ? "past stage" : i == current ? "current stage" : "future stage")")
             }
+            Text(detail(shown))
+                .font(.klLabel).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .id(shown).transition(.opacity)
         }
+        .motion(Motion.glide, value: shown)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Evolution stages")
+    }
+
+    private func chip(_ i: Int, _ s: PlasmieStage) -> some View {
+        VStack(spacing: 5) {
+            PlasmieView(state: .idle, size: 40, frozenAt: 0.35, accessory: s.accessory)
+                .grayscale(i > current ? 1 : 0)
+                .opacity(i > current ? 0.35 : 1)
+                .padding(4)
+                .overlay(Circle().strokeBorder(Color.plasmieBlush, lineWidth: i == current ? 2.5 : 0))
+                .background(Circle().fill(Color.primary.opacity(i == shown && i != current ? 0.08 : 0)))
+            Text(s.name).font(.klMeta.weight(i == shown ? .semibold : .regular))
+                .foregroundStyle(i > current ? .secondary : .primary)
+                .lineLimit(1).minimumScaleFactor(0.9)
+        }
+        .contentShape(Rectangle())
+    }
+
+    /// "Reached 20 Sep 2026", or "78 more days and 144 more notes".
+    private func detail(_ i: Int) -> String {
+        let name = PlasmieStage.all[i].name
+        let st = info.first { $0.id == PlasmieStage.all[i].id }
+        if let when = AchDate.short(st?.reached) {
+            return i == 0 ? "\(name) · hatched \(when)" : "\(name) · reached \(when)\(i == current ? " · Plasmie's stage now" : "")"
+        }
+        let d = st?.daysLeft ?? 0, n = st?.notesLeft ?? 0
+        let parts = [d > 0 ? "\(d) more day\(d == 1 ? "" : "s")" : nil, n > 0 ? "\(n) more note\(n == 1 ? "" : "s")" : nil].compactMap { $0 }
+        return parts.isEmpty ? "\(name) · any moment now" : "\(name) · \(parts.joined(separator: " and ")) to go"
     }
 }
 

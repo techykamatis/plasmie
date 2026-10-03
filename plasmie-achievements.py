@@ -235,14 +235,24 @@ def evaluate(vault, today=None, state=None):
         trophies.append({"id": tid, "name": name, "tier": tier, "description": desc, "symbol": symbol,
                          "unlocked": tid in unlocked, "date": unlocked.get(tid),
                          "progress": round(min(1.0, value / target), 3), "current": round(value, 2), "target": target})
+    # every evolution and when it was reached (saved like trophy dates, so they never move)
+    reached = dict(state.get("stages", {}))
+    stages = []
+    for st_id, st_name, st_acc, days, notes in STAGES:
+        if st_id not in reached and m["age"][0] >= days and m["notes"][0] >= notes:
+            when = [d for d in (m["age"][1](days), m["notes"][1](notes) if notes else born) if d]
+            reached[st_id] = max(when, default=today).isoformat()
+        stages.append({"id": st_id, "name": st_name, "accessory": st_acc, "days": days, "notes": notes,
+                       "reached": reached.get(st_id),
+                       "daysLeft": max(0, days - m["age"][0]), "notesLeft": max(0, notes - m["notes"][0])})
     (sid, sname, acc, *_), nxt = stage_for(m["age"][0], m["notes"][0])
     stage = {"id": sid, "name": sname, "accessory": acc}
     if nxt:
         stage["next"] = {"id": nxt[0], "name": nxt[1], "days": max(0, nxt[3] - m["age"][0]),
                          "notes": max(0, nxt[4] - m["notes"][0])}
-    report = {"birthday": born.isoformat(), "ageDays": m["age"][0], "stage": stage,
+    report = {"birthday": born.isoformat(), "ageDays": m["age"][0], "stage": stage, "stages": stages,
               "unlockedCount": len(unlocked), "total": len(TROPHIES), "trophies": trophies, "newly": newly}
-    return report, {"birthday": born.isoformat(), "unlocked": unlocked}
+    return report, {"birthday": born.isoformat(), "unlocked": unlocked, "stages": reached}
 
 
 def _notify(names):

@@ -110,3 +110,10 @@ def test_pattern_spotter_counts_only_plasmie_noticed_patterns(tmp_path):
     (v / "wiki" / "plasmie.md").write_text("---\ntype: pattern\nsource: \"Plasmie noticed · 4 days\"\ntimestamp: 2026-10-04T00:00:00Z\n---\n")
     r, _ = A.evaluate(v, today=D(2026, 10, 4))
     assert _by_id(r)["pattern-spotter"]["unlocked"] and _by_id(r)["pattern-spotter"]["date"] == "2026-10-04"
+
+
+def test_patterns_noticed_before_the_rename_still_count(tmp_path):
+    v = _vault(tmp_path, ingest_days=["2026-07-02"])
+    (v / "wiki" / "old.md").write_text("---\ntype: pattern\nsource: \"Plasmie noticed · 3 days\"\ntimestamp: 2026-10-03T00:00:00Z\n---\n")
+    r, _ = A.evaluate(v, today=D(2026, 10, 4))
+    assert _by_id(r)["pattern-spotter"]["unlocked"]

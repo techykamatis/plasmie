@@ -1,7 +1,7 @@
 # Decisions
 
 Short records of the design and architecture decisions behind Plasmie (formerly Knowledge
-Loop). One file per decision: context, decision, alternatives, consequences. Newest
+Loop, briefly Plasmie). One file per decision: context, decision, alternatives, consequences. Newest
 work is from 2026-10-03. Product truth lives in `/PRODUCT.md`, the visual system in
 `/DESIGN.md`; these records explain **why**.
 
@@ -29,8 +29,9 @@ work is from 2026-10-03. Product truth lives in `/PRODUCT.md`, the visual system
 | [0015](0015-interaction-reactions.md) | Click says hi, rapid clicks annoy, dragging pets | Accepted |
 | [0016](0016-hero-sizing-and-surfaces.md) | Plasmie is the focal point of each surface | Accepted |
 | [0017](0017-evolution-accessories.md) | Evolution shown as accessories | Accepted |
-| [0018](0018-motion-language.md) | Glide and pop, with fun physics | In progress |
+| [0018](0018-motion-language.md) | Glide and pop, with fun physics | Accepted |
 | [0019](0019-notch-prototype.md) | Plasmie in the notch | Experimental |
+| [0020](0020-rename-plasmie.md) | Rename: Plasmie (app and mascot) | Accepted |
 
 ## Adding a record
 Copy the shape of any file above, take the next number, and add a row here. Supersede

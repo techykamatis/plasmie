@@ -54,14 +54,15 @@ the work record — it is a private memory, not a cloud coworker.
   referencing OpenAI's dots (customisable blobby agent crew), xAI/Grok (Groklet
   mascot; Grok Bot agent) and Meta Muse's mascot Jolly. References, not templates.
 - Status sprites / loading animations for the different pipeline states.
-- **Chosen 2026-10-03:** a soft blob mascot, **Plasmie** (also the app's new name;
+- **Chosen 2026-10-03:** a soft blob mascot, **Plasmie** (first called Plasmie; Plasmie = Plasmie, squished; it is both the app's and the mascot's name;
   "Plasmie" may remain a descriptor). The owner's reason, which is the
   concept: *"a blob is nice, cause it can take any shape or form"* — Plasmie
   **shape-shifts into each pipeline state** (bowl catching source dots = ingest,
   dumpling = summarise, box = promote, lightbulb = Ask, raised hand = held,
   puddle = failing, hourglass = busy, flat mochi = quiet, curled ball = off).
   Craft bar: OpenAI's dots crew and Meta Muse's Jolly. Seen and passed over:
-  library desk, Waggle bee, Stacky, Kertas, Nightjar, arcade sprite, mixtape, obi.- Must remain respectful of Reduce Motion and readable at menu-bar size (18pt).
+  library desk, Waggle bee, Stacky, Kertas, Nightjar, arcade sprite, mixtape, obi.
+- Must remain respectful of Reduce Motion and readable at menu-bar size (18pt).
 
 ## Evidence on Hand
 

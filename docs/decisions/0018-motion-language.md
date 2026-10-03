@@ -1,6 +1,6 @@
 # 0018 · Motion language: glide and pop, with a little fun physics
 
-- **Status:** Accepted · 2026-10-03 · implementation in progress
+- **Status:** Accepted · 2026-10-03 · built
 - **Area:** Design, motion
 
 ## Context
@@ -20,3 +20,11 @@ physics but in a fun way". This **replaces** the earlier "no bounce/elastic" rul
 - Props have weight: dots fall with gravity and plop, the card lands with a bounce and
   the box squashes, hearts rise with buoyancy and sway, sparkles arc under gravity.
 - Reduce Motion: every token becomes a short crossfade; loops stop.
+
+## As built (`app/Sources/Motion.swift`)
+- `glide` = `timingCurve(0.16, 1, 0.3, 1, 0.42 s)`; `pop` = `spring(response: 0.36,
+  dampingFraction: 0.58)`; `jelly` = `interpolatingSpring(stiffness: 180, damping: 9)`.
+- Body morphs interpolate in polar form around the centroid, so very different shapes
+  (star ↔ hourglass) never fold through themselves; no intermediate keyframe needed.
+- The notch opens by tucking into the exact hardware notch (~90 ms, invisible) and then
+  popping out; it closes by gliding back into the notch before the resting ears return.

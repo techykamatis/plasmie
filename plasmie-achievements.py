@@ -117,7 +117,7 @@ def _noticed_dates(vault):
     out = []
     for f in (Path(vault) / paths.WIKI).glob("*.md"):
         head = f.read_text(errors="replace")[:800]
-        if re.search(r"^source:.*Plasmie noticed", head, re.M):
+        if re.search(r"^source:.*(?:Plasmie|Plasmie) noticed", head, re.M):    # Plasmie = pre-rename name
             m = re.search(r"^timestamp:\s*(\d{4}-\d\d-\d\d)", head, re.M)
             out.append(dt.date.fromisoformat(m.group(1)) if m else dt.date.today())
     return sorted(out)

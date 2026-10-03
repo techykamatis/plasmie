@@ -132,6 +132,10 @@ struct NotchView: View {
     let mode: NotchMode
     var actions = NotchActions()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // Width and height animate separately so the island pours DOWN out of the notch first,
+    // then spreads OUT; closing narrows first, then rises back up into the notch.
+    @State private var w: CGFloat = 0
+    @State private var h: CGFloat = 0
 
     private var size: CGSize { mode.size(geo) }
     // Opening pops out of the notch (fast, a small bounce on halt); closing glides back in
@@ -161,7 +165,7 @@ struct NotchView: View {
             case .celebrating: banner.transition(fromNotch)
             }
         }
-        .frame(width: size.width, height: size.height, alignment: .top)
+        .frame(width: w > 0 ? w : size.width, height: h > 0 ? h : size.height, alignment: .top)
         .background(NotchShape(top: mode.topRadius, bottom: mode.bottomRadius).fill(Color.black))
         .clipShape(NotchShape(top: mode.topRadius, bottom: mode.bottomRadius))
         .accessibilityElement(children: .contain)
@@ -169,6 +173,25 @@ struct NotchView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(anim, value: mode)
         .ignoresSafeArea()
+        .onAppear { w = size.width; h = size.height }
+        .onChange(of: mode) { _ in grow(to: size) }
+        .onChange(of: geo) { _ in w = size.width; h = size.height }
+    }
+
+    /// Opening: height leads (down from the notch top), width follows a beat later (out).
+    /// Closing: width leads (in), then height (back up). Reduce Motion: both at once, briefly.
+    private func grow(to t: CGSize) {
+        guard !reduceMotion else {
+            withAnimation(.easeInOut(duration: 0.15)) { w = t.width; h = t.height }; return
+        }
+        let growing = t.height > h || t.width > w
+        if growing {
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.68)) { h = t.height }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.64).delay(0.06)) { w = t.width }
+        } else {
+            withAnimation(.timingCurve(0.16, 1, 0.3, 1, duration: 0.28)) { w = t.width }
+            withAnimation(.timingCurve(0.16, 1, 0.3, 1, duration: 0.3).delay(0.05)) { h = t.height }
+        }
     }
 
     private var ear: CGFloat { (size.width - geo.notchW) / 2 - mode.topRadius }

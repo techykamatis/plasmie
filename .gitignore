@@ -27,3 +27,4 @@ app/build-cache/
 app/*.iconset
 .achievements.json
 .funfacts.json
+.patterns.json

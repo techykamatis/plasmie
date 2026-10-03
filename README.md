@@ -115,6 +115,9 @@ Each source has its own watermark in `.loop-state.json`; a source that errors ho
 | `paths.py` | Vault layout, `config.env` reader, connector switch, retention constant. |
 | `plasmie-doctor.py`, `plasmie-status.py` | Connector health JSON; menu-bar heartbeat JSON (reads `feed.log`, `.status`). |
 | `plasmie-capture.sh` | `plasmie-capture.sh "thought"` (or stdin) writes a scrubbed note to `raw/inbox/`. |
+| `plasmie-achievements.py` | Plasmie's evolution stage and 34 first-year trophies, earned from vault history (`--notify` hourly from `run-ingest.sh`). State: `.achievements.json`. |
+| `plasmie-funfact.py` | The daily fun fact: nostalgic ("N months ago today") or resurfaced gotcha/decision/pattern, phrased by Plasmie on-device under a no-invented-specifics guard (`--next`, `--quote`). State: `.funfacts.json`. |
+| `plasmie-patterns.py` | Weekly: drafts recurring patterns (3+ days in 4 weeks) as a pending promotion for review (`--dry`, `--force`). State: `.patterns.json`. |
 | `plasmie-snapshot.sh` | Daily git commit of the vault; pushes only if a remote exists. |
 | `github-backfill.py`, `confluence-backfill.py` | One-shot full-history mirrors into `raw/github/<org>-<repo>/` and `raw/confluence/<space>/`. |
 | `msgraph.py` | Minimal Microsoft Graph client (device-code login) for Outlook. |

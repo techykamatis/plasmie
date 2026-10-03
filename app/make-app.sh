@@ -11,7 +11,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 swiftc -O -parse-as-library -target "${ARCH}-apple-macos13.0" \
   -framework SwiftUI -framework AppKit \
-  -o "$APP/Contents/MacOS/Plasmie" "$SELF/Plasmie.swift"
+  -o "$APP/Contents/MacOS/Plasmie" "$SELF"/Sources/*.swift
 
 # --- bundle the backend so the app can self-install on first run -------------
 LOOP="$(cd "$SELF/.." && pwd)"

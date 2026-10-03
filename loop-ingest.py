@@ -142,7 +142,7 @@ if TOKEN:
     except Exception as e:
         slack_err = str(e)
 else:
-    slack_err = "SLACK_USER_TOKEN not set"
+    failed.add("slack")  # not set up (e.g. Disconnected): silent, like outlook — but hold the watermark
 
 # ---- outlook (Microsoft Graph: mail + calendar) ----
 mail_lines = []
@@ -270,7 +270,7 @@ if CONF_BASE and CONF_EMAIL and CONF_TOKEN:
     except Exception as e:
         conf_err = str(e)
 else:
-    conf_err = "Confluence creds not set (JIRA_BASE_URL / JIRA_EMAIL / JIRA_API_TOKEN)"
+    failed.add("confluence")  # not set up (e.g. Disconnected): silent, like outlook — but hold the watermark
 
 # ---- github (recent PRs/issues/commits I authored or commented on) ----
 # Incremental slice via `gh` search with date qualifiers; the full historical
@@ -563,7 +563,7 @@ if ms_err:
     bullets.append(f"_outlook: {ms_err}_")
 if gh_err:
     bullets.append(f"_github: {gh_err}_")
-if conf_err and "not set" not in conf_err:
+if conf_err:
     bullets.append(f"_confluence: {conf_err}_")
 if truncated:
     bullets.append(f"_TRUNCATED: hit PLASMIE_MAX_PAGES ({MAX_PAGES}) on "
@@ -577,8 +577,8 @@ if paths.ingest_worth_logging(written, conf_count,
 if not BACKFILL:  # backfill must not move the live incremental watermark
     # Hold the watermark for any source that errored OR was truncated, so the
     # next run re-covers that window instead of stepping over material it never
-    # read. "Creds not set" counts: when they ARE set, the first run then picks
-    # up from where coverage actually stopped rather than from now.
+    # read. "Not set up" is held too (added where creds are checked): when they
+    # ARE set, the first run picks up from where coverage actually stopped.
     if slack_err:
         failed.add("slack")
     if conf_err:

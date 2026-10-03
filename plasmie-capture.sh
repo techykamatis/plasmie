@@ -24,7 +24,7 @@ fi
 text="$*"
 [ -n "$text" ] || text="$(cat)"          # no args -> read stdin
 text="${text#"${text%%[![:space:]]*}"}"  # trim leading whitespace
-[ -n "${text// /}" ] || { echo "nothing to capture (pass text as args or on stdin)" >&2; exit 1; }
+[[ "$text" == *[![:space:]]* ]] || { echo "nothing to capture (pass text as args or on stdin)" >&2; exit 1; }
 
 # Redact FIRST. The title, slug and filename are all derived from the text, so
 # redacting only the body would still leak a pasted key into the filename — and a

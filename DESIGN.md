@@ -85,7 +85,18 @@ style. Brand sheet only: Baloo 2 ExtraBold display, Hanken Grotesk text.
 
 ## Layout
 
-Menu-bar panel 320pt wide: status header (Plasmie ~44pt + pill), Run / Open /
+**Notch island** (the front door while the notch is on): resting = the notch plus one
+46pt ear on the left holding Plasmie. Open states hug their content (measured, capped:
+hover 460×≤260, Ask 560×≤470) so there is never dead black space; every open state uses
+one content inset, `NotchMode.inset` = 30pt (12pt concave shoulder + 18pt air). Hover
+island: Plasmie 68pt centred on the left; header (name · stage → trophies · status pill),
+8pt, the fun fact with explicit ↻ / ↗ buttons on its kicker row (text is never a click
+target), 14pt, chips Ask · Ingest|Review N · Vault · More.
+**Plasmie window** (More / reopening the app): the status column on the native sidebar
+material (320pt) beside Settings. Sidebar order: status hero → attention (Obsidian
+missing, held items) → Ask → Run (live activity line, Ingest, Promote, output) → Open →
+fun fact → Recent → Maintain → Quit. It focuses no text field on open.
+Menu-bar panel (only when the notch is off) is the same column, 320pt wide: status header (Plasmie ~44pt + pill), Run / Open /
 Maintain groups of ≤4, Quit footer. Settings is one resizable scrolling page
 (min 520×560): Connectors (summary bar, then one card per connector), then
 Vault. Ask overlay 560pt wide: Plasmie is the focal point in a leading column beside the

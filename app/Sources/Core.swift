@@ -467,3 +467,12 @@ extension PlasmieState {
         return .idle
     }
 }
+
+/// Show a window in front even when Plasmie isn't the active app. A click in the notch island
+/// doesn't activate the app (it's a non-activating panel), and macOS may refuse the activation
+/// request, which left windows opening *behind* everything ("More does nothing").
+func bringForward(_ w: NSWindow) {
+    NSApp.activate(ignoringOtherApps: true)
+    w.makeKeyAndOrderFront(nil)
+    w.orderFrontRegardless()
+}

@@ -75,7 +75,7 @@ final class SettingsController: NSObject, NSWindowDelegate {
     /// The Plasmie window: everything the menu had (status, Run / Open / Maintain, held items)
     /// on the left, settings and connectors on the right. First run shows settings alone.
     func show(firstRun: Bool = false) {
-        if let w = win { NSApp.activate(ignoringOtherApps: true); w.makeKeyAndOrderFront(nil); return }
+        if let w = win { bringForward(w); return }
         let settings = SettingsView(
             firstRun: firstRun, state: state,
             onDone: { [weak self] in self?.win?.close() },
@@ -89,13 +89,14 @@ final class SettingsController: NSObject, NSWindowDelegate {
         w.delegate = self
         w.contentView = firstRun ? NSHostingView(rootView: AnyView(settings)) : NSHostingView(rootView: AnyView(
             HStack(spacing: 0) {
-                ScrollView { Panel(m: .shared, inWindow: true) }.frame(width: side)
+                ScrollView { Panel(m: .shared, inWindow: true).padding(.top, 6) }
+                    .frame(width: side)
+                    .background(SidebarMaterial().ignoresSafeArea())
                 Divider()
                 settings
             }))
         win = w
-        NSApp.activate(ignoringOtherApps: true)
-        w.makeKeyAndOrderFront(nil)
+        bringForward(w)
     }
 
     /// Unsaved edits get a Save / Discard / Cancel choice instead of vanishing.
@@ -121,6 +122,16 @@ final class SettingsController: NSObject, NSWindowDelegate {
         win?.delegate = nil
         win = nil
     }
+}
+
+/// The native sidebar backdrop, so the status column reads as the window's sidebar.
+private struct SidebarMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let v = NSVisualEffectView()
+        v.material = .sidebar; v.blendingMode = .behindWindow; v.state = .followsWindowActiveState
+        return v
+    }
+    func updateNSView(_ v: NSVisualEffectView, context: Context) {}
 }
 
 /// One config UI, two roles: the first-run connector wizard and the editable
@@ -174,8 +185,8 @@ struct SettingsView: View {
                     connectorsPage
                     vaultPage
                     VStack(alignment: .leading, spacing: 6) {
-                        Toggle("Plasmie in the notch (experimental)", isOn: $notchOn).font(.klBody)
-                        Text("A small island under the notch shows Plasmie's status and opens on hover. The menu-bar icon stays.").klNote()
+                        Toggle("Plasmie in the notch", isOn: $notchOn).font(.klBody)
+                        Text("Plasmie lives beside the notch and opens on hover, with Ask inside it. It replaces the menu-bar icon; turn this off to bring the icon back.").klNote()
                     }
                 }
                 .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 32)
@@ -187,8 +198,10 @@ struct SettingsView: View {
         .background(shortcuts)
         .onAppear {
             load(); conn.refresh()
-            // Land focus on content, not on the Close/Save buttons.
-            DispatchQueue.main.async { vaultFocused = true }
+            // First run lands focus on content, not on the buttons. The everyday Plasmie window
+            // focuses no field: it can come forward while you're typing elsewhere, and stray
+            // keystrokes must not edit the vault path.
+            if firstRun { DispatchQueue.main.async { vaultFocused = true } }
             state.isDirty = { dirty }
             state.save = { save() }
         }

@@ -30,8 +30,7 @@ final class SetupController {
         w.contentMinSize = NSSize(width: 460, height: 300)
         w.center()
         win = w
-        NSApp.activate(ignoringOtherApps: true)
-        w.makeKeyAndOrderFront(nil)
+        bringForward(w)
     }
 }
 

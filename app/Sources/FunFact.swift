@@ -51,41 +51,45 @@ struct FunFactCardBody: View {
     var open: () -> Void = {}
     var another: () -> Void = {}
 
+    // Two explicit controls on the kicker row (another fact / open its note), same as the
+    // notch island; the text is for reading, so it isn't a click target. Hover still shows
+    // the vault's own words when Plasmie paraphrased them.
     var body: some View {
-        HStack(alignment: .top, spacing: 6) {
-            Button(action: open) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Label {
-                        Text(fact.kicker ?? "Did you know?").font(.klMeta.weight(.semibold)).foregroundStyle(.secondary)
-                    } icon: {
-                        Image(systemName: fact.symbol).foregroundStyle(Color.plasmieBlush)
-                    }
-                    Text(fact.text ?? "").font(.klLabel).foregroundStyle(.primary)
-                        .lineLimit(4).multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 2) {
+                Label {
+                    Text(fact.kicker ?? "Did you know?").font(.klMeta.weight(.semibold)).foregroundStyle(.secondary)
+                } icon: {
+                    Image(systemName: fact.symbol).foregroundStyle(Color.plasmieBlush)
                 }
+                Spacer(minLength: 8)
+                iconButton("arrow.clockwise", "Another fact", another)
+                if !(fact.path ?? "").isEmpty {
+                    iconButton("arrow.up.forward.square", "Open this note in Obsidian", open)
+                }
+            }
+            Text(fact.text ?? "").font(.klLabel).foregroundStyle(.primary)
+                .lineLimit(4).multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
+                .help(fact.quote.map { $0 == fact.text ? "" : "In your notes: \($0)" } ?? "")
                 .id(fact.id ?? fact.text)
                 .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 5)),
                                         removal: .opacity.combined(with: .offset(y: -5))))
-            }
-            .buttonStyle(.plain)
-            .help(fact.quote.map { $0 == fact.text ? "Open the note in Obsidian" : "In your notes: \($0)" } ?? "Open the note in Obsidian")
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(fact.kicker ?? "Fun fact"): \(fact.text ?? ""). Opens the note in Obsidian.")
-
-            Button(action: another) {
-                Image(systemName: "arrow.triangle.2.circlepath").font(.klMeta).foregroundStyle(.secondary)
-                    .frame(width: 24, height: 24).contentShape(Rectangle())
-            }
-            .buttonStyle(.borderless)
-            .help("Another fact")
-            .accessibilityLabel("Another fact")
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color.plasmieBody.opacity(0.08)))
         .padding(.horizontal, 12).padding(.bottom, 9)
         .animation(Motion.resolved(Motion.glide, reduce: reduceMotion), value: fact)
+    }
+
+    private func iconButton(_ symbol: String, _ label: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.klMeta).foregroundStyle(.secondary)
+                .frame(width: 24, height: 24).contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .help(label)
+        .accessibilityLabel(label)
     }
 }

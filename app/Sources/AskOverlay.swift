@@ -163,8 +163,9 @@ struct AskOverlay: View {
     @State private var answerHeight: CGFloat = 0
     @FocusState private var focused: Bool
 
-    private let maxAnswerHeight: CGFloat = 460
-    private static let edge: CGFloat = 18      // panel inset, leading and trailing
+    private var maxAnswerHeight: CGFloat { inNotch ? 300 : 460 }
+    /// Panel inset, leading and trailing; in the notch it clears the island's concave shoulder.
+    private var edge: CGFloat { inNotch ? NotchMode.inset : 18 }
     private static let gutter: CGFloat = 14    // Plasmie column to field
 
     /// Plasmie's size: the hero (88) while asking, a step down (56) when an answer is on screen.
@@ -196,7 +197,7 @@ struct AskOverlay: View {
                         .accessibilityAddTraits(.updatesFrequently)
                 }
             }
-            .padding(.horizontal, Self.edge).padding(.vertical, 14)
+            .padding(.horizontal, edge).padding(.top, inNotch ? 6 : 14).padding(.bottom, inNotch ? 18 : 14)
 
             // Answer: rendered markdown + clickable sources in a ScrollView sized to
             // its content up to maxAnswerHeight, then it scrolls. The height is
@@ -236,19 +237,18 @@ struct AskOverlay: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     // Answer text lines up with the field's left edge (past Plasmie's column).
-                    .padding(.leading, Self.edge + plasmieSize + Self.gutter).padding(.trailing, Self.edge)
-                    .padding(.vertical, 14)
+                    .padding(.leading, edge + plasmieSize + Self.gutter).padding(.trailing, edge)
+                    .padding(.top, 14).padding(.bottom, inNotch ? 22 : 14)
                     .background(GeometryReader { g in
                         Color.clear.preference(key: HeightKey.self, value: g.size.height)
                     })
                 }
-                .frame(height: inNotch ? nil : min(max(answerHeight, 1), maxAnswerHeight))
-                .frame(maxHeight: inNotch ? .infinity : nil)
+                .frame(height: min(max(answerHeight, 1), maxAnswerHeight))
                 .transition(.opacity.combined(with: .offset(y: 6)))
                 .onPreferenceChange(HeightKey.self) { answerHeight = $0 }
             }
 
-            if !busy && !answer.isEmpty {
+            if !busy && !answer.isEmpty && !inNotch {   // the island's status line already says it
                 Divider()
                 HStack(spacing: 6) {
                     Spacer()

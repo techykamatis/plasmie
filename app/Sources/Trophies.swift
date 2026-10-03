@@ -155,7 +155,7 @@ final class TrophiesController: NSObject, NSWindowDelegate {
     private var win: NSWindow?
 
     func show(_ m: Model) {
-        if let w = win { NSApp.activate(ignoringOtherApps: true); w.makeKeyAndOrderFront(nil); return }
+        if let w = win { bringForward(w); return }
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 640),
                          styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         w.title = "Plasmie Trophies"
@@ -164,8 +164,7 @@ final class TrophiesController: NSObject, NSWindowDelegate {
         w.delegate = self
         w.contentView = NSHostingView(rootView: TrophiesWindow(m: m) { [weak self] in self?.win?.performClose(nil) })
         win = w
-        NSApp.activate(ignoringOtherApps: true)
-        w.makeKeyAndOrderFront(nil)
+        bringForward(w)
     }
 
     func windowWillClose(_ notification: Notification) { win = nil }

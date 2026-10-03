@@ -122,33 +122,16 @@ struct Panel: View {
             .background(RoundedRectangle(cornerRadius: 12).fill(Color.plasmieBody.opacity(0.12)))
             .padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 8)
 
-            FunFactCard(m: m)
-
-            // live "what's happening" line — the running step's heartbeat
-            if !m.s.activity.isEmpty {
-                HStack(spacing: 7) {
-                    if working {
-                        ProgressView().controlSize(.small).scaleEffect(0.8).frame(width: 14)
-                    } else {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).frame(width: 14)
-                    }
-                    Text(m.s.activity).font(.klLabel).foregroundStyle(working ? .primary : .secondary)
-                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 12).padding(.bottom, 9)
-            }
-
+            // needs attention first: only present when something is wrong or waiting
             if !m.obsidian {
                 banner("Obsidian required to view the vault", symbol: "exclamationmark.triangle.fill", tint: .orange) {
                     openExternal("https://obsidian.md")
                 }
             }
-
             // held-for-review: a contextual alert, only when something is held
             if m.s.pending > 0 { held }
 
-            // ask-anything — not an inline field; opens the Knowledge spotlight overlay
+            // ask-anything: opens Ask in the notch (the floating panel when the notch is off)
             Divider().padding(.horizontal, 12)
             Button { OverlayController.shared.toggle() } label: {
                 HStack(spacing: 7) {
@@ -164,53 +147,36 @@ struct Panel: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Ask your vault")
-            .help("Open the Knowledge spotlight to ask anything in your vault (⌃⌥⌘K)")
+            .help("Ask anything in your vault (⌃⌥⌘K)")
             .padding(.horizontal, 12).padding(.vertical, 9)
 
             Divider().padding(.horizontal, 12)
 
-            // stats + recent
-            VStack(alignment: .leading, spacing: 5) {
-                Label("\(m.s.notes) notes in vault", systemImage: "doc.text")
-                    .font(.klLabel).foregroundStyle(.secondary)
-                ForEach(m.s.recent.prefix(3), id: \.self) { line in
-                    Text(FeedLine.humanize(line)).font(.klMeta).foregroundStyle(.tertiary)
+            // the pipeline: what it's doing now, the two jobs you can kick, and their output
+            groupLabel("Run")
+            // live "what's happening" line — the running step's heartbeat
+            if !m.s.activity.isEmpty {
+                HStack(spacing: 7) {
+                    if working {
+                        ProgressView().controlSize(.small).scaleEffect(0.8).frame(width: 14)
+                    } else {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).frame(width: 14)
+                    }
+                    Text(m.s.activity).font(.klLabel).foregroundStyle(working ? .primary : .secondary)
                         .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
                 }
+                .padding(.horizontal, 12).padding(.top, 2).padding(.bottom, 6)
             }
-            .padding(.horizontal, 12).padding(.vertical, 9)
-
-            Divider().padding(.horizontal, 12)
-
-            // actions, in chunks of <= 4
             VStack(alignment: .leading, spacing: 1) {
-                groupLabel("Run")
                 ActionRow(title: "Ingest now", symbol: "tray.and.arrow.down",
                           detail: "Capture latest Slack & sessions · hourly", key: "i",
                           running: m.runningJobs.contains("Ingest")) { m.kick("com.plasmie.dev-ingest", "Ingest") }
                 ActionRow(title: "Promote now", symbol: "arrow.triangle.2.circlepath",
                           detail: "Find new knowledge & auto-file it · nightly", key: "p",
                           running: m.runningJobs.contains("Promote")) { m.kick("com.plasmie.dev-promote", "Promote") }
-
-                groupLabel("Open").padding(.top, 4)
-                ActionRow(title: "Vault in Obsidian", symbol: "folder", key: "o") { openInObsidian(m.s.vault) }
-                if !m.s.journal.isEmpty {
-                    ActionRow(title: "Today's raw log", symbol: "book.closed") { openInObsidian(m.s.journal) }
-                }
-                ActionRow(title: "Activity log", symbol: "doc.plaintext") { openExternal("\(m.s.loop)/feed.log") }
-                ActionRow(title: "Trophies", symbol: "trophy", key: "t") { TrophiesController.shared.show(m) }
-
-                groupLabel("Maintain").padding(.top, 4)
-                ActionRow(title: "Reindex check", symbol: "magnifyingglass",
-                          detail: "Rebuild catalog & flag dead links · changes nothing") { m.reindexCheck() }
-                ActionRow(title: "Plasmie in the notch", symbol: "capsule.tophalf.filled",
-                          detail: notchOn ? "On · replaces the menu-bar icon" : "Off · using the menu-bar icon") { notchOn.toggle() }
-                if !inWindow {
-                    ActionRow(title: "Settings", symbol: "gearshape", key: ",") { SettingsController.shared.show() }
-                }
             }
-            .padding(.horizontal, 6).padding(.vertical, 4)
-
+            .padding(.horizontal, 6)
             // transient note + captured output
             if !m.note.isEmpty || !m.output.isEmpty {
                 Divider().padding(.horizontal, 12)
@@ -239,6 +205,46 @@ struct Panel: View {
                 .padding(.horizontal, 12).padding(.vertical, 9)
             }
 
+            // places to go
+            groupLabel("Open").padding(.top, 8)
+            VStack(alignment: .leading, spacing: 1) {
+                ActionRow(title: "Vault in Obsidian", symbol: "folder", key: "o") { openInObsidian(m.s.vault) }
+                if !m.s.journal.isEmpty {
+                    ActionRow(title: "Today's raw log", symbol: "book.closed") { openInObsidian(m.s.journal) }
+                }
+                ActionRow(title: "Activity log", symbol: "doc.plaintext") { openExternal("\(m.s.loop)/feed.log") }
+                ActionRow(title: "Trophies", symbol: "trophy", key: "t") { TrophiesController.shared.show(m) }
+            }
+            .padding(.horizontal, 6)
+
+            // a little delight, then the record: the fact, the vault's size and the last runs
+            Divider().padding(.horizontal, 12).padding(.vertical, 8)
+            FunFactCard(m: m)
+            groupLabel("Recent")
+            VStack(alignment: .leading, spacing: 5) {
+                Label("\(m.s.notes) notes in vault", systemImage: "doc.text")
+                    .font(.klLabel).foregroundStyle(.secondary)
+                ForEach(m.s.recent.prefix(3), id: \.self) { line in
+                    Text(FeedLine.humanize(line)).font(.klMeta).foregroundStyle(.tertiary)
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.horizontal, 12).padding(.top, 2).padding(.bottom, 6)
+
+            // housekeeping last
+            groupLabel("Maintain").padding(.top, 4)
+            VStack(alignment: .leading, spacing: 1) {
+                ActionRow(title: "Reindex check", symbol: "magnifyingglass",
+                          detail: "Rebuild catalog & flag dead links · changes nothing") { m.reindexCheck() }
+                ActionRow(title: "Plasmie in the notch", symbol: "capsule.tophalf.filled",
+                          detail: notchOn ? "On · replaces the menu-bar icon" : "Off · using the menu-bar icon") { notchOn.toggle() }
+                if !inWindow {
+                    ActionRow(title: "Settings", symbol: "gearshape", key: ",") { SettingsController.shared.show() }
+                }
+            }
+            .padding(.horizontal, 6).padding(.bottom, 4)
+
+            Divider().padding(.horizontal, 12)
             Divider().padding(.horizontal, 12)
             ActionRow(title: "Quit Plasmie", symbol: "power", key: "q", compact: true) { NSApp.terminate(nil) }
                 .padding(.horizontal, 6).padding(.vertical, 3)

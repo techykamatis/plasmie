@@ -50,13 +50,17 @@ extension NotchMode {
         switch self {
         case .resting:     return rest
         case .working:     return CGSize(width: g.notchW + 2 * Self.ear + 140, height: rest.height)
-        case .expanded:    return CGSize(width: 460, height: 210)
+        case .expanded:    return CGSize(width: 460, height: 260)
         case .celebrating: return CGSize(width: 360, height: 70)
-        case .asking:      return CGSize(width: 560, height: g.notchH + 84)
-        case .answering:   return CGSize(width: 560, height: 470)
+        case .asking, .answering: return CGSize(width: 560, height: 470)
         }
     }
     static let ear: CGFloat = 46
+    /// Content inset inside the open island: the 12 pt concave shoulder plus 18 pt of air,
+    /// so text never crowds the curve (one value for the hover island and Ask).
+    static let inset: CGFloat = 30
+    /// Modes whose height follows their content (the size above is only the ceiling).
+    var fits: Bool { self == .expanded || self == .asking || self == .answering }
     /// Horizontal offset of the shape's centre from the notch's centre (resting leans left).
     func shift(_ g: NotchGeometry) -> CGFloat { self == .resting && g.hasNotch ? -Self.ear / 2 : 0 }
     /// Content inset for the shoulders; matches what NotchShape draws at each mode's size.
@@ -128,6 +132,7 @@ struct NotchActions {
     var ingest: () -> Void = {}
     var trophies: () -> Void = {}
     var openFact: () -> Void = {}
+    var nextFact: () -> Void = {}
     var vault: () -> Void = {}
     var openApp: () -> Void = {}      // the Plasmie window: every other option + settings
     var quit: () -> Void = {}
@@ -143,9 +148,17 @@ struct NotchView: View {
     let mode: NotchMode
     var actions = NotchActions()
     var panelShift: CGFloat = 0
+    var onTarget: (CGSize) -> Void = { _ in }       // the shape's resting size, for hover hit-testing
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var fit: CGFloat = 0              // measured content height (fitting modes)
 
     private var size: CGSize { mode.size(geo) }
+    /// Where the shape is heading: fitting modes hug their content (no dead black space),
+    /// capped at the mode's ceiling; the rest use their fixed size.
+    private var target: CGSize {
+        guard mode.fits, fit > 0 else { return size }
+        return CGSize(width: size.width, height: min(size.height, fit))
+    }
     // One spring on the whole shape, hung from the top edge: it grows down and out of the
     // (black) notch and halts with a small bounce; closing glides back up, fast-to-slow.
     // Content arrives a beat after the shape and leaves with it, scaling toward the notch.
@@ -168,15 +181,17 @@ struct NotchView: View {
             switch mode {
             case .resting:     resting.transition(.opacity)
             case .working:     working.transition(.opacity)
-            case .expanded:    expanded.transition(fromNotch)
+            case .expanded:    expanded.fixedSize(horizontal: false, vertical: true).measured().transition(fromNotch)
             case .celebrating: banner.transition(fromNotch)
             case .asking, .answering:                      // one branch: the conversation keeps its state as it grows
                 AskOverlay(loop: info.loop, vault: info.vault, notes: info.notes, onClose: actions.closeAsk,
                            inNotch: true, topInset: geo.notchH, onAnswer: actions.answered)
+                    .fixedSize(horizontal: false, vertical: true).measured()
                     .transition(fromNotch)
             }
         }
-        .frame(width: size.width, height: size.height, alignment: .top)
+        .onPreferenceChange(NotchFitKey.self) { fit = $0 }
+        .frame(width: target.width, height: target.height, alignment: .top)
         .background(NotchShape().fill(Color.black))
         .clipShape(NotchShape())
         .contentShape(NotchShape())
@@ -190,8 +205,10 @@ struct NotchView: View {
         .accessibilityLabel("Plasmie, \(info.statusWord)")
         .offset(x: mode.shift(geo) - panelShift)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(anim, value: mode)
+        .animation(anim, value: target)              // retargets smoothly when the content is measured
         .ignoresSafeArea()
+        .onAppear { onTarget(target) }
+        .onChange(of: target) { onTarget($0) }
     }
 
     private var ear: CGFloat { (size.width - geo.notchW) / 2 - mode.topRadius }
@@ -234,11 +251,13 @@ struct NotchView: View {
         .padding(.bottom, 4)
     }
 
+    // Plasmie on the left, centred on the block; header, fact and actions stack on the right
+    // with a tight header-to-fact gap and a wider break before the actions.
     private var expanded: some View {
-        HStack(alignment: .top, spacing: 14) {
-            InteractivePlasmie(state: info.hero, size: 72, accessory: info.accessory)
+        HStack(alignment: .center, spacing: 16) {
+            InteractivePlasmie(state: info.hero, size: 68, accessory: info.accessory)
                 .help("Click to say hi · drag to pet")
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 6) {
                     Text("Plasmie").font(.klHeading).foregroundStyle(.white)
                     if let st = info.stageName {
@@ -250,7 +269,7 @@ struct NotchView: View {
                     Spacer(minLength: 4)
                     StatusPill(state: info.status, reason: info.reason).lineLimit(1)
                 }
-                factView
+                factView.padding(.top, 8)
                 // the few things worth doing from the notch; everything else is one click away
                 HStack(spacing: 6) {
                     NotchChip(title: "Ask", symbol: "sparkle.magnifyingglass", label: "Ask Plasmie", action: actions.ask)
@@ -264,33 +283,74 @@ struct NotchView: View {
                     NotchChip(title: "More", symbol: "ellipsis.circle", label: "Open Plasmie: all options and settings",
                               action: actions.openApp)
                 }
+                .padding(.top, 14)
             }
         }
-        .padding(.horizontal, mode.topRadius + 16)
-        .padding(.top, geo.notchH + 8)
-        .padding(.bottom, 14)
+        .padding(.horizontal, NotchMode.inset)
+        .padding(.top, geo.notchH + 10)
+        .padding(.bottom, 18)
     }
 
     @ViewBuilder private var factView: some View {
+        // Two explicit controls on the kicker row (another fact / open its note); the text
+        // itself isn't a click target, so reading it never opens Obsidian by accident.
         if let f = info.fact {
-            Button(action: actions.openFact) {
-                VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 2) {
                     Label { Text(f.kicker ?? "Did you know?").font(.klMeta.weight(.semibold)).foregroundStyle(.white.opacity(0.6)) }
                         icon: { Image(systemName: f.symbol).foregroundStyle(Color.plasmieBlush) }
-                    Text(f.text ?? "").font(.klLabel).foregroundStyle(.white)
-                        .lineLimit(3).multilineTextAlignment(.leading)
+                    Spacer(minLength: 8)
+                    NotchIconButton(symbol: "arrow.clockwise", label: "Another fact", action: actions.nextFact)
+                    if !(f.path ?? "").isEmpty {
+                        NotchIconButton(symbol: "arrow.up.forward.square", label: "Open this note in Obsidian", action: actions.openFact)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
+                Text(f.text ?? "").font(.klLabel).foregroundStyle(.white)
+                    .lineLimit(3).multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .id(f.text).transition(.opacity)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("\(f.kicker ?? "Fun fact"): \(f.text ?? ""). Opens the note in Obsidian.")
+            .motion(Motion.glide, value: f.text)
+            .accessibilityElement(children: .contain)
         } else {
             Text(info.activity.isEmpty ? "All quiet." : info.activity)
                 .font(.klLabel).foregroundStyle(.white.opacity(0.7)).lineLimit(3)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        Spacer(minLength: 0)
+    }
+}
+
+/// The natural height of the open island's content, so the shape can hug it.
+private struct NotchFitKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+private extension View {
+    func measured() -> some View {
+        background(GeometryReader { Color.clear.preference(key: NotchFitKey.self, value: $0.size.height) })
+    }
+}
+
+/// A quiet icon button for the island: 24 pt target, brightens on hover, named for VoiceOver.
+private struct NotchIconButton: View {
+    let symbol: String
+    let label: String
+    let action: () -> Void
+    @State private var hover = false
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(hover ? 0.95 : 0.55))
+                .frame(width: 24, height: 24)
+                .background(Circle().fill(Color.white.opacity(hover ? 0.14 : 0)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .help(label)
+        .accessibilityLabel(label)
     }
 }
 
@@ -368,7 +428,7 @@ private struct NotchRoot: View {
     @ObservedObject var nm: NotchModel
     let geo: NotchGeometry
     let actions: NotchActions
-    let onMode: (NotchMode, CGFloat) -> Void
+    let onMode: (NotchMode, CGSize) -> Void
 
     var body: some View {
         let info = NotchInfo(hero: m.heroPlasmie, pipeline: m.plasmie, status: m.s.state, reason: m.s.reason,
@@ -376,9 +436,8 @@ private struct NotchRoot: View {
                              activity: m.s.activity, celebrating: nm.bannerText, pending: m.s.pending,
                              loop: m.s.loop, vault: m.s.vault, notes: m.s.notes)
         let mode = NotchMode.resolve(ask: nm.asking, answered: nm.answered, hover: nm.hovering, banner: nm.banner, working: info.working)
-        NotchView(info: info, geo: geo, mode: mode, actions: actions, panelShift: nm.panelShift)
-            .onChange(of: mode) { onMode($0, $0.shift(geo)) }
-            .onAppear { onMode(mode, mode.shift(geo)) }
+        NotchView(info: info, geo: geo, mode: mode, actions: actions, panelShift: nm.panelShift,
+                  onTarget: { onMode(mode, $0) })
     }
 }
 
@@ -469,6 +528,7 @@ final class NotchController {
             openFact: { [weak model] in
                 if let model, let path = model.funFact?.path, !path.isEmpty { openInObsidian("\(model.s.vault)/\(path)") }
             },
+            nextFact: { [weak model] in model?.nextFunFact() },
             vault: { [weak model] in if let model { openInObsidian(model.s.vault) } },
             openApp: { SettingsController.shared.show() },
             quit: { NSApp.terminate(nil) },
@@ -482,7 +542,7 @@ final class NotchController {
         panel = p
         p.setFrame(frame, display: true)
         p.orderFrontRegardless()
-        target(NotchMode.resting, NotchMode.resting.shift(geo))
+        target(NotchMode.resting, NotchMode.resting.size(geo))
         startPointer()
     }
 
@@ -526,9 +586,9 @@ final class NotchController {
                       width: size.width, height: size.height)
     }
 
-    /// The view reports each new mode; hover is tested against its rect.
-    private func target(_ mode: NotchMode, _ shift: CGFloat) {
-        hitRect = rect(mode.size(geo), shift)
+    /// The view reports where the shape is heading (fitted size included); hover tests that.
+    private func target(_ mode: NotchMode, _ size: CGSize) {
+        hitRect = rect(size, mode.shift(geo))
     }
 
     private func startPointer() {

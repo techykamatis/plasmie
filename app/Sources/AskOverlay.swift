@@ -158,32 +158,45 @@ struct AskOverlay: View {
     @FocusState private var focused: Bool
 
     private let maxAnswerHeight: CGFloat = 460
+    private static let edge: CGFloat = 18      // panel inset, leading and trailing
+    private static let gutter: CGFloat = 14    // Plasmie column to field
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Plasmie's size: the hero (88) while asking, a step down (56) when an answer is on screen.
+    private var plasmieSize: CGFloat { answer.isEmpty ? 88 : 56 }
+
+    private var plasmieState: PlasmieState {
+        busy ? .ask : (outcome == .failed ? .error : (outcome == .done ? .success : .idle))
+    }
+
+    /// DESIGN.md spring (response 0.32, damping 0.86, no bounce); Reduce Motion gets a short fade.
+    private var motion: Animation {
+        reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.32, dampingFraction: 0.86)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
-                PlasmieView(state: busy ? .ask : (outcome == .failed ? .error : (outcome == .done ? .success : .idle)), size: 40)
-                TextField(placeholder, text: $query)
-                    .textFieldStyle(.plain).font(.klTitle)
-                    .focused($focused)
-                    .accessibilityLabel("Ask your vault")
-                    .onSubmit(run)
-            }
-            .padding(.horizontal, 18).padding(.vertical, 16)
-
-            // Live status row — shows the pipeline stage streamed from ask.py's stderr.
-            if busy || outcome != nil {
-                Divider()
-                HStack(spacing: 8) {
+            // Plasmie is the one listening: a leading column beside the field and its live
+            // status, vertically centred as one block. Big while idle/thinking, a step
+            // smaller once an answer needs the room.
+            HStack(alignment: .center, spacing: Self.gutter) {
+                PlasmieView(state: plasmieState, size: plasmieSize)
+                    .frame(width: plasmieSize, height: plasmieSize)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    TextField(placeholder, text: $query)
+                        .textFieldStyle(.plain).font(.klTitle)
+                        .focused($focused)
+                        .accessibilityLabel("Ask your vault")
+                        .onSubmit(run)
+                    // Pipeline stage streamed from ask.py's stderr; a quiet hint when idle.
                     Text(statusLine)
-                        .font(.klLabel).foregroundStyle(.secondary)
+                        .font(.klLabel).foregroundStyle(busy || outcome != nil ? .secondary : .tertiary)
                         .lineLimit(1).truncationMode(.tail)
-                    Spacer()
+                        .accessibilityAddTraits(.updatesFrequently)
                 }
-                .padding(.horizontal, 18).padding(.vertical, 8)
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.updatesFrequently)
             }
+            .padding(.horizontal, Self.edge).padding(.vertical, 14)
 
             // Answer: rendered markdown + clickable sources in a ScrollView sized to
             // its content up to maxAnswerHeight, then it scrolls. The height is
@@ -222,7 +235,9 @@ struct AskOverlay: View {
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(16)
+                    // Answer text lines up with the field's left edge (past Plasmie's column).
+                    .padding(.leading, Self.edge + plasmieSize + Self.gutter).padding(.trailing, Self.edge)
+                    .padding(.vertical, 14)
                     .background(GeometryReader { g in
                         Color.clear.preference(key: HeightKey.self, value: g.size.height)
                     })
@@ -240,6 +255,7 @@ struct AskOverlay: View {
                 .padding(.horizontal, 18).padding(.vertical, 8)
             }
         }
+        .animation(motion, value: plasmieSize)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.12)))
@@ -252,6 +268,7 @@ struct AskOverlay: View {
 
     private var statusLine: String {
         if busy { return status.isEmpty ? "Searching your vault…" : status }
+        guard let outcome else { return "Return to ask · Esc to close" }
         return outcome == .failed ? "Couldn't get an answer. Try again." : "Answer ready"
     }
 

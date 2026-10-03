@@ -36,24 +36,27 @@ struct NotchGeometry: Equatable {
     }
 }
 
-enum NotchMode: Equatable { case resting, working, expanded, celebrating }
+enum NotchMode: Equatable { case notch, resting, working, expanded, celebrating }
 
 extension NotchMode {
-    static func resolve(hover: Bool, banner: Bool, working: Bool) -> NotchMode {
-        hover ? .expanded : banner ? .celebrating : working ? .working : .resting
+    /// `tucked` = the brief moment the shape sits exactly on the hardware notch, so every
+    /// open starts from the notch (black on black, invisible) and every close returns to it.
+    static func resolve(tucked: Bool, hover: Bool, banner: Bool, working: Bool) -> NotchMode {
+        tucked ? .notch : hover ? .expanded : banner ? .celebrating : working ? .working : .resting
     }
     func size(_ g: NotchGeometry) -> CGSize {
         // flush with the hardware notch: the character sits on the left ear, the dot on the right
         let rest = CGSize(width: g.notchW + 84, height: g.notchH + (g.hasNotch ? 0 : 2))
         switch self {
+        case .notch:       return CGSize(width: g.notchW, height: g.notchH)
         case .resting:     return rest
         case .working:     return CGSize(width: rest.width + 140, height: rest.height)
         case .expanded:    return CGSize(width: 460, height: 210)
         case .celebrating: return CGSize(width: 360, height: 70)
         }
     }
-    var topRadius: CGFloat { self == .resting || self == .working ? 9 : 12 }
-    var bottomRadius: CGFloat { self == .expanded ? 22 : self == .celebrating ? 18 : 12 }
+    var topRadius: CGFloat { self == .notch ? 6 : self == .resting || self == .working ? 9 : 12 }
+    var bottomRadius: CGFloat { self == .notch ? 9 : self == .expanded ? 22 : self == .celebrating ? 18 : 12 }
 }
 
 /// Concave "shoulders" at the top corners (like the real notch), rounded bottom corners.
@@ -151,6 +154,7 @@ struct NotchView: View {
     var body: some View {
         ZStack(alignment: .top) {
             switch mode {
+            case .notch:       Color.clear                     // exactly the hardware notch: nothing to show
             case .resting:     resting.transition(.opacity)
             case .working:     working.transition(.opacity)
             case .expanded:    expanded.transition(fromNotch)
@@ -295,23 +299,54 @@ final class NotchModel: ObservableObject {
     @Published var hovering = false
     @Published var banner = false
     @Published var bannerText: String? = nil
+    @Published var tucked = false                 // shape sits exactly on the hardware notch
     private var collapse: DispatchWorkItem?
     private var bannerEnd: DispatchWorkItem?
+    private var phase: DispatchWorkItem?
+
+    static let tuckIn = 0.09                      // resting ears fold into the notch
+    static let tuckOut = 0.22                     // island has glided back into the notch
+
+    /// Run `change` starting from the bare notch: fold into the notch (invisible, black on
+    /// black), then apply the change so the island grows *out of* the notch. Closing is the
+    /// mirror: shrink into the notch first, then let the resting ears come back.
+    private func throughNotch(opening: Bool, _ change: @escaping () -> Void) {
+        phase?.cancel()
+        if opening {
+            tucked = true
+            let w = DispatchWorkItem { [weak self] in self?.tucked = false; change() }
+            phase = w
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.tuckIn, execute: w)
+        } else {
+            tucked = true; change()
+            let w = DispatchWorkItem { [weak self] in self?.tucked = false }
+            phase = w
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.tuckOut, execute: w)
+        }
+    }
 
     /// Mouse is over the visible shape. Leaving collapses ~0.4 s later (re-entering cancels).
     func pointer(inside: Bool) {
         collapse?.cancel()
-        if inside { if !hovering { hovering = true }; return }
+        if inside {
+            if !hovering { throughNotch(opening: true) { [weak self] in self?.hovering = true } }
+            return
+        }
         guard hovering else { return }
-        let w = DispatchWorkItem { [weak self] in self?.hovering = false }
+        let w = DispatchWorkItem { [weak self] in
+            self?.throughNotch(opening: false) { self?.hovering = false }
+        }
         collapse = w
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: w)
     }
 
     func celebrate(_ name: String) {
-        bannerText = name; banner = true
+        bannerText = name
         bannerEnd?.cancel()
-        let w = DispatchWorkItem { [weak self] in self?.banner = false }
+        throughNotch(opening: true) { [weak self] in self?.banner = true }
+        let w = DispatchWorkItem { [weak self] in
+            self?.throughNotch(opening: false) { self?.banner = false }
+        }
         bannerEnd = w
         DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: w)
     }
@@ -328,7 +363,7 @@ private struct NotchRoot: View {
         let info = NotchInfo(hero: m.heroPlasmie, pipeline: m.plasmie, status: m.s.state, reason: m.s.reason,
                              stageName: m.stage?.name, accessory: m.stage?.accessory, fact: m.funFact,
                              activity: m.s.activity, celebrating: nm.bannerText)
-        let mode = NotchMode.resolve(hover: nm.hovering, banner: nm.banner, working: info.working)
+        let mode = NotchMode.resolve(tucked: nm.tucked, hover: nm.hovering, banner: nm.banner, working: info.working)
         NotchView(info: info, geo: geo, mode: mode, actions: actions)
             .onChange(of: mode) { onSize($0.size(geo)) }
             .onAppear { onSize(mode.size(geo)) }

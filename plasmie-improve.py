@@ -20,6 +20,7 @@ Usage:
   plasmie-improve.py --dry [VAULT]  # report, change nothing
   plasmie-improve.py --selfcheck
 """
+import difflib
 import importlib.util
 import re
 import shutil
@@ -27,6 +28,7 @@ import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import fm
 import paths
 import reindex
 
@@ -290,6 +292,102 @@ def _tags_of(text):
     if not m or not m.group(1).strip():
         return []
     return [t.strip().strip("\"'") for t in m.group(1).split(",") if t.strip().strip("\"'")]
+
+
+def map_to_vocab(candidates, vocab, all_tags=None, admit=None):
+    """Fold model-proposed tags onto the tags this vault already uses.
+
+    The content-tagging model proposes meaning, not vocabulary: it returns
+    phrases ("ci/cd pipelines", "connection pool") and near-misses ("postgresql"
+    for "postgres"). Adopting those raw would grow the vocabulary, which is
+    exactly what this pipeline exists to prevent — the baseline already carries
+    59% singleton tags.
+
+    Two target sets, deliberately:
+      `all_tags`  every tag in use at any count — what "already exists" means.
+      `vocab`     the >=VOCAB_MIN subset — only consulted for fuzzy promotion,
+                  where a loose match needs an established tag to be worth it.
+
+    Matching against `vocab` alone caused a bootstrap deadlock: a tag needs 3
+    uses to be recognised, but can only gain uses by being recognised, so real
+    but rare tags (`elasticache`, `terraform`) were re-admitted as "new" on
+    every pass forever. Measured before the fix: 14 of 116 candidates folded
+    over 25 notes, with `elasticache` reported new on a note already tagged
+    `elasticache`.
+
+    A candidate that matches nothing is NOT admitted by default. Measured on
+    the real vault: the content-tagging model is an excellent recall device for
+    tags that already exist, and a terrible author of new ones — it invents a
+    bespoke phrase per note ("architectural-scope", "monthly-granularity",
+    "netunblendedcost"). Admitting per-note grew the vocabulary 223 -> 294 from
+    25 notes. So a new tag must earn its place across the corpus first: pass
+    `admit` (see propose_vocabulary), mirroring how VOCAB_MIN already gates
+    matching and how retirement is evidence-gated elsewhere in this file.
+
+    Returns (mapped, new): candidates that resolved to an existing tag, and
+    those admitted as genuinely new (empty unless `admit` allows them).
+
+    ponytail: stdlib string matching, no embeddings. `postgresql`->`postgres`
+    is a 0.89 difflib ratio and token matching catches the phrases, which covers
+    what the model actually emits. If true synonyms start slipping through
+    (`k8s` vs `kubernetes`), that is the signal to reach for embeddings.
+    """
+    known = set(all_tags) if all_tags is not None else set(vocab)
+    promo = [t for t in vocab if t not in _NOT_CONTENT]
+    mapped, new, dropped = set(), set(), []
+    for cand in candidates or []:
+        c = fm.normalize_tag(cand)          # phrases -> slugs, one definition
+        if not c or c in _NOT_CONTENT:
+            continue
+        if c in known:                                  # already a vault tag
+            mapped.add(c)
+            continue
+        # a phrase whose parts include a known tag belongs to those tags
+        toks = [t for t in re.split(r"[^a-z0-9+#]+", c) if t]
+        hits = [t for t in toks if t in known and t not in _NOT_CONTENT]
+        if hits:
+            mapped.update(hits)
+            if len(hits) < len(toks):
+                dropped.append(c)
+            continue
+        # near-miss on spelling/inflection (postgresql -> postgres); only an
+        # established tag is worth a fuzzy match
+        close = difflib.get_close_matches(c, promo, n=1, cutoff=0.85)
+        if close:
+            mapped.add(close[0])
+            continue
+        # genuinely new: keep it only if it reads like a tag, not a sentence.
+        # safe_tag is a path-traversal control (reindex.py) — never loosened,
+        # which is why normalize_tag reshapes rather than the check relaxing.
+        if admit is not None and c in admit and reindex.safe_tag(c):
+            new.add(c)
+        else:
+            dropped.append(c)
+    if dropped:
+        _audit(f"map_to_vocab: dropped/partial {len(dropped)} candidate(s): "
+               + ", ".join(sorted(dropped)[:12]))
+    return sorted(mapped), sorted(new)
+
+
+def propose_vocabulary(candidates_per_note, all_tags, min_support=VOCAB_MIN):
+    """Which model-proposed tags have earned a place in the vocabulary.
+
+    A tag is worth having only if it clusters notes; one proposed on a single
+    note clusters nothing and becomes another singleton — the vault already
+    carries 59% of those. So a candidate is admitted only when independent
+    notes propose it at least `min_support` times, which is the same bar
+    VOCAB_MIN sets for matching an existing tag.
+
+    `candidates_per_note` is an iterable of per-note candidate lists.
+    """
+    known = {fm.normalize_tag(t) for t in all_tags}
+    support = {}
+    for cands in candidates_per_note:
+        for c in {fm.normalize_tag(x) for x in (cands or [])}:
+            if c and c not in known and c not in _NOT_CONTENT:
+                support[c] = support.get(c, 0) + 1
+    return {c for c, n in support.items()
+            if n >= min_support and reindex.safe_tag(c)}
 
 
 def normalize_tags(vault, write=True):

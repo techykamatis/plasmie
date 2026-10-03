@@ -212,3 +212,82 @@ def test_generated_links_do_not_protect_a_note_from_retirement(tmp_path):
         f"# date\tquery\trank\tscore\tpath\n{old}\tq\t1\t0.9\twiki/concepts/other.md\n"
         f"{date.today().isoformat()}\tq\t1\t0.9\twiki/concepts/other.md\n")
     assert any(target in r for r in m.retire_stale(tmp_path, write=False))
+
+
+# --- map_to_vocab: folding model phrasing onto the vault's real vocabulary ----
+# Shipped with zero coverage originally; these pin the two defects that were
+# measured on the real vault (bootstrap deadlock, dropped multi-word phrases).
+
+ALL_TAGS = ["aws", "elasticache", "terraform", "postgres", "ci", "infra", "concept"]
+PROMOTED = ["aws", "postgres", "ci", "infra", "concept"]   # the >=VOCAB_MIN subset
+
+
+def test_rare_existing_tag_is_recognised_not_re_admitted():
+    """The bootstrap deadlock: `elasticache` exists but sits below VOCAB_MIN.
+
+    Matching against the promoted subset alone reported it as a NEW tag on a
+    note already tagged with it — forever, since it could never gain uses.
+    """
+    mapped, new = KI.map_to_vocab(["elasticache", "terraform"], PROMOTED, ALL_TAGS)
+    assert mapped == ["elasticache", "terraform"]
+    assert new == []
+
+
+def test_without_all_tags_it_falls_back_to_vocab():
+    """Back-compat: the two-set split must not change single-argument callers."""
+    mapped, new = KI.map_to_vocab(["aws"], PROMOTED)
+    assert mapped == ["aws"] and new == []
+
+
+def test_multi_word_phrase_folds_onto_a_known_token():
+    mapped, _ = KI.map_to_vocab(["ci/cd pipelines"], PROMOTED, ALL_TAGS)
+    assert mapped == ["ci"]
+
+
+def test_unknown_candidate_is_not_admitted_by_default():
+    """The model invents a bespoke phrase per note; admitting per-note grew the
+    vocabulary 223 -> 294 over 25 real notes. Nothing new without evidence."""
+    mapped, new = KI.map_to_vocab(["connection pool"], PROMOTED, ALL_TAGS)
+    assert mapped == [] and new == []
+
+
+def test_candidate_is_admitted_once_the_corpus_gate_allows_it():
+    """safe_tag rejects spaces, so the phrase must still be slugged to be
+    admissible at all — it just needs support first."""
+    _, new = KI.map_to_vocab(["connection pool"], PROMOTED, ALL_TAGS,
+                             admit={"connection-pool"})
+    assert new == ["connection-pool"]
+
+
+def test_propose_vocabulary_requires_support_across_notes():
+    per_note = [["connection pool"], ["connection pool"], ["connection pool"],
+                ["one off phrase"]]
+    admit = KI.propose_vocabulary(per_note, ALL_TAGS, min_support=3)
+    assert admit == {"connection-pool"}          # the one-off earns nothing
+
+
+def test_propose_vocabulary_never_reproposes_an_existing_tag():
+    per_note = [["elasticache"]] * 5
+    assert KI.propose_vocabulary(per_note, ALL_TAGS, min_support=2) == set()
+
+
+def test_propose_vocabulary_counts_notes_not_repetitions():
+    """Five mentions inside ONE note is not evidence that a tag clusters."""
+    per_note = [["flaky thing"] * 5]
+    assert KI.propose_vocabulary(per_note, ALL_TAGS, min_support=3) == set()
+
+
+def test_near_miss_folds_onto_established_tag():
+    mapped, new = KI.map_to_vocab(["postgresql"], PROMOTED, ALL_TAGS)
+    assert mapped == ["postgres"] and new == []
+
+
+def test_structural_tags_never_enter_via_token_match():
+    """`_NOT_CONTENT` is filtered inside the function, not left to the caller."""
+    mapped, new = KI.map_to_vocab(["concept", "concept mapping"], PROMOTED, ALL_TAGS)
+    assert "concept" not in mapped and "concept" not in new
+
+
+def test_sentence_like_candidate_is_rejected():
+    _, new = KI.map_to_vocab(["how we handle failover in production"], PROMOTED, ALL_TAGS)
+    assert new == []

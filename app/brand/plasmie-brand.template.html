@@ -215,7 +215,9 @@ function drawFace(L, st, b, t) {
   const f = DATA.faces[st], ink = L.mode === "template" ? "#000" : "var(--face)";
   const knock = L.mode === "template";
   L.face.replaceChildren();
-  const cx = b.x + b.w / 2, ey = b.y + Math.min(b.h * 0.42, b.h - 14), gap = Math.min(b.w * 0.17, 13), r = 4.6;
+  const cx = b.x + b.w / 2, gap = st === "busy" ? 8 : Math.min(b.w * 0.17, 13), r = st === "busy" ? 3.8 : 4.6;
+  // the hourglass face lives in its top bulb, where the body is wide enough
+  const ey = st === "busy" ? b.y + b.h * 0.15 : b.y + Math.min(b.h * 0.42, b.h - 14);
   const col = knock ? "#fff" : ink;
   const eye = (x) => {
     switch (f.eyes) {
@@ -263,8 +265,12 @@ function drawProps(L, st, b, T) {
       el("circle", { cx: x, cy: y + 4.4, r: 1.4, fill: "var(--face)" }, L.prop); break; }
     case "sweat": { const k = (T * 0.85) % 1, x = b.x + b.w * 0.86, y = b.y + 2 + k * 14;
       el("path", { d: `M${x},${y - 6} Q${x + 4.5},${y + 1} ${x},${y + 3.5} Q${x - 4.5},${y + 1} ${x},${y - 6}Z`, fill: "var(--sweat)", opacity: 1 - k * 0.6 }, L.prop); break; }
-    case "sand": for (let i = 0; i < 3; i++) { const k = (T * 1.2 + i / 3) % 1;
-      el("circle", { cx: cx, cy: 44 + k * 20, r: 1.8, fill: "var(--spark)" }, L.prop); } break;
+    case "sand": {                       // grains fall through the waist onto a growing pile
+      const mid = b.y + b.h * 0.47, floor = b.y + b.h * 0.86;
+      for (let i = 0; i < 4; i++) { const k = (T * 1.4 + i / 4) % 1;
+        el("circle", { cx: cx, cy: mid + k * (floor - mid - 4), r: 1.7, fill: "var(--spark)", opacity: k > .9 ? (1 - k) * 10 : 1 }, L.prop); }
+      const pile = 4 + 3 * ((T * 0.15) % 1);
+      el("path", { d: `M${cx - 13},${floor} Q${cx},${floor - pile * 2} ${cx + 13},${floor}Z`, fill: "var(--spark)" }, L.prop); break; }
     case "zzz": for (let i = 0; i < 3; i++) { const k = (T * 0.35 + i / 3) % 1;
       const z = el("text", { x: cx + 18 + k * 16, y: b.y - 4 - k * 22, "font-family": "Baloo 2, sans-serif", "font-weight": 800, "font-size": 9 + k * 6, fill: "var(--ink-3)", opacity: Math.sin(k * Math.PI) }, L.prop); z.textContent = "z"; } break;
     case "sparkles": [[-1, -0.2], [1, -0.4], [0.7, 0.9]].forEach(([sx, sy], i) => {

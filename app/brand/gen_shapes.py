@@ -44,6 +44,21 @@ def capsule(ax, ay, bx, by, r):
     return d
 
 
+def polygon(pts, r=0.0):
+    """Exact SDF of a simple polygon, rounded by r."""
+    def d(x, y):
+        best, sign, n = float("inf"), 1, len(pts)
+        for i in range(n):
+            (ax, ay), (bx, by) = pts[i], pts[(i + 1) % n]
+            ex, ey, wx, wy = bx - ax, by - ay, x - ax, y - ay
+            h = max(0.0, min(1.0, (wx * ex + wy * ey) / (ex * ex + ey * ey)))
+            best = min(best, math.hypot(wx - ex * h, wy - ey * h))
+            if (ay > y) != (by > y) and x < ax + (y - ay) * ex / ey:
+                sign = -sign
+        return sign * best - r
+    return d
+
+
 def smooth_union(k, *fs):
     def d(x, y):
         out = fs[0](x, y)
@@ -108,8 +123,8 @@ SHAPES = {
     "error": sample(smooth_union(9, ellipse(50, 66, 42, 17),
                                  capsule(36, 72, 36, 81, 6), capsule(63, 74, 63, 86, 6.5)), 50, 66),
     # busy: an hourglass with a soft waist
-    "busy": sample(smooth_union(14, ellipse(50, 32, 24, 12), ellipse(50, 80, 24, 12),
-                                capsule(50, 32, 50, 80, 9)), 50, 56),
+    "busy": sample(smooth_union(4, polygon([(27, 22), (73, 22), (53.5, 54), (73, 86), (27, 86), (46.5, 54)], 5),
+                                rbox(50, 18, 30, 5, 4), rbox(50, 90, 30, 5, 4)), 50, 54),
     # quiet: a flat sleeping mochi
     "quiet": sample(ellipse(50, 72, 42, 15), 50, 72),
     # off: a small curled ball

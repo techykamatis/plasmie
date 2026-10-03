@@ -28,6 +28,7 @@ private struct PlasmieBody: View, Animatable {
     let f0: PlasmieState
     let f1: PlasmieState
     let scheme: ColorScheme
+    var accessory: String? = nil
 
     var animatableData: PlasmieVector {
         get { pose }
@@ -86,6 +87,7 @@ private struct PlasmieBody: View, Animatable {
                 }
             }
             if f0 == f1 { draw(a, 1) } else { draw(a, 1 - phase); draw(b, phase) }
+            if let acc = accessory { PlasmieAccessoryArt.draw(acc, box: box, in: c, scheme: scheme) }
         }
     }
 }
@@ -322,6 +324,8 @@ struct PlasmieView: View {
     var size: CGFloat = 44
     /// Freeze loops at this many seconds (previews and render proofs); nil = live.
     var frozenAt: Double? = nil
+    /// Evolution accessory id (eggshell, leaf, glasses, mortarboard, wizard-hat, crown); nil = bare.
+    var accessory: String? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var scheme
@@ -332,10 +336,11 @@ struct PlasmieView: View {
     @State private var entered = Date()
     @State private var squash = false
 
-    init(state: PlasmieState, size: CGFloat = 44, frozenAt: Double? = nil) {
+    init(state: PlasmieState, size: CGFloat = 44, frozenAt: Double? = nil, accessory: String? = nil) {
         self.state = state
         self.size = size
         self.frozenAt = frozenAt
+        self.accessory = accessory
         _shown = State(initialValue: state)
         _f0 = State(initialValue: state)
         _f1 = State(initialValue: state)
@@ -346,7 +351,7 @@ struct PlasmieView: View {
     }
 
     var body: some View {
-        let bodyLayer = PlasmieBody(pose: pose, f0: f0, f1: f1, scheme: scheme)
+        let bodyLayer = PlasmieBody(pose: pose, f0: f0, f1: f1, scheme: scheme, accessory: accessory)
         Group {
             if let f = frozenAt {
                 composed(bodyLayer, t: f, age: f)
@@ -438,6 +443,7 @@ private struct PlasmieShake: GeometryEffect {
 struct InteractivePlasmie: View {
     let state: PlasmieState
     var size: CGFloat = 104
+    var accessory: String? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var reaction: PlasmieState?
@@ -455,7 +461,7 @@ struct InteractivePlasmie: View {
     }
 
     var body: some View {
-        PlasmieView(state: reaction ?? state, size: size)
+        PlasmieView(state: reaction ?? state, size: size, accessory: accessory)
             .modifier(PlasmieShake(shakes: shakes, amount: size * 0.03))
             .rotationEffect(.degrees(Double(lean.width / max(size, 1)) * 40), anchor: .bottom)
             .scaleEffect(x: 1 + abs(lean.width) / size * 0.5, y: 1 - abs(lean.width) / size * 0.35, anchor: .bottom)

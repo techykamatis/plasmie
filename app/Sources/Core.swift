@@ -152,6 +152,20 @@ final class Model: ObservableObject {
     private var cycle = 0
     private var hintUntil = Date.distantPast   // optimistic "running" right after a click
 
+    // Evolutions and trophies (plasmie-achievements.py), reloaded at most every ~5 minutes
+    @Published var ach: Achievements? = nil
+    @Published var celebrating: String? = nil      // name of a just-unlocked trophy, for a few seconds
+    private var achLoadedAt = Date.distantPast
+    private var achLoading = false
+    private var celebrated = Set<String>()
+    var stage: AchStage? { ach?.stage }
+    var trophies: [Trophy] { ach?.trophyList ?? [] }
+    var unlockedCount: Int { ach?.unlockedTotal ?? 0 }
+    var totalTrophies: Int { ach?.trophyTotal ?? 0 }
+    var newly: [String] { ach?.newly ?? [] }
+    /// What the panel's hero shows: a brief `success` while a trophy is being celebrated.
+    var heroPlasmie: PlasmieState { celebrating != nil ? .success : plasmie }
+
     /// true whenever real work is happening (or just-kicked) — drives the animation
     var active: Bool { s.state == "running" || busy || Date() < hintUntil }
 
@@ -171,7 +185,35 @@ final class Model: ObservableObject {
         }
     }
 
+    func refreshAchievements() {
+        guard !achLoading, Date().timeIntervalSince(achLoadedAt) > 290 else { return }
+        achLoading = true
+        DispatchQueue.global(qos: .utility).async {
+            let r = loadAchievements()
+            DispatchQueue.main.async {
+                self.achLoading = false
+                guard let r else { return }          // keep the last good report on failure
+                self.achLoadedAt = Date()
+                self.ach = r
+                self.celebrate(r)
+            }
+        }
+    }
+
+    /// New trophy: the hero plays `success` and the stage line names it for ~6s. No modal.
+    private func celebrate(_ r: Achievements) {
+        let fresh = (r.newly ?? []).filter { !celebrated.contains($0) }
+        guard let id = fresh.first else { return }
+        celebrated.formUnion(fresh)
+        celebrating = r.trophyList.first { $0.id == id }?.title ?? "Trophy"
+        let mine = celebrating
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            if self?.celebrating == mine { self?.celebrating = nil }
+        }
+    }
+
     func refresh() {
+        refreshAchievements()
         let wasActive = active
         DispatchQueue.global().async {
             let new = loadStatus()

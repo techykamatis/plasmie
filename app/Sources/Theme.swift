@@ -76,6 +76,11 @@ enum PlasmieHues {
     static let claude = PlasmieHue(0xD97757)
     static let agentcli = PlasmieHue(0x2BB3A0)
     static let outlook = PlasmieHue(0x5B8DEF)
+    static let eggshell = PlasmieHue(0xFFF7EC)
+    static let leaf = PlasmieHue(0x6CC18E)
+    static let bronze = PlasmieHue(0xC98A5B)
+    static let silver = PlasmieHue(0xA7B1C2)
+    static let gold = PlasmieHue(0xF2B83B)
 }
 
 extension Color {

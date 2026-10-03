@@ -106,11 +106,12 @@ struct Panel: View {
         VStack(alignment: .leading, spacing: 0) {
             // header: Plasmie is the hero — its shape is the status, so it gets the stage
             VStack(spacing: 6) {
-                InteractivePlasmie(state: m.plasmie, size: 104)
+                InteractivePlasmie(state: m.heroPlasmie, size: 104, accessory: m.stage?.accessory)
                     .frame(maxWidth: .infinity)
                     .help("Click to say hi · drag to pet")
                 .padding(.top, 16)
                 Text("Plasmie").font(.klTitle)
+                stageLine
                 StatusPill(state: m.s.state, reason: m.s.reason)
             }
             .frame(maxWidth: .infinity)
@@ -192,6 +193,7 @@ struct Panel: View {
                     ActionRow(title: "Today's raw log", symbol: "book.closed") { openInObsidian(m.s.journal) }
                 }
                 ActionRow(title: "Activity log", symbol: "doc.plaintext") { openExternal("\(m.s.loop)/feed.log") }
+                ActionRow(title: "Trophies", symbol: "trophy", key: "t") { TrophiesController.shared.show(m) }
 
                 groupLabel("Maintain").padding(.top, 4)
                 ActionRow(title: "Reindex check", symbol: "magnifyingglass",
@@ -238,6 +240,23 @@ struct Panel: View {
         .help("Status refreshes every minute · ⌘R to refresh now")
         .background(Button("Refresh") { m.refresh() }.keyboardShortcut("r", modifiers: .command)
             .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true))
+    }
+
+    /// One quiet line under the name: "Scholar · 19 of 32 trophies", or the new trophy for a few
+    /// seconds. A button into the Trophies window.
+    @ViewBuilder private var stageLine: some View {
+        if let st = m.stage?.name {
+            let text = m.celebrating.map { "New trophy: \($0)" } ?? "\(st) · \(m.unlockedCount) of \(m.totalTrophies) trophies"
+            Button { TrophiesController.shared.show(m) } label: {
+                HStack(spacing: 3) {
+                    Text(text).font(.klMeta).foregroundStyle(m.celebrating == nil ? .secondary : .primary)
+                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(m.celebrating.map { "New trophy: \($0). Open trophies" } ?? "\(text). Open trophies")
+        }
     }
 
     private var held: some View {

@@ -271,3 +271,97 @@ enum PlasmieFaceArt {
         return out
     }
 }
+
+
+// MARK: - evolution accessories
+
+/// Stage accessories, drawn on Plasmie's 100x100 canvas relative to the current shape's
+/// bounding box (mirrors drawAccessory in app/brand/plasmie-brand.template.html).
+enum PlasmieAccessoryArt {
+    static func draw(_ acc: String, box b: CGRect, in c: GraphicsContext, scheme: ColorScheme) {
+        let cx = b.midX, top = b.minY
+        let ink = PlasmieHues.ink.color(scheme)
+        let spark = PlasmieHues.sparkle.color(scheme)
+        let stroke = StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round)
+        func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x, y: y) }
+        func fillStroke(_ p: Path, _ fill: Color, lineWidth: CGFloat = 1.8) {
+            c.fill(p, with: .color(fill))
+            c.stroke(p, with: .color(ink), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+        }
+        func ellipse(_ x: CGFloat, _ y: CGFloat, _ rx: CGFloat, _ ry: CGFloat, deg: Double = 0) -> Path {
+            let e = Path(ellipseIn: CGRect(x: -rx, y: -ry, width: 2 * rx, height: 2 * ry))
+            return e.applying(CGAffineTransform(rotationAngle: CGFloat(deg * .pi / 180)).concatenating(CGAffineTransform(translationX: x, y: y)))
+        }
+
+        switch acc {
+        case "eggshell":
+            var p = Path()
+            p.move(to: pt(cx - 17, top + 7))
+            p.addQuadCurve(to: pt(cx, top - 13), control: pt(cx - 15, top - 12))
+            p.addQuadCurve(to: pt(cx + 17, top + 7), control: pt(cx + 15, top - 12))
+            for q in [(12, 2), (7, 8), (2, 2), (-3, 8), (-8, 2), (-13, 8)] { p.addLine(to: pt(cx + CGFloat(q.0), top + CGFloat(q.1))) }
+            p.closeSubpath()
+            fillStroke(p, PlasmieHues.eggshell.color(scheme))
+        case "leaf":
+            var stem = Path()
+            stem.move(to: pt(cx, top + 3))
+            stem.addQuadCurve(to: pt(cx + 2, top - 11), control: pt(cx - 1, top - 6))
+            c.stroke(stem, with: .color(ink), style: stroke)
+            fillStroke(ellipse(cx - 5, top - 12, 7, 3.6, deg: -28), PlasmieHues.leaf.color(scheme))
+            fillStroke(ellipse(cx + 8, top - 14, 7, 3.6, deg: 24), PlasmieHues.leaf.color(scheme))
+        case "glasses":
+            let ey = b.minY + min(b.height * 0.42, b.height - 14), gap = min(b.width * 0.17, 13)
+            for s in [-1.0, 1.0] {
+                let r = Path(ellipseIn: CGRect(x: cx + CGFloat(s) * gap - 7.6, y: ey - 7.6, width: 15.2, height: 15.2))
+                c.fill(r, with: .color(.white.opacity(0.22)))
+                c.stroke(r, with: .color(ink), style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+            }
+            var bridge = Path()
+            bridge.move(to: pt(cx - gap + 7.6, ey))
+            bridge.addQuadCurve(to: pt(cx + gap - 7.6, ey), control: pt(cx, ey - 3))
+            c.stroke(bridge, with: .color(ink), style: stroke)
+        case "mortarboard":
+            var band = Path()
+            band.move(to: pt(cx - 12, top - 3)); band.addLine(to: pt(cx - 12, top + 5))
+            band.addQuadCurve(to: pt(cx + 12, top + 5), control: pt(cx, top + 9))
+            band.addLine(to: pt(cx + 12, top - 3)); band.closeSubpath()
+            fillStroke(band, ink)
+            var board = Path()
+            board.move(to: pt(cx - 25, top - 6)); board.addLine(to: pt(cx, top - 15))
+            board.addLine(to: pt(cx + 25, top - 6)); board.addLine(to: pt(cx, top + 3)); board.closeSubpath()
+            fillStroke(board, ink)
+            var tassel = Path()
+            tassel.move(to: pt(cx, top - 6))
+            tassel.addQuadCurve(to: pt(cx + 19, top + 1), control: pt(cx + 14, top - 4))
+            tassel.addLine(to: pt(cx + 19, top + 11))
+            c.stroke(tassel, with: .color(spark), style: stroke)
+            c.fill(Path(ellipseIn: CGRect(x: cx + 19 - 2.4, y: top + 12 - 2.4, width: 4.8, height: 4.8)), with: .color(spark))
+        case "wizard-hat":
+            var cone = Path()
+            cone.move(to: pt(cx - 18, top + 3))
+            cone.addQuadCurve(to: pt(cx + 9, top - 34), control: pt(cx - 4, top - 18))
+            cone.addQuadCurve(to: pt(cx + 18, top + 3), control: pt(cx + 6, top - 16))
+            cone.closeSubpath()
+            fillStroke(cone, ink)
+            fillStroke(ellipse(cx, top + 3, 24, 4.5), ink)
+            for (x, y, r) in [(cx - 4, top - 8, 2.6), (cx + 5, top - 18, 2.0), (cx + 3, top - 3, 1.6)] {
+                var st = Path()
+                let k = r * 0.35
+                st.move(to: pt(x, y - r)); st.addLine(to: pt(x + k, y - k)); st.addLine(to: pt(x + r, y))
+                st.addLine(to: pt(x + k, y + k)); st.addLine(to: pt(x, y + r)); st.addLine(to: pt(x - k, y + k))
+                st.addLine(to: pt(x - r, y)); st.addLine(to: pt(x - k, y - k)); st.closeSubpath()
+                c.fill(st, with: .color(spark))
+            }
+        case "crown":
+            var p = Path()
+            p.move(to: pt(cx - 17, top + 3)); p.addLine(to: pt(cx - 18, top - 11)); p.addLine(to: pt(cx - 9, top - 3))
+            p.addLine(to: pt(cx, top - 15)); p.addLine(to: pt(cx + 9, top - 3)); p.addLine(to: pt(cx + 18, top - 11))
+            p.addLine(to: pt(cx + 17, top + 3)); p.closeSubpath()
+            fillStroke(p, spark)
+            for x in [cx - 9, cx, cx + 9] {
+                c.fill(Path(ellipseIn: CGRect(x: x - 1.8, y: top - 1 - 1.8, width: 3.6, height: 3.6)), with: .color(PlasmieHues.blush.color(scheme)))
+            }
+        default: break
+        }
+    }
+}

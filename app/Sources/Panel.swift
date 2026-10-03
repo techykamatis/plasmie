@@ -221,6 +221,8 @@ struct Panel: View {
             groupLabel("Maintain").padding(.top, 4)
             ActionRow(title: "Reindex check", symbol: "magnifyingglass",
                       detail: "Rebuild catalog & flag dead links · changes nothing") { m.reindexCheck() }
+            ActionRow(title: "Copy diagnostics", symbol: "stethoscope",
+                      detail: "A report to send when something's wrong · no notes or secrets") { copyDiagnostics() }
             ActionRow(title: "Show the tour", symbol: "sparkles", detail: "Where Plasmie lives and what it can do") {
                 NotchController.shared.startTour()
             }
@@ -261,6 +263,20 @@ struct Panel: View {
             output
             ActionRow(title: "Full activity log", symbol: "doc.plaintext") { openExternal("\(PlasmiePaths.home)/feed.log") }
                 .padding(.horizontal, 6).padding(.bottom, 4)
+        }
+    }
+
+    /// Runs plasmie-diagnostics.py off the main thread and puts the scrubbed report on the clipboard.
+    private func copyDiagnostics() {
+        m.note = "Gathering diagnostics…"
+        DispatchQueue.global(qos: .userInitiated).async {
+            let report = runCapture(PlasmiePaths.python, [PlasmiePaths.script("plasmie-diagnostics.py")])
+            DispatchQueue.main.async {
+                guard !report.isEmpty else { m.note = "Couldn't gather diagnostics. Try again in a moment."; return }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(report, forType: .string)
+                m.note = "Diagnostics copied. Paste them into a message."
+            }
         }
     }
 

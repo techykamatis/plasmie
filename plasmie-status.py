@@ -148,9 +148,8 @@ def _keychain_notice():
     try:
         import keychain
         if keychain.needs_migration():
-            return ("Plasmie couldn't save your sign-ins to the Keychain yet, so it's still reading them from "
-                    "your old settings file; everything keeps working. If Keychain Access won't accept your "
-                    "Mac password for the login keychain, choose Edit > Change Password for Keychain \"login\".")
+            return ("Plasmie couldn't move your sign-ins into the Keychain yet; macOS keeps it locked while "
+                    "your Mac is locked. It retries every hour, and everything keeps working meanwhile.")
     except Exception:
         pass
     return ""

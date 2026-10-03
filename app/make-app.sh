@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build Plasmie.app from the single Swift source — no Xcode project needed.
+# Build Plasmie (the bundle file is still `Plasmie.app`: login item + scripts use that path) from the single Swift source — no Xcode project needed.
 # Compiles with swiftc (CLT), assembles the bundle, ad-hoc signs (personal use).
 set -euo pipefail
 SELF="$(cd "$(dirname "$0")" && pwd)"
@@ -43,14 +43,16 @@ mkdir -p "$RES/pytmp" && tar xzf "$PYTGZ" -C "$RES/pytmp"
 mv "$RES/pytmp/python" "$RES/python" && rm -rf "$RES/pytmp"
 say "bundled Python $("$RES/python/bin/python3" -V 2>&1 | awk '{print $2}')"
 
-# custom logo -> AppIcon.icns (same glyph as the menu bar, colored)
+# Plasmie (idle pose, coloured) -> AppIcon.icns; uses the app's own PlasmieShapes anchors
 ICONSET="$SELF/build/AppIcon.iconset"
-if swift "$SELF/make-logo.swift" "$ICONSET" && iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"; then
+LOGOBIN="$SELF/build/make-logo"
+if swiftc -parse-as-library -o "$LOGOBIN" "$SELF/make-logo.swift" "$SELF/Sources/PlasmieShapes.swift" \
+   && "$LOGOBIN" "$ICONSET" && iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"; then
   echo "icon: generated AppIcon.icns"
 else
   echo "icon: generation failed — using default"
 fi
-rm -rf "$ICONSET"
+rm -rf "$ICONSET" "$LOGOBIN"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

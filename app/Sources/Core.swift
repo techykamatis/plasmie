@@ -1,9 +1,10 @@
-// Plasmie — native menu-bar app (macOS 13+ MenuBarExtra, .window style).
+// Plasmie (Plasmie) — native menu-bar app (macOS 13+ MenuBarExtra, .window style).
 // HIG-aligned panel: SF Symbols, system materials, native typography. Actions run
 // in-process (no Terminal pop-outs) and show output inline. Reads state via
 // ~/.plasmie/plasmie-status.py; shells to the existing python/launchd you run.
 import AppKit
 import Carbon.HIToolbox
+import Combine
 import Foundation
 import SwiftUI
 
@@ -135,16 +136,30 @@ final class Model: ObservableObject {
     @Published var note = ""            // transient status line ("Promote started…")
     @Published var output = ""          // captured output of the last in-process run
     @Published var busy = false         // an in-process python run is underway
-    @Published var spin = 0.0           // menu-bar logo rotation, driven only while active
+    @Published var plasmie: PlasmieState = .idle       // what Plasmie is doing, derived from status
+    @Published var menuImage: NSImage = PlasmieGlyph.still(.idle)   // menu-bar template glyph
     @Published var runningJobs: Set<String> = []   // labels of launchd jobs we kicked and are following
     private var poll: Timer?            // adaptive state poll (fast while active, slow idle)
-    private var anim: Timer?            // 30fps spinner, alive only while active
+    private var anim: Timer?            // 8fps glyph frame swap, alive only while a busy state runs
+    private var cancellables = Set<AnyCancellable>()
+    private var askActive = false
+    private var allOff = false
+    private var minSourceAge: Double? = nil    // youngest enabled source's age, hours
+    private var successUntil = Date.distantPast
+    private var shownGlyph: PlasmieState = .idle
+    private var tweenFrom: PlasmieState = .idle
+    private var tweenStep = 0                  // 0 = not tweening; 1...tweenFrames in flight
+    private var cycle = 0
     private var hintUntil = Date.distantPast   // optimistic "running" right after a click
 
     /// true whenever real work is happening (or just-kicked) — drives the animation
     var active: Bool { s.state == "running" || busy || Date() < hintUntil }
 
     init() {
+        AskActivity.shared.$answering
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] on in self?.askActive = on; self?.recomputePlasmie() }
+            .store(in: &cancellables)
         refresh()
         schedulePoll()
     }
@@ -157,33 +172,77 @@ final class Model: ObservableObject {
     }
 
     func refresh() {
+        let wasActive = active
         DispatchQueue.global().async {
             let new = loadStatus()
+            let off = ConnectorsModel.readOff()
             DispatchQueue.main.async {
                 self.s = new
+                self.allOff = Connector.all.allSatisfy { off.contains($0.id) }
+                self.minSourceAge = Connector.all.filter { !off.contains($0.id) }
+                    .compactMap { new.age($0.ageKey) }.min()
+                if wasActive && !self.active && new.state != "error" { self.flashSuccess() }
+                self.recomputePlasmie()
                 self.updateAnimation()
                 self.schedulePoll()
             }
         }
     }
 
-    /// start/stop the spinner so it animates exactly while work is happening
+    /// A job that just finished OK reads as `success` for ~3s, then settles.
+    private func flashSuccess() {
+        successUntil = Date().addingTimeInterval(3)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.1) { [weak self] in self?.recomputePlasmie() }
+    }
+
+    private func recomputePlasmie() {
+        let new = PlasmieState.derive(status: s, askActive: askActive, inProcess: busy ? note : nil,
+                                    allOff: allOff, minSourceAgeHours: minSourceAge,
+                                    success: Date() < successUntil)
+        guard new != plasmie else { return }
+        plasmie = new
+        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            tweenFrom = shownGlyph; tweenStep = 1
+        }
+        updateAnimation()
+    }
+
+    /// Menu-bar glyph: swap cached template frames at 8fps while a busy state runs (and for
+    /// the few morph-tween frames after a state change); otherwise show the static pose.
+    /// Reduce Motion: always static, no tween.
     private func updateAnimation() {
-        // Reduce Motion: the logo stays static (the tint + status pill still say "working").
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             anim?.invalidate(); anim = nil
-            if spin != 0 { spin = 0 }
+            tweenStep = 0
+            setGlyph(PlasmieGlyph.still(plasmie), plasmie)
             return
         }
-        if active, anim == nil {
-            anim = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
-                guard let self else { return }
-                self.spin = (self.spin + 12).truncatingRemainder(dividingBy: 360)  // ~1 turn/sec
+        if plasmie.animatesMenuBar || tweenStep > 0 {
+            if anim == nil {
+                let t = Timer(timeInterval: 1.0 / 8, repeats: true) { [weak self] _ in self?.tick() }
+                RunLoop.main.add(t, forMode: .common)
+                anim = t
             }
-        } else if !active {
+        } else {
             anim?.invalidate(); anim = nil
-            withAnimation(.easeOut(duration: 0.2)) { spin = 0 }
+            setGlyph(PlasmieGlyph.still(plasmie), plasmie)
         }
+    }
+
+    private func tick() {
+        if tweenStep > 0 {
+            setGlyph(PlasmieGlyph.tween(from: tweenFrom, to: plasmie, step: tweenStep), nil)
+            if tweenStep >= PlasmieGlyph.tweenFrames { tweenStep = 0; shownGlyph = plasmie; cycle = 0 } else { tweenStep += 1 }
+            return
+        }
+        guard plasmie.animatesMenuBar else { updateAnimation(); return }
+        cycle += 1
+        setGlyph(PlasmieGlyph.frame(plasmie, cycle), plasmie)
+    }
+
+    private func setGlyph(_ img: NSImage, _ settled: PlasmieState?) {
+        menuImage = img
+        if let settled { shownGlyph = settled }
     }
 
     private var py: String { "/usr/bin/python3" }
@@ -195,7 +254,7 @@ final class Model: ObservableObject {
         runningJobs.insert(label)
         note = "\(label) running…"
         hintUntil = Date().addingTimeInterval(8)
-        updateAnimation(); schedulePoll()
+        recomputePlasmie(); updateAnimation(); schedulePoll()
         fireAndForget("/bin/launchctl", ["kickstart", "-p", "gui/\(getuid())/\(job)"])
         DispatchQueue.global().async {
             let start = Date()
@@ -217,12 +276,13 @@ final class Model: ObservableObject {
                 if let fresh {
                     self.s = fresh
                     let summary = fresh.activity.isEmpty ? "\(fresh.notes) notes in vault" : fresh.activity
+                    if exit == "0" { self.flashSuccess() }
                     self.note = exit == "0" ? "\(label) finished · \(summary)"
                                             : "\(label) failed (exit \(exit)) · \(summary)"
                 } else {
                     self.note = "\(label) still running in background"
                 }
-                self.updateAnimation(); self.schedulePoll()
+                self.recomputePlasmie(); self.updateAnimation(); self.schedulePoll()
             }
         }
     }
@@ -230,14 +290,14 @@ final class Model: ObservableObject {
     /// run a python command in-process, show its output inline (no Terminal)
     func capture(_ args: [String], _ label: String) {
         busy = true; note = "\(label)…"; output = ""
-        updateAnimation()
+        recomputePlasmie(); updateAnimation()
         DispatchQueue.global().async {
             let o = runCapture(self.py, args)
             DispatchQueue.main.async {
                 self.busy = false
                 self.output = o.trimmingCharacters(in: .whitespacesAndNewlines)
                 self.note = "\(label) done"
-                self.updateAnimation()
+                self.recomputePlasmie(); self.updateAnimation()
                 self.refresh()
             }
         }
@@ -263,14 +323,14 @@ final class Model: ObservableObject {
     func approveHeld() {
         let hold = s.pendingFile
         guard !hold.isEmpty else { return }
-        busy = true; note = "Approving…"; output = ""; updateAnimation()
+        busy = true; note = "Approving…"; output = ""; recomputePlasmie(); updateAnimation()
         DispatchQueue.global().async {
             let o = runCapture(self.py, ["\(self.s.loop)/promote-apply.py", hold, "--apply"])
             self.markResolved(hold)
             DispatchQueue.main.async {
                 self.busy = false
                 self.output = o.trimmingCharacters(in: .whitespacesAndNewlines)
-                self.note = "Approved"; self.updateAnimation(); self.refresh()
+                self.note = "Approved"; self.recomputePlasmie(); self.updateAnimation(); self.refresh()
             }
         }
     }
@@ -285,28 +345,27 @@ final class Model: ObservableObject {
 
 // MARK: - views
 
-let kLogo: NSImage = {
-    let s: CGFloat = 16
-    let img = NSImage(size: NSSize(width: s, height: s), flipped: false) { _ in
-        let c = CGPoint(x: s / 2, y: s / 2)
-        let r = s * 0.30
-        NSColor.black.set()
-        let ring = NSBezierPath()
-        ring.appendArc(withCenter: c, radius: r, startAngle: 50, endAngle: 360, clockwise: false)
-        ring.lineWidth = 1.7
-        ring.lineCapStyle = .round
-        ring.stroke()
-        let tip = CGPoint(x: c.x + r, y: c.y)
-        let head = NSBezierPath()
-        head.move(to: CGPoint(x: tip.x, y: tip.y + 3.0))
-        head.line(to: CGPoint(x: tip.x + 2.3, y: tip.y))
-        head.line(to: CGPoint(x: tip.x - 2.3, y: tip.y))
-        head.close()
-        head.fill()
-        NSBezierPath(ovalIn: CGRect(x: c.x - 2.0, y: c.y - 2.0, width: 4.0, height: 4.0)).fill()
-        return true
+extension PlasmieState {
+    /// Maps the pipeline's real status to what Plasmie shows. Order matters: honest status
+    /// first (never look happy while ingest is failing), then flavour.
+    static func derive(status s: Status, askActive: Bool, inProcess: String?, allOff: Bool,
+                       minSourceAgeHours: Double?, success: Bool,
+                       quietAfterHours: Double = 24) -> PlasmieState {
+        let act = s.activity.lowercased()
+        if askActive { return .ask }
+        if allOff { return .off }
+        if s.state == "running" || inProcess != nil {
+            let text = act + " " + (inProcess ?? "").lowercased()
+            if text.contains("summar") || text.contains("digest") { return .summarize }
+            if text.contains("promot") || text.contains("draft") || text.contains("generating")
+                || text.contains("duplicate") || text.contains("auto-apply") || text.contains("approv") { return .promote }
+            return .ingest        // ingesting / indexing / anything else running
+        }
+        if act.contains("busy") { return .busy }     // "Skipped — machine busy": jobs deferred, not failed
+        if s.state == "error" { return .error }
+        if success { return .success }
+        if s.state == "pending" || s.pending > 0 { return .held }
+        if let age = minSourceAgeHours, age > quietAfterHours { return .quiet }
+        return .idle
     }
-    img.isTemplate = true
-    return img
-}()
-
+}

@@ -105,13 +105,15 @@ struct Panel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // header
-            HStack(spacing: 7) {
-                Image(nsImage: kLogo).foregroundStyle(.primary)
-                Text("Plasmie").font(.klHeading)
-                Spacer()
-                StatusPill(state: m.s.state, reason: m.s.reason)
+            HStack(spacing: 10) {
+                PlasmieView(state: m.plasmie, size: 44)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Plasmie").font(.klHeading)
+                    StatusPill(state: m.s.state, reason: m.s.reason)
+                }
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 12).padding(.top, 11).padding(.bottom, 9)
+            .padding(.horizontal, 12).padding(.top, 9).padding(.bottom, 7)
 
             // live "what's happening" line — the running step's heartbeat
             if !m.s.activity.isEmpty {

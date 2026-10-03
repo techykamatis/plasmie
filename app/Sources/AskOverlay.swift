@@ -150,6 +150,9 @@ struct AskOverlay: View {
     @State private var answer = ""
     @State private var status = ""
     @State private var busy = false
+    private enum Outcome { case done, failed }
+    @State private var outcome: Outcome?
+    @State private var clearOutcome: DispatchWorkItem?
     @State private var gapLogged = false
     @State private var answerHeight: CGFloat = 0
     @FocusState private var focused: Bool
@@ -166,21 +169,22 @@ struct AskOverlay: View {
                     .focused($focused)
                     .accessibilityLabel("Ask your vault")
                     .onSubmit(run)
-                if busy { ProgressView().controlSize(.small).accessibilityLabel("Searching") }
             }
             .padding(.horizontal, 18).padding(.vertical, 16)
 
             // Live status row — shows the pipeline stage streamed from ask.py's stderr.
-            if busy {
+            if busy || outcome != nil {
                 Divider()
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small).accessibilityHidden(true)
-                    Text(status.isEmpty ? "Searching your vault…" : status)
+                    PlasmieView(state: busy ? .ask : (outcome == .failed ? .error : .success), size: 28)
+                    Text(statusLine)
                         .font(.klLabel).foregroundStyle(.secondary)
                         .lineLimit(1).truncationMode(.tail)
                     Spacer()
                 }
-                .padding(.horizontal, 18).padding(.vertical, 12)
+                .padding(.horizontal, 18).padding(.vertical, 8)
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.updatesFrequently)
             }
 
             // Answer: rendered markdown + clickable sources in a ScrollView sized to
@@ -248,6 +252,11 @@ struct AskOverlay: View {
         .onExitCommand(perform: onClose)   // Esc closes
     }
 
+    private var statusLine: String {
+        if busy { return status.isEmpty ? "Searching your vault…" : status }
+        return outcome == .failed ? "Couldn't get an answer. Try again." : "Answer ready"
+    }
+
     private var placeholder: String {
         let n = Int(notes.trimmingCharacters(in: .whitespaces)) ?? 0
         return n > 0 ? "Ask your vault — \(n) notes" : "Ask your vault"
@@ -263,14 +272,28 @@ struct AskOverlay: View {
     private func run() {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty, !busy else { return }
+        clearOutcome?.cancel(); outcome = nil
         busy = true; answer = ""; status = ""; answerHeight = 0; gapLogged = false
+        AskActivity.shared.answering = true
         // The venv holds apple_fm_sdk (on-device answers); system python can't import it.
         let venvPy = "\(loop)/.venv/bin/python3"
         let py = FileManager.default.fileExists(atPath: venvPy) ? venvPy : "/usr/bin/python3"
         runStreaming(py, ["\(loop)/ask.py", q, vault],
                      onStatus: { status = $0; if $0.contains("coverage gap") { gapLogged = true } },
                      onChunk: { answer = $0 },
-                     onDone: { busy = false; answer = answer.trimmingCharacters(in: .whitespacesAndNewlines); announceDone() })
+                     onDone: {
+                         busy = false
+                         AskActivity.shared.answering = false
+                         answer = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+                         let failed = answer.isEmpty || status.lowercased().hasPrefix("error")
+                         outcome = failed ? .failed : .done
+                         if !failed {
+                             let w = DispatchWorkItem { outcome = nil }
+                             clearOutcome = w
+                             DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: w)
+                         }
+                         announceDone()
+                     })
     }
 
     /// Split ask.py's output into the markdown body and the parsed source list.

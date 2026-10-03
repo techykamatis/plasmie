@@ -38,11 +38,12 @@ struct PlasmieApp: App {
             Panel(m: m)
         } label: {
             HStack(spacing: 3) {
-                Image(nsImage: kLogo)
-                    .rotationEffect(.degrees(m.spin))   // spins ~1 turn/sec while a loop runs
+                Image(nsImage: m.menuImage)          // Plasmie, template glyph; frames swap while busy
                 if m.s.pending > 0 { Text("\(m.s.pending)") }
             }
             .foregroundStyle(tint)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(m.s.pending > 0 ? "\(m.plasmie.label), \(m.s.pending) held" : m.plasmie.label)
         }
         .menuBarExtraStyle(.window)
     }

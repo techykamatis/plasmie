@@ -48,13 +48,13 @@ struct SetupView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                Image(nsImage: kLogo).accessibilityHidden(true)
-                Text(done ? "You're all set" : "Setting up Plasmie")
+                PlasmieView(state: done ? .success : (failed != nil ? .error : .ingest), size: 56)
+                Text(done ? "You're all set" : "Hi, I'm Plasmie. Setting things up")
                     .font(.klTitle)
             }
             if done {
                 Text("Plasmie is ready. Press ⌃⌥⌘K anywhere to ask a question about "
-                     + "your notes — look for the brain icon in your menu bar at the top of the screen.")
+                     + "your notes. Look for me in your menu bar at the top of the screen.")
                     .klNote()
                 Spacer()
                 HStack {

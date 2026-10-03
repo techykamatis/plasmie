@@ -184,7 +184,7 @@ struct SettingsView: View {
     private var titleBar: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
-                Image(nsImage: kLogo)
+                PlasmieView(state: .idle, size: 32)
                 Text("Set up your connectors").font(.klTitle)
                 Spacer()
             }

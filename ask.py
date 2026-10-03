@@ -59,6 +59,7 @@ CHARS_PER_TOKEN = 3.0
 TEMPLATE_TOKENS = 200  # chat-template/system overhead not counted in our text
 DEFAULT_CONTEXT = 8192  # when fm can't report one (Gemma has no tight window)
 DIGESTS = f"{paths.META}/digests"   # meta/digests/YYYY-MM-DD.md — short on-device rollups
+RECAP_TOKENS = 320    # 8 short bullets; a recap ran 26 bullets / 25s on the shared 600 cap
 RECAP_CHARS = 12000   # recap prompts stay well under the window: prefill time scales with it
 LONG_WINDOW_DAYS = 2  # recaps spanning more days read digests, not raw logs
 
@@ -285,7 +286,7 @@ def stream_model(prompt, on_chunk):
     return "".join(parts).strip()
 
 
-def fm_answer(prompt, on_chunk):
+def fm_answer(prompt, on_chunk, max_tokens=NUM_PREDICT):
     """Stream the on-device answer. Returns the text, or None if FM produced nothing.
 
     Once any text has streamed the user has seen it, so a late FM failure (timeout,
@@ -299,7 +300,7 @@ def fm_answer(prompt, on_chunk):
         on_chunk(t)
 
     _say("Answering on-device…")
-    out = fm.generate(prompt, max_tokens=NUM_PREDICT, on_chunk=tap,
+    out = fm.generate(prompt, max_tokens=max_tokens, on_chunk=tap,
                       timeout=FM_TIMEOUT, guard=False)
     if out is not None:
         return out
@@ -311,10 +312,10 @@ def fm_answer(prompt, on_chunk):
     return partial + notice
 
 
-def synthesize(prompt, on_chunk):
+def synthesize(prompt, on_chunk, max_tokens=NUM_PREDICT):
     """FM first, Gemma only if FM produced nothing. "" when neither could answer."""
     if os.environ.get("PLASMIE_ASK_BACKEND", "").lower() != "gemma":
-        out = fm_answer(prompt, on_chunk)
+        out = fm_answer(prompt, on_chunk, max_tokens)
         if out is not None:
             return out
         _say("On-device model unavailable — falling back to local Gemma.")
@@ -407,7 +408,7 @@ def recap_journal(question, vault, window, on_chunk, done, unavailable):
     prompt = build_recap_prompt(question, label, files)
     hits = [(None, {"path": str(f.relative_to(vp)), "title": f"{f.parent.name}/{f.stem}"})
             for f in files]
-    answer = synthesize(prompt, on_chunk)
+    answer = synthesize(prompt, on_chunk, RECAP_TOKENS)
     if not answer:
         return done(unavailable, hits)
     return answer, hits

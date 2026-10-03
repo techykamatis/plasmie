@@ -96,6 +96,7 @@ struct Panel: View {
     var inWindow = false                 // inside the Plasmie window: no Settings row (it's beside it)
     @ObservedObject private var icloud = ICloudSync.shared
     @AppStorage(ICloudSync.key) private var icloudOn = false
+    @State private var atLogin = LoginItem.isOn
     private enum Confirm { case approve, dismiss }
     @State private var confirm: Confirm?
     @AppStorage(NotchPrefs.key) private var notchOn = true
@@ -246,6 +247,11 @@ struct Panel: View {
                       detail: "A report to send when something's wrong · no notes or secrets") { copyDiagnostics() }
             ActionRow(title: "Show the tour", symbol: "sparkles", detail: "Where Plasmie lives and what it can do") {
                 NotchController.shared.startTour()
+            }
+            ActionRow(title: "Open at login", symbol: "power.circle",
+                      detail: LoginItem.needsApproval ? "Waiting for approval in System Settings › Login Items"
+                            : atLogin ? "On · Plasmie starts when you log in" : "Off") {
+                LoginItem.set(!atLogin); atLogin = LoginItem.isOn
             }
             ActionRow(title: "Plasmie in the notch", symbol: "capsule.tophalf.filled",
                       detail: notchOn ? "On · replaces the menu-bar icon" : "Off · using the menu-bar icon") { notchOn.toggle() }

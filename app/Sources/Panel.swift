@@ -105,33 +105,61 @@ struct Panel: View {
             .accessibilityAddTraits(.isHeader)
     }
 
+    // Two layouts of one column. Order for both: Plasmie (status) → fun fact → anything that
+    // needs attention → Ask → actions → logs and audit-type lines last.
+    // The menu (notch off) shows only what's needed so it fits any screen; everything else
+    // is one click away in the Plasmie window, whose sidebar is the full column.
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // header: Plasmie is the hero — its shape is the status, so it gets the stage
-            VStack(spacing: 6) {
-                InteractivePlasmie(state: m.heroPlasmie, size: 104, accessory: m.stage?.accessory)
-                    .frame(maxWidth: .infinity)
-                    .help("Click to say hi · drag to pet")
-                .padding(.top, 16)
-                Text("Plasmie").font(.klTitle)
-                stageLine
-                StatusPill(state: m.s.state, reason: m.s.reason)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.bottom, 12)
-            .background(RoundedRectangle(cornerRadius: 12).fill(Color.plasmieBody.opacity(0.12)))
-            .padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 8)
+            hero
+            FunFactCard(m: m)
+            attention
+            askRow
+            Divider().padding(.horizontal, 12)
+            if inWindow { fullActions } else { menuActions }
+            if inWindow { logs }
+            Divider().padding(.horizontal, 12)
+            ActionRow(title: "Quit Plasmie", symbol: "power", key: "q", compact: true) { NSApp.terminate(nil) }
+                .padding(.horizontal, 6).padding(.vertical, 3)
+        }
+        .frame(width: 320)
+        // ⌘R: refresh has no row (status auto-refreshes every 60s) but keeps its shortcut;
+        // it is surfaced as a hint on the panel.
+        .help("Status refreshes every minute · ⌘R to refresh now")
+        .background(Button("Refresh") { m.refresh() }.keyboardShortcut("r", modifiers: .command)
+            .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true))
+    }
 
-            // needs attention first: only present when something is wrong or waiting
-            if !m.obsidian {
-                banner("Obsidian required to view the vault", symbol: "exclamationmark.triangle.fill", tint: .orange) {
-                    openExternal("https://obsidian.md")
-                }
-            }
-            // held-for-review: a contextual alert, only when something is held
-            if m.s.pending > 0 { held }
+    // Plasmie is the hero: its shape is the status. Smaller in the menu, where height is scarce.
+    private var hero: some View {
+        VStack(spacing: 6) {
+            InteractivePlasmie(state: m.heroPlasmie, size: inWindow ? 104 : 72, accessory: m.stage?.accessory)
+                .frame(maxWidth: .infinity)
+                .help("Click to say hi · drag to pet")
+                .padding(.top, inWindow ? 16 : 12)
+            Text("Plasmie").font(.klTitle)
+            stageLine
+            StatusPill(state: m.s.state, reason: m.s.reason)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, 12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.plasmieBody.opacity(0.12)))
+        .padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 8)
+    }
 
-            // ask-anything: opens Ask in the notch (the floating panel when the notch is off)
+    // Only present when something is wrong or waiting.
+    @ViewBuilder private var attention: some View {
+        if !m.obsidian {
+            banner("Obsidian required to view the vault", symbol: "exclamationmark.triangle.fill", tint: .orange) {
+                openExternal("https://obsidian.md")
+            }
+        }
+        if m.s.pending > 0 { held }
+    }
+
+    // Opens Ask in the notch (the floating panel when the notch is off).
+    private var askRow: some View {
+        VStack(spacing: 0) {
             Divider().padding(.horizontal, 12)
             Button { OverlayController.shared.toggle() } label: {
                 HStack(spacing: 7) {
@@ -149,12 +177,62 @@ struct Panel: View {
             .accessibilityLabel("Ask your vault")
             .help("Ask anything in your vault (⌃⌥⌘K)")
             .padding(.horizontal, 12).padding(.vertical, 9)
+        }
+    }
 
-            Divider().padding(.horizontal, 12)
+    private var ingestRow: some View {
+        ActionRow(title: "Ingest now", symbol: "tray.and.arrow.down",
+                  detail: "Capture latest Slack & sessions · hourly", key: "i",
+                  running: m.runningJobs.contains("Ingest")) { m.kick("com.plasmie.dev-ingest", "Ingest") }
+    }
 
-            // the pipeline: what it's doing now, the two jobs you can kick, and their output
+    private var vaultRow: some View {
+        ActionRow(title: "Vault in Obsidian", symbol: "folder", key: "o") { openInObsidian(m.s.vault) }
+    }
+
+    // The menu: the everyday few, then the door to everything else.
+    private var menuActions: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            ingestRow
+            vaultRow
+            ActionRow(title: "Open Plasmie…", symbol: "macwindow", detail: "Everything else, logs and settings", key: ",") {
+                SettingsController.shared.show()
+            }
+        }
+        .padding(.horizontal, 6).padding(.vertical, 4)
+    }
+
+    // The window's sidebar: every action, grouped.
+    private var fullActions: some View {
+        VStack(alignment: .leading, spacing: 1) {
             groupLabel("Run")
-            // live "what's happening" line — the running step's heartbeat
+            ingestRow
+            ActionRow(title: "Promote now", symbol: "arrow.triangle.2.circlepath",
+                      detail: "Find new knowledge & auto-file it · nightly", key: "p",
+                      running: m.runningJobs.contains("Promote")) { m.kick("com.plasmie.dev-promote", "Promote") }
+
+            groupLabel("Open").padding(.top, 4)
+            vaultRow
+            if !m.s.journal.isEmpty {
+                ActionRow(title: "Today's raw log", symbol: "book.closed") { openInObsidian(m.s.journal) }
+            }
+            ActionRow(title: "Trophies", symbol: "trophy", key: "t") { TrophiesController.shared.show(m) }
+
+            groupLabel("Maintain").padding(.top, 4)
+            ActionRow(title: "Reindex check", symbol: "magnifyingglass",
+                      detail: "Rebuild catalog & flag dead links · changes nothing") { m.reindexCheck() }
+            ActionRow(title: "Plasmie in the notch", symbol: "capsule.tophalf.filled",
+                      detail: notchOn ? "On · replaces the menu-bar icon" : "Off · using the menu-bar icon") { notchOn.toggle() }
+        }
+        .padding(.horizontal, 6).padding(.vertical, 4)
+    }
+
+    // Audit-type lines live at the bottom: the live activity line, the last runs, the
+    // captured output of an in-app run, and the full activity log.
+    private var logs: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Divider().padding(.horizontal, 12)
+            groupLabel("Log").padding(.top, 4)
             if !m.s.activity.isEmpty {
                 HStack(spacing: 7) {
                     if working {
@@ -166,61 +244,8 @@ struct Panel: View {
                         .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 12).padding(.top, 2).padding(.bottom, 6)
+                .padding(.horizontal, 12).padding(.vertical, 4)
             }
-            VStack(alignment: .leading, spacing: 1) {
-                ActionRow(title: "Ingest now", symbol: "tray.and.arrow.down",
-                          detail: "Capture latest Slack & sessions · hourly", key: "i",
-                          running: m.runningJobs.contains("Ingest")) { m.kick("com.plasmie.dev-ingest", "Ingest") }
-                ActionRow(title: "Promote now", symbol: "arrow.triangle.2.circlepath",
-                          detail: "Find new knowledge & auto-file it · nightly", key: "p",
-                          running: m.runningJobs.contains("Promote")) { m.kick("com.plasmie.dev-promote", "Promote") }
-            }
-            .padding(.horizontal, 6)
-            // transient note + captured output
-            if !m.note.isEmpty || !m.output.isEmpty {
-                Divider().padding(.horizontal, 12)
-                VStack(alignment: .leading, spacing: 5) {
-                    if !m.note.isEmpty {
-                        HStack(spacing: 6) {
-                            if m.busy { ProgressView().controlSize(.small) }
-                            Text(m.note).klNote()
-                            Spacer()
-                            if !m.output.isEmpty {
-                                Button("Clear") { m.output = ""; m.note = "" }
-                                    .buttonStyle(.plain).font(.klMeta).foregroundStyle(.blue)
-                            }
-                        }
-                    }
-                    if !m.output.isEmpty {
-                        Text(m.output)
-                            .font(.klMono)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
-                            .lineLimit(24)
-                            .padding(7)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05)))
-                    }
-                }
-                .padding(.horizontal, 12).padding(.vertical, 9)
-            }
-
-            // places to go
-            groupLabel("Open").padding(.top, 8)
-            VStack(alignment: .leading, spacing: 1) {
-                ActionRow(title: "Vault in Obsidian", symbol: "folder", key: "o") { openInObsidian(m.s.vault) }
-                if !m.s.journal.isEmpty {
-                    ActionRow(title: "Today's raw log", symbol: "book.closed") { openInObsidian(m.s.journal) }
-                }
-                ActionRow(title: "Activity log", symbol: "doc.plaintext") { openExternal("\(m.s.loop)/feed.log") }
-                ActionRow(title: "Trophies", symbol: "trophy", key: "t") { TrophiesController.shared.show(m) }
-            }
-            .padding(.horizontal, 6)
-
-            // a little delight, then the record: the fact, the vault's size and the last runs
-            Divider().padding(.horizontal, 12).padding(.vertical, 8)
-            FunFactCard(m: m)
-            groupLabel("Recent")
             VStack(alignment: .leading, spacing: 5) {
                 Label("\(m.s.notes) notes in vault", systemImage: "doc.text")
                     .font(.klLabel).foregroundStyle(.secondary)
@@ -229,32 +254,40 @@ struct Panel: View {
                         .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .padding(.horizontal, 12).padding(.top, 2).padding(.bottom, 6)
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            output
+            ActionRow(title: "Full activity log", symbol: "doc.plaintext") { openExternal("\(m.s.loop)/feed.log") }
+                .padding(.horizontal, 6).padding(.bottom, 4)
+        }
+    }
 
-            // housekeeping last
-            groupLabel("Maintain").padding(.top, 4)
-            VStack(alignment: .leading, spacing: 1) {
-                ActionRow(title: "Reindex check", symbol: "magnifyingglass",
-                          detail: "Rebuild catalog & flag dead links · changes nothing") { m.reindexCheck() }
-                ActionRow(title: "Plasmie in the notch", symbol: "capsule.tophalf.filled",
-                          detail: notchOn ? "On · replaces the menu-bar icon" : "Off · using the menu-bar icon") { notchOn.toggle() }
-                if !inWindow {
-                    ActionRow(title: "Settings", symbol: "gearshape", key: ",") { SettingsController.shared.show() }
+    // Transient note + captured output of an in-app run (Reindex check etc.).
+    @ViewBuilder private var output: some View {
+        if !m.note.isEmpty || !m.output.isEmpty {
+            VStack(alignment: .leading, spacing: 5) {
+                if !m.note.isEmpty {
+                    HStack(spacing: 6) {
+                        if m.busy { ProgressView().controlSize(.small) }
+                        Text(m.note).klNote()
+                        Spacer()
+                        if !m.output.isEmpty {
+                            Button("Clear") { m.output = ""; m.note = "" }
+                                .buttonStyle(.plain).font(.klMeta).foregroundStyle(.blue)
+                        }
+                    }
+                }
+                if !m.output.isEmpty {
+                    Text(m.output)
+                        .font(.klMono)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .lineLimit(24)
+                        .padding(7)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05)))
                 }
             }
-            .padding(.horizontal, 6).padding(.bottom, 4)
-
-            Divider().padding(.horizontal, 12)
-            Divider().padding(.horizontal, 12)
-            ActionRow(title: "Quit Plasmie", symbol: "power", key: "q", compact: true) { NSApp.terminate(nil) }
-                .padding(.horizontal, 6).padding(.vertical, 3)
+            .padding(.horizontal, 12).padding(.vertical, 6)
         }
-        .frame(width: 320)
-        // ⌘R: refresh has no row (status auto-refreshes every 60s) but keeps its shortcut;
-        // it is surfaced as a hint on the panel.
-        .help("Status refreshes every minute · ⌘R to refresh now")
-        .background(Button("Refresh") { m.refresh() }.keyboardShortcut("r", modifiers: .command)
-            .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true))
     }
 
     /// One quiet line under the name: "Scholar · 19 of 32 trophies", or the new trophy for a few

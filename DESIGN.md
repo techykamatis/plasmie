@@ -93,10 +93,13 @@ island: Plasmie 68pt centred on the left; header (name · stage → trophies · 
 8pt, the fun fact with explicit ↻ / ↗ buttons on its kicker row (text is never a click
 target), 14pt, chips Ask · Ingest|Review N · Vault · More.
 **Plasmie window** (More / reopening the app): the status column on the native sidebar
-material (320pt) beside Settings. Sidebar order: status hero → attention (Obsidian
-missing, held items) → Ask → Run (live activity line, Ingest, Promote, output) → Open →
-fun fact → Recent → Maintain → Quit. It focuses no text field on open.
-Menu-bar panel (only when the notch is off) is the same column, 320pt wide: status header (Plasmie ~44pt + pill), Run / Open /
+material (320pt) beside Settings. Order: status hero → fun fact → attention (Obsidian
+missing, held items) → Ask → Run · Open · Maintain → Log (live activity line, notes count,
+last runs, captured output, full activity log) → Quit. Audit-type lines always sit at the
+bottom. It focuses no text field on open.
+Menu-bar panel (only when the notch is off) is the SHORT form of the same column, so it
+fits any screen height: hero (72pt Plasmie) → fun fact → attention → Ask → Ingest now ·
+Vault in Obsidian · Open Plasmie… (⌘,) → Quit. Older notes on the full menu follow: status header (Plasmie ~44pt + pill), Run / Open /
 Maintain groups of ≤4, Quit footer. Settings is one resizable scrolling page
 (min 520×560): Connectors (summary bar, then one card per connector), then
 Vault. Ask overlay 560pt wide: Plasmie is the focal point in a leading column beside the

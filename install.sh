@@ -1,5 +1,5 @@
 #!/bin/bash
-# Plasmie — installation wizard.
+# Plasmie (Plasmie) — installation wizard.
 # Gets a fresh machine to a working install: prerequisites, vault, secrets, local
 # model, background loops, and the menu-bar app. Interactive (prompts with defaults).
 # Idempotent and re-runnable — every step detects what's already done and each is skippable.

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build Plasmie (the bundle file is still `Plasmie.app`: login item + scripts use that path) from the single Swift source — no Xcode project needed.
+# Build Plasmie.app from the single Swift source — no Xcode project needed.
 # Compiles with swiftc (CLT), assembles the bundle, ad-hoc signs (personal use).
 set -euo pipefail
 SELF="$(cd "$(dirname "$0")" && pwd)"

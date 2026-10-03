@@ -87,7 +87,8 @@ def helper_path() -> Optional[str]:
     for p in (SELF.parent.parent / "MacOS" / "plasmie-fm",          # Contents/Resources/backend
               SELF / "app" / "build" / "plasmie-fm",                 # app/build-fm.sh
               SELF / "app" / "build" / "Plasmie.app" / "Contents" / "MacOS" / "plasmie-fm",
-              Path("/Applications/Plasmie.app/Contents/MacOS/plasmie-fm")):
+              Path("/Applications/Plasmie.app/Contents/MacOS/plasmie-fm"),
+              Path("/Applications/Plasmie.app/Contents/MacOS/plasmie-fm")):  # pre-rename install (0027)
         if os.access(p, os.X_OK):
             return str(p)
     return None

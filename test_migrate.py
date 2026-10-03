@@ -1,5 +1,9 @@
 """plasmie-migrate: each step once, in order; a failure is retried next time."""
 import importlib.util
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -47,3 +51,82 @@ def test_registry_is_numbered_without_gaps():
     steps = next(n for n in ast.walk(tree) if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "STEPS")
     nums = [e.elts[0].value for e in steps.value.elts]
     assert nums == list(range(1, len(nums) + 1))
+
+
+# --- step 4: Plasmie's com.plasmie.* jobs (ADR 0027), against a fake launchctl on PATH ---------
+FAKE_LAUNCHCTL = """#!/bin/bash
+# loaded jobs are files in $FAKE_LAUNCHD; every call is logged
+echo "$*" >> "$FAKE_LAUNCHD/calls"
+label="${2##*/}"
+case "$1" in
+  bootout) [ -f "$FAKE_LAUNCHD/$label" ] || { echo "Boot-out failed: 3: No such process" >&2; exit 3; }
+           [ -f "$FAKE_LAUNCHD/$label.stuck" ] || rm -f "$FAKE_LAUNCHD/$label" ;;
+  print)   [ -f "$FAKE_LAUNCHD/$label" ] || { echo "Could not find service" >&2; exit 113; } ;;
+esac
+"""
+
+
+def fake_launchd(monkeypatch, tmp_path, loaded=(), stuck=()):
+    state, bin_ = tmp_path / "launchd", tmp_path / "bin"
+    state.mkdir()
+    bin_.mkdir()
+    for label in loaded:
+        (state / label).write_text("")
+    for label in stuck:
+        (state / f"{label}.stuck").write_text("")
+    exe = bin_ / "launchctl"
+    exe.write_text(FAKE_LAUNCHCTL)
+    exe.chmod(0o755)
+    monkeypatch.setenv("FAKE_LAUNCHD", str(state))
+    monkeypatch.setenv("PATH", f"{bin_}:/usr/bin:/bin")
+    return state
+
+
+def loaded_now(state):
+    return sorted(p.name for p in state.iterdir() if p.name != "calls" and not p.name.endswith(".stuck"))
+
+
+def test_step4_boots_out_every_loaded_plasmie_job_and_nothing_else(monkeypatch, tmp_path):
+    km = load(monkeypatch, tmp_path)
+    state = fake_launchd(monkeypatch, tmp_path, loaded=["com.plasmie.ingest", "com.plasmie.promote", "com.plasmie.ingest"])
+    km.m4_retire_plasmie_jobs()
+    assert loaded_now(state) == ["com.plasmie.ingest"]
+    calls = (state / "calls").read_text().splitlines()
+    for name in km.PLASMIE_JOBS:
+        assert f"bootout gui/{os.getuid()}/com.plasmie.{name}" in calls
+
+
+def test_step4_with_nothing_loaded_succeeds_and_can_rerun(monkeypatch, tmp_path):
+    km = load(monkeypatch, tmp_path)
+    fake_launchd(monkeypatch, tmp_path)
+    km.m4_retire_plasmie_jobs()                    # "No such process" is not an error
+    km.m4_retire_plasmie_jobs()
+
+
+def test_step4_fails_while_a_plasmie_job_stays_loaded_so_it_is_retried(monkeypatch, tmp_path):
+    km = load(monkeypatch, tmp_path)
+    fake_launchd(monkeypatch, tmp_path, loaded=["com.plasmie.ingest"], stuck=["com.plasmie.ingest"])
+    vf = tmp_path / "v"
+    vf.write_text("3\n")
+    r = km.migrate(km.STEPS, vf)
+    assert not r["ok"] and r["failed"] == 4 and "com.plasmie.ingest" in r["error"] and km.current(vf) == 3
+
+
+def test_an_install_at_version_3_runs_only_step4(monkeypatch, tmp_path):
+    km = load(monkeypatch, tmp_path)
+    state = fake_launchd(monkeypatch, tmp_path, loaded=["com.plasmie.summarize"])
+    vf = tmp_path / "v"
+    vf.write_text("3\n")
+    r = km.migrate(km.STEPS, vf)
+    assert r == {"ok": True, "version": 4, "latest": 4, "applied": ["retire Plasmie's com.plasmie background jobs"]}
+    assert loaded_now(state) == []
+
+
+def test_retire_plasmie_jobs_flag_runs_step4_alone(monkeypatch, tmp_path):
+    state = fake_launchd(monkeypatch, tmp_path, loaded=["com.plasmie.snapshot"])
+    env = {**os.environ, "PLASMIE_HOME": str(tmp_path / "home"), "PLASMIE_LOGS": str(tmp_path / "logs")}
+    out = subprocess.run([sys.executable, str(HERE / "plasmie-migrate.py"), "--retire-plasmie-jobs"],
+                         capture_output=True, text=True, env=env, timeout=60)
+    assert out.returncode == 0 and json.loads(out.stdout) == {"ok": True}
+    assert loaded_now(state) == []
+    assert not (tmp_path / "home" / ".schema-version").exists()       # not a versioned run

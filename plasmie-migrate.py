@@ -2,8 +2,10 @@
 """Versioned, idempotent data migrations, run by the app at every launch (cheap when
 there is nothing to do) and by setup.
 
-  plasmie-migrate.py            apply pending migrations, print JSON
-  plasmie-migrate.py --status   current and latest version
+  plasmie-migrate.py                      apply pending migrations, print JSON
+  plasmie-migrate.py --status             current and latest version
+  plasmie-migrate.py --retire-plasmie-jobs  step 4 again, on its own (the app runs it whenever a
+                                     com.plasmie.* job is loaded again, e.g. after a login)
 
 Each migration runs once, in order; the reached version is saved in
 $PLASMIE_HOME/.schema-version only after a step succeeds, so a failed step is retried on
@@ -40,16 +42,40 @@ def m2_seed_watermarks_from_vault() -> None:
 
 
 def m3_retire_legacy_jobs() -> None:
-    """The app owns the background jobs now (SMAppService, com.plasmie.*). The old
+    """The app owns the background jobs now (SMAppService). The old
     com.plasmie.* agents in ~/Library/LaunchAgents must go first: both sets at once would
     run ingest twice. The app registers the new ones only once these are gone."""
     _sh("launchd/install.sh", "uninstall")
+
+
+PLASMIE_JOBS = ("ingest", "summarize", "improve", "promote", "snapshot")
+
+
+def _launchctl(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["launchctl", *args], capture_output=True, text=True, timeout=60)
+
+
+def m4_retire_plasmie_jobs() -> None:
+    """Plasmie -> Plasmie (0027): the old app registered com.plasmie.* through SMAppService under
+    its old bundle id, which the new app can't unregister. Boot them out so they never run
+    beside com.plasmie.* (ingest appends; a double run duplicates data). A job that isn't
+    loaded is fine; one that is still loaded afterwards fails the step (retried next launch)."""
+    domain = f"gui/{os.getuid()}"
+    left = []
+    for name in PLASMIE_JOBS:
+        target = f"{domain}/com.plasmie.{name}"
+        _launchctl("bootout", target)                 # "not found" and friends: checked below
+        if _launchctl("print", target).returncode == 0:
+            left.append(target)
+    if left:
+        raise RuntimeError(f"still loaded: {', '.join(left)}")
 
 
 STEPS = [
     (1, "move data out of ~/.plasmie", m1_move_out_of_dotfolder),
     (2, "seed ingest watermarks from the vault", m2_seed_watermarks_from_vault),
     (3, "retire the old com.legacy background jobs", m3_retire_legacy_jobs),
+    (4, "retire Plasmie's com.plasmie background jobs", m4_retire_plasmie_jobs),
 ]
 LATEST = STEPS[-1][0]
 
@@ -82,6 +108,13 @@ def migrate(steps=STEPS, version_file: Path = VERSION_FILE) -> dict:
 if __name__ == "__main__":
     if "--status" in sys.argv:
         print(json.dumps({"version": current(), "latest": LATEST}))
+    elif "--retire-plasmie-jobs" in sys.argv:
+        try:
+            m4_retire_plasmie_jobs()
+        except Exception as e:                                   # reported, not raised
+            print(json.dumps({"ok": False, "error": str(e)}))
+            sys.exit(1)
+        print(json.dumps({"ok": True}))
     else:
         r = migrate()
         print(json.dumps(r))

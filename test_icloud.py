@@ -107,3 +107,23 @@ def test_a_note_that_looks_like_it_holds_a_secret_stays_home(monkeypatch, tmp_pa
     (v / "wiki" / "creds.md").write_text("token xoxp-1234567890-abcdefghijkl")
     r = ic.sync(v, d, m)
     assert not (d / "wiki" / "creds.md").exists() and r["held_back"] == ["wiki/creds.md"]
+
+
+def test_the_plasmie_mirror_is_renamed_once_and_never_merged(monkeypatch, tmp_path):
+    ic = load(monkeypatch, tmp_path)
+    cloud = tmp_path / "CloudDocs"
+    (cloud / "Plasmie" / "knowledge" / "wiki").mkdir(parents=True)
+    (cloud / "Plasmie" / "knowledge" / "wiki" / "a (edited in iCloud 2026-10-01 0900).md").write_text("mine")
+    assert ic.adopt_plasmie_mirror(cloud)
+    assert not (cloud / "Plasmie").exists()
+    assert (cloud / "Plasmie" / "knowledge" / "wiki" / "a (edited in iCloud 2026-10-01 0900).md").read_text() == "mine"
+    assert not ic.adopt_plasmie_mirror(cloud)                      # idempotent
+    (cloud / "Plasmie").mkdir()                                     # both exist: leave both alone
+    assert not ic.adopt_plasmie_mirror(cloud)
+    assert (cloud / "Plasmie").is_dir() and (cloud / "Plasmie" / "knowledge").is_dir()
+
+
+def test_no_plasmie_mirror_means_nothing_to_do(monkeypatch, tmp_path):
+    ic = load(monkeypatch, tmp_path)
+    assert not ic.adopt_plasmie_mirror(tmp_path / "CloudDocs")
+    assert not (tmp_path / "CloudDocs").exists()

@@ -9,9 +9,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Data migrations (versioned, idempotent): an upgrade over an older install brings the
         // data along before anything reads it. Cheap when there's nothing to do.
+        // (The Plasmie -> Plasmie folder/preferences move already ran, in PlasmieApp.init.)
         if backendReady() {
             DispatchQueue.global(qos: .utility).async {
                 _ = runCapture(PlasmiePaths.python, [PlasmiePaths.script("plasmie-migrate.py")], timeout: 600)
+                // Plasmie's com.plasmie.* jobs can come back (the old app still installed, at login):
+                // retire them again, or the new set stays held off (BackgroundJobs.legacyPresent).
+                if BackgroundJobs.plasmieJobsLoaded {
+                    _ = runCapture(PlasmiePaths.python, [PlasmiePaths.script("plasmie-migrate.py"), "--retire-plasmie-jobs"], timeout: 120)
+                }
                 DispatchQueue.main.async { BackgroundJobs.ensure() }   // after migrations retired any old jobs
             }
         }
@@ -39,7 +45,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct PlasmieApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @ObservedObject private var m = Model.shared
+    @ObservedObject private var m: Model
+
+    init() {
+        // Plasmie -> Plasmie, first: Model.shared reads the data folder and preferences as soon
+        // as it exists, which is before applicationDidFinishLaunching.
+        RenameMigration.run(home: PlasmiePaths.home, logs: PlasmiePaths.logs)
+        _m = ObservedObject(wrappedValue: Model.shared)
+    }
 
     private var tint: Color {
         switch m.s.state {

@@ -48,6 +48,17 @@ def default_dest(vault: Path) -> Path:
     return ICLOUD / "Plasmie" / vault.name
 
 
+def adopt_plasmie_mirror(icloud: Path = ICLOUD) -> bool:
+    """Plasmie -> Plasmie (0027): rename iCloud Drive/Plasmie to iCloud Drive/Plasmie, so the
+    mirror (and any edit kept in it) carries over instead of being copied anew. Only when
+    the new folder doesn't exist yet; never merges. True when it moved."""
+    old, new = icloud / "Plasmie", icloud / "Plasmie"
+    if not old.is_dir() or new.exists():
+        return False
+    old.rename(new)
+    return True
+
+
 def _sig(p: Path) -> list:
     st = p.stat()
     return [st.st_size, st.st_mtime_ns]
@@ -144,6 +155,11 @@ def main(argv: list[str]) -> int:
             print(json.dumps({"ok": False, "error": "iCloud sync is off. Turn it on in the Plasmie window."}))
             return 1
         vault = Path(paths.vault())
+        if "--dest" not in argv:
+            try:
+                adopt_plasmie_mirror()
+            except OSError:
+                pass                             # no permission yet: the sync below reports it
         dest = Path(argv[argv.index("--dest") + 1]) if "--dest" in argv else default_dest(vault)
         if not dest.is_relative_to(ICLOUD) and "--dest" not in argv:
             print(json.dumps({"ok": False, "error": "iCloud Drive not found"}))

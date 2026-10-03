@@ -125,6 +125,8 @@ else warn "skipped — run launchd/install.sh later"; fi
 
 # 8) menu-bar app — detect existing install -----------------------------------
 say "8/8 · Menu-bar app"
+# Plasmie was renamed Plasmie (ADR 0027); Plasmie carries its data over at first launch.
+[ -d "/Applications/Plasmie.app" ] && warn "the older Plasmie.app is still in Applications: quit it and move it to the Bin"
 if [ -d "/Applications/Plasmie.app" ]; then
   pgrep -x Plasmie >/dev/null && ok "app already installed (running)" || ok "app already installed"
   yes "Rebuild & reinstall (pick up the latest)?" && install_app

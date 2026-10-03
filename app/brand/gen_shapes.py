@@ -129,6 +129,13 @@ SHAPES = {
     "quiet": sample(ellipse(50, 72, 42, 15), 50, 72),
     # off: a small curled ball
     "off": sample(circle(50, 64, 21), 50, 64),
+    # --- reactions to the mouse (transient; the app returns to the pipeline state) ---
+    # hi: one click — waves the same raised hand as "held"
+    "hi": sample(smooth_union(8, MOCHI, capsule(70, 40, 79, 27, 8), circle(81, 22, 10.5)), 56, 52),
+    # annoyed: rapid clicks — puffs up rounder and bigger
+    "annoyed": sample(ellipse(50, 55, 39, 35), 50, 55),
+    # petted: click-drag across it — squishes low and wide
+    "petted": sample(ellipse(50, 62, 41, 26), 50, 62),
     # success: a soft five-point star
     "success": sample(polar_star(50, 54, 33, 0.2, 5), 50, 54),
 }
@@ -146,6 +153,9 @@ FACES = {
     "quiet":     {"eyes": "closed", "mouth": "none",  "prop": "zzz"},
     "off":       {"eyes": "closed", "mouth": "none",  "prop": None},
     "success":   {"eyes": "happy",  "mouth": "grin",  "prop": "sparkles"},
+    "hi":        {"eyes": "happy",  "mouth": "grin",  "prop": "hello"},
+    "annoyed":   {"eyes": "angry",  "mouth": "pout",  "prop": "vein"},
+    "petted":    {"eyes": "happy",  "mouth": "smile", "prop": "hearts"},
 }
 
 if __name__ == "__main__":

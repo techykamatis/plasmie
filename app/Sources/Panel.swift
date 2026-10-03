@@ -104,16 +104,23 @@ struct Panel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // header
-            HStack(spacing: 10) {
-                PlasmieView(state: m.plasmie, size: 44)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Plasmie").font(.klHeading)
-                    StatusPill(state: m.s.state, reason: m.s.reason)
+            // header: Plasmie is the hero — its shape is the status, so it gets the stage
+            VStack(spacing: 6) {
+                Button { OverlayController.shared.toggle() } label: {
+                    PlasmieView(state: m.plasmie, size: 104)
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
                 }
-                Spacer(minLength: 0)
+                .buttonStyle(.plain)
+                .help("Ask Plasmie (⌃⌥⌘K)")
+                .padding(.top, 16)
+                Text("Plasmie").font(.klTitle)
+                StatusPill(state: m.s.state, reason: m.s.reason)
             }
-            .padding(.horizontal, 12).padding(.top, 9).padding(.bottom, 7)
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 12)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color.plasmieBody.opacity(0.12)))
+            .padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 8)
 
             // live "what's happening" line — the running step's heartbeat
             if !m.s.activity.isEmpty {

@@ -162,8 +162,7 @@ struct AskOverlay: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "sparkle.magnifyingglass").font(.system(size: 18)).foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
+                PlasmieView(state: busy ? .ask : (outcome == .failed ? .error : (outcome == .done ? .success : .idle)), size: 40)
                 TextField(placeholder, text: $query)
                     .textFieldStyle(.plain).font(.klTitle)
                     .focused($focused)
@@ -176,7 +175,6 @@ struct AskOverlay: View {
             if busy || outcome != nil {
                 Divider()
                 HStack(spacing: 8) {
-                    PlasmieView(state: busy ? .ask : (outcome == .failed ? .error : .success), size: 28)
                     Text(statusLine)
                         .font(.klLabel).foregroundStyle(.secondary)
                         .lineLimit(1).truncationMode(.tail)

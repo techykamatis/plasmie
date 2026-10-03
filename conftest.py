@@ -8,8 +8,14 @@ Set before any test module imports paths.py (which reads PLASMIE_HOME at import)
   - PLASMIE_LEGACY_ENV hides ~/.claude/.env from the one-time migration.
 Subprocesses (loop-ingest.py in test_ingest.py) inherit all four.
 """
+import json
 import os
+import stat
+import sys
 import tempfile
+import textwrap
+
+import pytest
 
 _tmp = tempfile.mkdtemp(prefix="plasmie-tests-")
 os.environ.setdefault("PLASMIE_HOME", os.path.join(_tmp, "home"))
@@ -26,12 +32,7 @@ os.environ["PLASMIE_LEGACY_ENV"] = os.path.join(_tmp, "no-such.env")
 # What it cannot prove is how the real model answers; that is the dry-run and
 # `plasmie-fm` smoke test's job (docs/decisions/0025).
 
-import json
-import stat
-import sys
-import textwrap
 
-import pytest
 
 _FAKE = textwrap.dedent('''\
     import json, os, sys, time

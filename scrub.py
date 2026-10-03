@@ -13,6 +13,13 @@ _SECRET_PATTERNS = [
     (re.compile(r'github_pat_[A-Za-z0-9_]{20,}'), '«redacted:gh-pat»'),
     (re.compile(r'xox[baprs]-[A-Za-z0-9-]{10,}'), '«redacted:slack-token»'),
     (re.compile(r'AKIA[0-9A-Z]{16}'), '«redacted:aws-key»'),
+    (re.compile(r'xapp-\d-[A-Za-z0-9-]{10,}'), '«redacted:slack-token»'),
+    (re.compile(r'\bAT[AC]TT3x[A-Za-z0-9_=-]{40,}'), '«redacted:atlassian-token»'),
+    (re.compile(r'\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}'), '«redacted:jwt»'),
+    (re.compile(r'\bglpat-[A-Za-z0-9_-]{20,}'), '«redacted:gitlab-token»'),
+    (re.compile(r'\bhf_[A-Za-z0-9]{30,}'), '«redacted:hf-token»'),
+    # Microsoft identity refresh tokens: 0.A…/1.A… + 100+ b64url (long floor avoids version numbers)
+    (re.compile(r'(?<![\w.])[01]\.A[A-Za-z0-9_-]{100,}'), '«redacted:ms-token»'),
     (re.compile(r'sk-[A-Za-z0-9_-]{20,}'), '«redacted:api-key»'),
     (re.compile(r'(Bearer\s+)[A-Za-z0-9._\-]{20,}'), r'\1«redacted»'),
     # creds embedded in connection strings: scheme://user:PASSWORD@host
@@ -47,6 +54,9 @@ def selfcheck():
     assert redact("ping me at jane.doe@example.com please") == "ping me at jane.doe@example.com please"   # default keeps emails
     assert redact("ping me at jane.doe@example.com please", emails=True) == "ping me at «redacted:email» please"
     assert redact("just a normal sentence about EKS clusters") == "just a normal sentence about EKS clusters"
+    assert redact("jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27 end") == "jwt «redacted:jwt» end"
+    assert redact("glpat-abcdefghij0123456789") == "«redacted:gitlab-token»"
+    assert redact("version 1.A and hf_x") == "version 1.A and hf_x"
     print("scrub selfcheck OK")
 
 

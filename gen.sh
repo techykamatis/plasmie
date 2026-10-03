@@ -21,7 +21,10 @@ tmp="$(mktemp)"
   --no-session-persistence --permission-mode bypassPermissions \
   >"$tmp" 2>>"$SELF/logs/gen.err" &
 cpid=$!
-( sleep "$to"; kill "$cpid" 2>/dev/null ) & wpid=$!
+# watchdog: detached from our stdout (else its orphaned `sleep` holds the caller's
+# $(...) pipe open for the full timeout) and killed with its sleep when the model returns
+( sleep "$to" & spid=$!; trap 'kill "$spid" 2>/dev/null; exit 0' TERM; wait "$spid"; kill "$cpid" 2>/dev/null ) \
+  </dev/null >/dev/null 2>&1 & wpid=$!
 wait "$cpid"; rc=$?
 kill "$wpid" 2>/dev/null || true
 out="$(cat "$tmp")"; rm -f "$tmp"

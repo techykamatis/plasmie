@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if backendReady() {
             DispatchQueue.global(qos: .utility).async {
                 _ = runCapture(PlasmiePaths.python, [PlasmiePaths.script("plasmie-migrate.py")], timeout: 600)
+                DispatchQueue.main.async { BackgroundJobs.ensure() }   // after migrations retired any old jobs
             }
         }
         NotchController.shared.start(model: .shared)   // here, not on the menu-bar label: that is hidden while the notch is on

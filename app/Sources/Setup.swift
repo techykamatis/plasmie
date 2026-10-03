@@ -219,6 +219,7 @@ struct SetupView: View {
             },
             onDone: {
                 if failed == nil && pct >= 100 {
+                    BackgroundJobs.ensure()                               // start the hourly/nightly jobs
                     if openAtLogin { LoginItem.set(true) }                 // the user's choices, now that setup worked
                     if icloud { ICloudSync.shared.set(true) }
                     phase = .done

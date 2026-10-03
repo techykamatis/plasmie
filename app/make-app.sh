@@ -37,6 +37,40 @@ shopt -u nullglob
 rm -f "$BACKEND"/test_*.py "$BACKEND/conftest.py" "$BACKEND/install.sh"   # dev-only / brew-based
 say "bundled backend ($(ls "$BACKEND" | wc -l | tr -d ' ') items)"
 
+# background jobs, owned by the app: registered with SMAppService.agent at launch (Login
+# Items lists them; they go away with the app). They run the bundled engine in place and
+# log themselves (PLASMIE_JOB_LOG; a bundled plist can't name a path in the user's home).
+LA="$APP/Contents/Library/LaunchAgents"; mkdir -p "$LA"
+job() {   # job <name> <script> <StartCalendarInterval dict body>
+  cat > "$LA/com.plasmie.$1.plist" <<JOB
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.plasmie.$1</string>
+  <key>BundleProgram</key><string>Contents/Resources/backend/$2</string>
+  <key>ProgramArguments</key><array><string>$2</string></array>
+  <key>StartCalendarInterval</key><dict>$3</dict>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PLASMIE_JOB_LOG</key><string>$1.log</string>
+  </dict>
+  <key>ProcessType</key><string>Background</string>
+  <key>RunAtLoad</key><false/>
+</dict>
+</plist>
+JOB
+}
+job ingest    run-ingest.sh  "<key>Minute</key><integer>7</integer>"
+job summarize summarize.sh   "<key>Minute</key><integer>15</integer>"
+job improve   plasmie-improve.sh  "<key>Minute</key><integer>17</integer>"
+job promote   promote.sh     "<key>Hour</key><integer>2</integer><key>Minute</key><integer>30</integer>"
+job snapshot  plasmie-snapshot.sh "<key>Hour</key><integer>0</integer><key>Minute</key><integer>47</integer>"
+for f in "$LA"/*.plist; do plutil -lint -s "$f" || { echo "bad plist $f"; exit 1; }; done
+chmod +x "$BACKEND"/*.sh
+say "bundled $(ls "$LA" | wc -l | tr -d ' ') background jobs"
+
 # standalone Python 3.12 (bare: the engine is stdlib-only, nothing is pip-installed). Cached
 # in app/build-cache so rebuilds don't re-download the ~15 MB tarball.
 PYVER="3.12.11"; PYTAG="20250612"

@@ -7,6 +7,15 @@
 SELF="$(cd "$(dirname "$0")" && pwd)"
 . "$SELF/plasmie-env.sh"
 plasmie_secrets            # connector credentials from the login Keychain
+# One ingest at a time: ingest APPENDS, so two overlapping runs (a manual "Ingest now"
+# during the hourly one, or old + new background jobs after an upgrade) would capture
+# the same window twice. mkdir is atomic; a lock older than 2 h is from a crashed run.
+LOCK="$PLASMIE_HOME/.ingest.lock"
+if ! mkdir "$LOCK" 2>/dev/null; then
+  if [ -n "$(find "$LOCK" -maxdepth 0 -mmin +120 2>/dev/null)" ]; then rm -rf "$LOCK"; mkdir "$LOCK" || exit 0
+  else echo "$(date '+%F %T') ingest already running; skipped"; exit 0; fi
+fi
+trap 'rm -rf "$LOCK"' EXIT
 export PLASMIE_VAULT="${VAULT_DIR:-$HOME/knowledge}"
 
 LOGDIR="$PLASMIE_LOGS"

@@ -183,9 +183,10 @@ if [ ! -f "$PLASMIE_HOME/.loop-state.json" ]; then
   "$QMD" embed                                   >/dev/null 2>&1 || true
 fi
 
-# 6) background loops --------------------------------------------------------
-p 95 "Turning on the background helpers…"
-"$ENGINE/launchd/install.sh" >/dev/null 2>&1 || fail "couldn't start the background helpers"
+# 6) background jobs: the app registers them (SMAppService) as soon as this finishes,
+# so they're Plasmie's own Login Items and go away with the app. launchd/install.sh is the
+# dev-checkout path only.
+p 95 "Getting the background helpers ready…"
 
 date '+%F %T' > "$READY"
 p 100 "Done"

@@ -19,6 +19,7 @@ enum ResetPlasmie {
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
+        BackgroundJobs.unregisterAll()                       // stop the jobs before their data goes
         DispatchQueue.global(qos: .userInitiated).async {
             let out = runCapture("/bin/bash", [PlasmiePaths.script("plasmie-reset.sh"), "--yes"], timeout: 120)
             DispatchQueue.main.async {

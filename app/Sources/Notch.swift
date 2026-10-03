@@ -115,6 +115,7 @@ struct NotchInfo {
     var isNotice: Bool { status != "error" && pending == 0 && !notice.isEmpty }
     var vault = "", notes = ""
     var notice = ""                   // worth fixing, not an outage (plasmie-status)
+    var noticeIsJobs = false          // the notice is "allow Plasmie in Login Items"
 
     var working: Bool { [.ingest, .summarize, .promote, .ask].contains(pipeline) }
     var word: String {
@@ -317,7 +318,9 @@ struct NotchView: View {
                 .lineLimit(3).fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if info.isNotice {
-                NotchChip(title: "Fix", symbol: "key", label: "Open Keychain Access", action: openKeychainAccess)
+                NotchChip(title: "Fix", symbol: info.noticeIsJobs ? "gearshape" : "key",
+                          label: info.noticeIsJobs ? "Open Login Items" : "Open Keychain Access",
+                          action: info.noticeIsJobs ? BackgroundJobs.openLoginItems : openKeychainAccess)
             } else {
                 NotchChip(title: info.status == "error" ? "Fix" : "Review", symbol: "arrow.up.forward.app",
                           label: info.status == "error" ? "Open Plasmie to fix this" : "Open Plasmie to review", action: actions.openApp)
@@ -459,7 +462,12 @@ final class NotchModel: ObservableObject {
     }
 }
 
+enum NotchRootText {
+    static let jobsNotice = "Plasmie needs your OK to work in the background. Allow it in System Settings › General › Login Items."
+}
+
 private struct NotchRoot: View {
+    static let jobsNotice = NotchRootText.jobsNotice
     @ObservedObject var m: Model
     @ObservedObject var nm: NotchModel
     let geo: NotchGeometry
@@ -470,7 +478,9 @@ private struct NotchRoot: View {
         let info = NotchInfo(hero: m.heroPlasmie, pipeline: m.plasmie, status: m.s.state, reason: m.s.reason,
                              stageName: m.stage?.name, accessory: m.stage?.accessory, fact: m.funFact,
                              activity: m.s.activity, celebrating: nm.bannerText, pending: m.s.pending,
-                             vault: m.s.vault, notes: m.s.notes, notice: m.s.notice ?? "")
+                             vault: m.s.vault, notes: m.s.notes,
+                             notice: BackgroundJobs.needsApproval ? Self.jobsNotice : (m.s.notice ?? ""),
+                             noticeIsJobs: BackgroundJobs.needsApproval)
         let mode = NotchMode.resolve(ask: nm.asking, answered: nm.answered, tour: nm.tourStep != nil, hover: nm.hovering, banner: nm.banner, working: info.working)
         NotchView(info: info, geo: geo, mode: mode, actions: actions, panelShift: nm.panelShift,
                   onTarget: { onMode(mode, $0) })
@@ -559,7 +569,7 @@ final class NotchController {
         p.ignoresMouseEvents = true                                                // until the pointer is over the shape
         let actions = NotchActions(
             ask: { [weak self] in _ = self?.toggleAsk() },
-            ingest: { [weak model] in model?.kick("com.plasmie.dev-ingest", "Ingest") },
+            ingest: { [weak model] in model?.kick(BackgroundJobs.label("ingest"), "Ingest") },
             trophies: { [weak model] in if let model { TrophiesController.shared.show(model) } },
             openFact: { [weak model] in
                 if let model, let path = model.funFact?.path, !path.isEmpty { openInObsidian("\(model.s.vault)/\(path)") }

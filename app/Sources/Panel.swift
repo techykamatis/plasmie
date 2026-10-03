@@ -172,6 +172,9 @@ struct Panel: View {
             banner(m.s.reason, symbol: "exclamationmark.triangle.fill", tint: .red) { SettingsController.shared.show() }
         }
         if m.s.pending > 0 { held }
+        if BackgroundJobs.needsApproval {
+            banner(NotchRootText.jobsNotice, symbol: "gearshape.fill", tint: .orange) { BackgroundJobs.openLoginItems() }
+        }
         if let n = m.s.notice, !n.isEmpty {
             banner(n, symbol: "key.fill", tint: .orange) { openKeychainAccess() }
         }
@@ -203,7 +206,7 @@ struct Panel: View {
     private var ingestRow: some View {
         ActionRow(title: "Ingest now", symbol: "tray.and.arrow.down",
                   detail: "Capture latest Slack & sessions · hourly", key: "i",
-                  running: m.runningJobs.contains("Ingest")) { m.kick("com.plasmie.dev-ingest", "Ingest") }
+                  running: m.runningJobs.contains("Ingest")) { m.kick(BackgroundJobs.label("ingest"), "Ingest") }
     }
 
     private var vaultRow: some View {
@@ -229,7 +232,7 @@ struct Panel: View {
             ingestRow
             ActionRow(title: "Promote now", symbol: "arrow.triangle.2.circlepath",
                       detail: "Find new knowledge & auto-file it · nightly", key: "p",
-                      running: m.runningJobs.contains("Promote")) { m.kick("com.plasmie.dev-promote", "Promote") }
+                      running: m.runningJobs.contains("Promote")) { m.kick(BackgroundJobs.label("promote"), "Promote") }
 
             groupLabel("Open").padding(.top, 4)
             vaultRow

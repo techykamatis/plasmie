@@ -9,6 +9,13 @@
 : "${PLASMIE_LOGS:=$HOME/Library/Logs/Plasmie}"
 export PLASMIE_HOME PLASMIE_LOGS
 mkdir -p "$PLASMIE_HOME" "$PLASMIE_LOGS"
+# Background jobs registered by the app (SMAppService) can't name a log file in their
+# plist (no home folder there), so they pass PLASMIE_JOB_LOG and the script logs itself,
+# once (nested scripts that source this again don't re-redirect).
+if [ -n "${PLASMIE_JOB_LOG:-}" ] && [ -z "${PLASMIE_LOGGING:-}" ]; then
+  export PLASMIE_LOGGING=1
+  exec >>"$PLASMIE_LOGS/$PLASMIE_JOB_LOG" 2>&1
+fi
 PLASMIE_ENGINE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Plasmie's own venv (made from the bundled Python); never a Homebrew or system python,
 # which a fresh Mac may not have (/usr/bin/python3 is a stub that prompts for Xcode tools).

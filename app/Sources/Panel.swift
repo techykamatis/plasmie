@@ -252,6 +252,12 @@ struct Panel: View {
             groupLabel("Maintain").padding(.top, 4)
             ActionRow(title: "Reindex check", symbol: "magnifyingglass",
                       detail: "Rebuild catalog & flag dead links · changes nothing") { m.reindexCheck() }
+            ActionRow(title: "How Plasmie works", symbol: "questionmark.circle", compact: true) {
+                openExternal((Bundle.main.resourcePath ?? "") + "/docs/Quickstart.txt")
+            }
+            ActionRow(title: "Privacy", symbol: "hand.raised", compact: true) {
+                openExternal((Bundle.main.resourcePath ?? "") + "/docs/Privacy.txt")
+            }
             ActionRow(title: "Copy diagnostics", symbol: "stethoscope",
                       detail: "A report to send when something's wrong · no notes or secrets") { copyDiagnostics() }
             ActionRow(title: "Run setup again…", symbol: "wrench.and.screwdriver",

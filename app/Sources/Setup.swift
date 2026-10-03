@@ -60,6 +60,7 @@ struct SetupCheck: Identifiable, Equatable {
         case "ai":       return ("Open Settings", { openExternal("x-apple.systempreferences:com.apple.Siri-Settings.extension") })
         case "macos":    return ("Software Update", { openExternal("x-apple.systempreferences:com.apple.Software-Update-Settings.extension") })
         case "clt":      return ("Install", { fireAndForget("/usr/bin/xcode-select", ["--install"]) })
+        case "net":      return ("Network settings", { openExternal("x-apple.systempreferences:com.apple.Network-Settings.extension") })
         case "disk":     return ("Storage settings", { openExternal("x-apple.systempreferences:com.apple.settings.Storage") })
         default:         return nil
         }

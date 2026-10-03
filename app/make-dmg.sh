@@ -10,6 +10,13 @@ STAGE="$(mktemp -d)"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 
+# Plain .txt, not .md: double-clicking a .md on a Mac opens a code editor or nothing
+# useful, while .txt opens in TextEdit and previews with the space bar. The docs are
+# light Markdown, so they read fine as text.
+REPO="$(cd "$SELF/.." && pwd)"
+cp "$REPO/docs/QUICKSTART.md" "$STAGE/Quickstart.txt"
+cp "$REPO/docs/PRIVACY.md"    "$STAGE/Privacy.txt"
+
 # This build is unsigned (no Apple Developer account), so the first launch hits
 # Gatekeeper. Spell out the one-time right-click → Open workaround in the DMG.
 cat > "$STAGE/HOW TO OPEN (first time).txt" <<'TXT'
@@ -30,6 +37,9 @@ needs (with a button for each), and sets itself up. It lives beside the
 notch at the top of your screen; press Control-Option-Command-K to ask.
 
 Your notes never leave your Mac.
+
+More in this window: Quickstart.txt (setup, daily use, uninstall) and
+Privacy.txt (what Plasmie reads and where it goes).
 TXT
 
 rm -f "$DMG"

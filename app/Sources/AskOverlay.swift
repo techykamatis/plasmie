@@ -297,7 +297,8 @@ struct AskOverlay: View {
         clearOutcome?.cancel(); outcome = nil
         busy = true; answer = ""; status = ""; answerHeight = 0; gapLogged = false
         AskActivity.shared.answering = true
-        // The venv holds apple_fm_sdk (on-device answers); system python can't import it.
+        // Plasmie's own Python (never /usr/bin/python3, a stub on a fresh Mac); answers come
+        // from Apple's on-device model through the bundled plasmie-fm helper.
         runStreaming(PlasmiePaths.python, [PlasmiePaths.script("ask.py"), q, vault], timeout: 180,
                      onStatus: { status = $0; if $0.contains("coverage gap") { gapLogged = true } },
                      onChunk: { answer = $0 },

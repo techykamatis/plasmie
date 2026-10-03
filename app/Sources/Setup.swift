@@ -5,12 +5,16 @@ import SwiftUI
 
 // MARK: - first-run self-install
 
-/// Setup is done once the answer model is present (the long pole), so its config.json
-/// is a reliable "ready" marker.
+/// Setup is done once app-setup.sh reaches 100%: it writes `.setup-complete` last.
+/// Installs from before that marker existed count once ingest has state (`.loop-state.json`),
+/// so updating the app doesn't send a working install back through setup. The answer
+/// model is Apple's and managed by macOS, so there is nothing of ours to look for.
 func backendReady() -> Bool {
     let fm = FileManager.default
-    return fm.isExecutableFile(atPath: "\(PlasmiePaths.home)/venv/bin/python3")
-        && fm.fileExists(atPath: "\(PlasmiePaths.home)/models/gemma-4-e4b/config.json")
+    let home = PlasmiePaths.home
+    return fm.isExecutableFile(atPath: "\(home)/venv/bin/python3")
+        && (fm.fileExists(atPath: "\(home)/.setup-complete")
+            || fm.fileExists(atPath: "\(home)/.loop-state.json"))
 }
 
 /// Shows the one-time setup window if the engine isn't installed yet.
@@ -46,7 +50,8 @@ struct SetupCheck: Identifiable, Equatable {
         switch id {
         case "node":     return ("Download", { openExternal("https://nodejs.org/en/download") })
         case "obsidian": return ("Download", { openExternal("https://obsidian.md/download") })
-        case "claude":   return ("Get it", { openExternal("https://claude.com/product/claude-code") })
+        case "ai":       return ("Open Settings", { openExternal("x-apple.systempreferences:com.apple.Siri-Settings.extension") })
+        case "macos":    return ("Software Update", { openExternal("x-apple.systempreferences:com.apple.Software-Update-Settings.extension") })
         case "clt":      return ("Install", { fireAndForget("/usr/bin/xcode-select", ["--install"]) })
         case "disk":     return ("Storage settings", { openExternal("x-apple.systempreferences:com.apple.settings.Storage") })
         default:         return nil
@@ -127,8 +132,8 @@ struct SetupView: View {
         switch phase {
         case .checking: return "Checking your Mac first…"
         case .checklist: return blocked ? "A few things are needed before I can set up."
-                                        : "Your Mac is ready. Setup downloads about 9 GB once; keep working meanwhile."
-        case .installing: return "One-time setup: the local AI, search, and your notes vault."
+                                        : "Your Mac is ready. Setup downloads about 4 GB of search models once; keep working meanwhile."
+        case .installing: return "One-time setup: search and your notes vault. Answers come from Apple Intelligence, on this Mac."
         case .done: return "Press ⌃⌥⌘K anywhere to ask your notes. I live beside the notch."
         }
     }

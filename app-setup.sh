@@ -10,7 +10,10 @@
 #
 # Layout: the engine runs IN PLACE from <RESOURCES_DIR>/backend (read-only, replaced on
 # app update; never copied out). Everything written goes to $PLASMIE_HOME (data: config,
-# state, venv, models) and $PLASMIE_LOGS. See plasmie-env.sh.
+# state, venv) and $PLASMIE_LOGS. See plasmie-env.sh.
+#
+# Generation is Apple's on-device model via the bundled plasmie-fm helper (ADR 0021):
+# nothing to download or pip-install for it, but Apple Intelligence must be on.
 set -uo pipefail
 
 MODE=install
@@ -21,8 +24,10 @@ ENGINE="$RES/backend"
 . "$ENGINE/plasmie-env.sh"
 VENV="$PLASMIE_HOME/venv"
 PY="$VENV/bin/python3"
-MODEL_DIR="$PLASMIE_HOME/models/gemma-4-e4b"
-NEED_GB=12          # answer model 4.9 + search models 3.7 + runtime ~1.5, with headroom
+NEED_GB=6           # search models 3.7 + Python runtime ~0.1 + index, with headroom
+# plasmie-fm ships in Plasmie.app/Contents/MacOS; <RESOURCES_DIR> is Contents/Resources.
+FM_BIN="${PLASMIE_FM_BIN:-$RES/../MacOS/plasmie-fm}"
+READY="$PLASMIE_HOME/.setup-complete"   # the app's "installed" marker (Setup.swift)
 
 # make node/npm/qmd reachable even under the app's bare GUI PATH. Each dir is
 # PREPENDED, so the last one wins: nvm goes last. qmd's better-sqlite3 is a native
@@ -39,16 +44,39 @@ chk() { printf 'CHECK:%s:%s:%s:%s:%s\n' "$1" "$2" "$3" "$4" "$5"; }
 
 # --- prerequisites (shared by --check and the install's own preflight) --------
 node_major() { node -v 2>/dev/null | sed -E 's/^v([0-9]+).*/\1/'; }
+# Apple Intelligence, asked of the model itself (plasmie-fm --check). It writes every
+# summary, filing and answer, so it is required; a model still downloading only warns.
+check_ai() {
+  local st
+  if [ ! -x "$FM_BIN" ]; then
+    chk ai missing required "Apple Intelligence" "Plasmie's model bridge is missing. Reinstall Plasmie from the DMG."; return
+  fi
+  st="$("$FM_BIN" --check 2>/dev/null | head -1)"
+  case "$st" in
+    available) chk ai ok required "Apple Intelligence" "On, and the on-device model is ready." ;;
+    appleIntelligenceNotEnabled)
+      chk ai missing required "Apple Intelligence" "Turn it on in System Settings › Apple Intelligence & Siri, then check again." ;;
+    modelNotReady)
+      chk ai warn recommended "Apple Intelligence" "On, but the model is still downloading. Plasmie starts using it once it's ready." ;;
+    deviceNotEligible)
+      chk ai missing required "Apple Intelligence" "This Mac can't run Apple Intelligence, which Plasmie uses to summarize and answer." ;;
+    unsupportedOS)
+      chk macos missing required "macOS 26 or later" "Apple's on-device model needs macOS 26. Update in System Settings › General › Software Update." ;;
+    *) chk ai missing required "Apple Intelligence" "Couldn't ask the on-device model (${st:-no answer}). Check System Settings › Apple Intelligence & Siri." ;;
+  esac
+}
 check_all() {
-  if [ "$(uname -m)" = arm64 ]; then chk chip ok required "Apple silicon" "Runs the on-device models."
-  else chk chip missing required "Apple silicon" "Plasmie's on-device models need an M-series Mac."; fi
+  if [ "$(uname -m)" = arm64 ]; then chk chip ok required "Apple silicon" "Runs Apple's on-device model."
+  else chk chip missing required "Apple silicon" "Apple's on-device model needs an M-series Mac."; fi
+
+  check_ai
 
   local free; free="$(df -g "$HOME" 2>/dev/null | awk 'NR==2{print $4}')"
   if [ "${free:-0}" -ge "$NEED_GB" ]; then chk disk ok required "Disk space" "${free} GB free (needs about ${NEED_GB} GB)."
-  else chk disk missing required "Disk space" "${free:-?} GB free; free up about ${NEED_GB} GB for the models."; fi
+  else chk disk missing required "Disk space" "${free:-?} GB free; free up about ${NEED_GB} GB for the search models."; fi
 
-  if curl -fsI --max-time 6 https://huggingface.co >/dev/null 2>&1; then chk net ok required "Internet" "Needed once to download the models."
-  else chk net missing required "Internet" "Can't reach huggingface.co to download the models."; fi
+  if curl -fsI --max-time 6 https://huggingface.co >/dev/null 2>&1; then chk net ok required "Internet" "Needed once to download the search models."
+  else chk net missing required "Internet" "Can't reach huggingface.co to download the search models."; fi
 
   local nm; nm="$(node_major)"
   if [ -n "$nm" ] && [ "$nm" -ge 22 ]; then chk node ok required "Node.js 22+" "v$(node -v | tr -d v) powers vault search (qmd)."
@@ -60,9 +88,6 @@ check_all() {
 
   if xcode-select -p >/dev/null 2>&1; then chk clt ok recommended "Command Line Tools" "git keeps a history of your vault."
   else chk clt missing recommended "Command Line Tools" "Without them there's no vault history (git)."; fi
-
-  if command -v claude >/dev/null 2>&1 || [ -x "$HOME/.local/bin/claude" ]; then chk claude ok recommended "Claude Code" "Files new knowledge nightly, on the local model."
-  else chk claude missing recommended "Claude Code" "Nightly filing (promote) uses it; everything else works without."; fi
 }
 
 if [ "$MODE" = check ]; then check_all; exit 0; fi
@@ -76,21 +101,14 @@ fi
 p 5 "Preparing Plasmie's data folder…"
 "$ENGINE/migrate-home.sh" >/dev/null 2>&1 || fail "couldn't move older Plasmie data into place"
 
-# 2) python runtime (generation only — mlx-vlm) ------------------------------
-if [ -x "$PY" ] && "$PY" -c "import mlx_vlm" 2>/dev/null; then
-  p 20 "Python runtime ready"
-else
+# 2) python runtime (the engine is stdlib-only; nothing to pip-install) ---------
+if [ ! -x "$PY" ]; then
   p 8 "Setting up the Python runtime…"
-  if [ ! -x "$PY" ]; then
-    mkdir -p "$VENV"
-    cp -R "$RES/python/." "$VENV/" || fail "python copy failed"
-  fi
-  p 12 "Installing the generation library (one-time)…"
-  "$VENV/bin/python3" -m pip -q install --upgrade pip >/dev/null 2>&1
-  "$VENV/bin/python3" -m pip -q install mlx-vlm "huggingface_hub[cli]" \
-    || fail "could not install the generation library"
-  p 20 "Python runtime ready"
+  mkdir -p "$VENV"
+  cp -R "$RES/python/." "$VENV/" || fail "python copy failed"
 fi
+"$PY" -c 'import sys; sys.exit(sys.version_info < (3, 10))' || fail "the bundled Python runtime is broken — reinstall Plasmie"
+p 20 "Python runtime ready"
 
 # 3) vault (needed before qmd can index it) ----------------------------------
 p 25 "Creating your notes vault…"
@@ -120,15 +138,8 @@ p 35 "Indexing your vault…"
 p 45 "Downloading the search models (~3.7 GB, one-time)…"
 "$QMD" embed >/dev/null 2>&1 || true   # downloads embed/rerank models + indexes; safe to retry later
 
-# 5) generation model (ungated, resumable) -----------------------------------
-if [ -f "$MODEL_DIR/config.json" ]; then
-  p 82 "Answer model ready"
-else
-  p 65 "Downloading the answer model (~4.9 GB, one-time)…"
-  "$VENV/bin/hf" download mlx-community/gemma-4-e4b-it-4bit --local-dir "$MODEL_DIR" \
-    || fail "model download interrupted — reopen the app to resume"
-  p 82 "Answer model ready"
-fi
+# 5) answer model: Apple's, on-device, managed by macOS — nothing to download --
+p 82 "Answer model: Apple Intelligence (on-device)"
 
 # 5b) first-time crawl — seed the vault so day one is useful -----------------
 # Only on a genuine first run (no prior state). Best-effort: whatever defers here
@@ -149,5 +160,6 @@ fi
 p 95 "Turning on the background helpers…"
 "$ENGINE/launchd/install.sh" >/dev/null 2>&1 || fail "couldn't start the background helpers"
 
+date '+%F %T' > "$READY"
 p 100 "Done"
 echo "DONE"

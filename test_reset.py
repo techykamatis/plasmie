@@ -15,7 +15,8 @@ def run(tmp_path, *args, vault=None):
     (logs / "launchd.log").write_text("x")
     (vault / "wiki" / "note.md").write_text("precious")
     env = {**os.environ, "PLASMIE_HOME": str(home), "PLASMIE_LOGS": str(logs),
-           "PLASMIE_RESET_SKIP_JOBS": "1", "VAULT_DIR": str(vault)}
+           "PLASMIE_RESET_SKIP_JOBS": "1", "VAULT_DIR": str(vault),
+           "PLASMIE_KEYCHAIN": str(tmp_path / "no-such.keychain-db")}   # never the login keychain
     r = subprocess.run(["bash", str(HERE / "plasmie-reset.sh"), *args], env=env, capture_output=True, text=True)
     return r, home, logs, vault
 

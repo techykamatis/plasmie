@@ -7,35 +7,38 @@ Plasmie is built so your work record stays on your Mac. This is what it does, fr
 Only sources you switch on, and only your own:
 
 - **Slack**: messages you sent and received (your Slack user token).
-- **GitHub**: pull requests and issues you opened or commented on, in the organisations you list (through the `gh` command-line tool, signed in as you).
-- **Local git commits**: your own commit messages from repositories cloned on your Mac (default folder `~/code`). No network.
+- **GitHub**: pull requests and issues you opened or commented on (signed in as you).
+- **Local git commits**: your own commit messages from repositories on your Mac, in the folders you list. No network.
 - **Confluence**: pages you created or edited (your Atlassian address, email and API token).
-- **Claude Code sessions**: local session logs in `~/.claude/projects`.
-- **AgentCLI sessions**: its local database, `~/.agentcli/cli/db/db.sqlite`.
-- **Outlook** (mail and calendar): the code exists but is switched off in this version.
+- **Outlook** (mail and calendar): only after you click Connect and approve the sign-in.
+- **Claude Code / AgentCLI sessions**: their local session logs on your Mac. No network.
 
 Before anything is written, a redactor strips things that look like passwords, API keys and tokens.
 
 ## Where it's stored
 
-- Your notes: the vault folder you chose (default `~/knowledge`).
-- Plasmie's settings, state and models: `~/Library/Application Support/Plasmie`
-- Logs, including a record of what was sent to the on-device model: `~/Library/Logs/Plasmie`
+- Your notes: the vault folder you chose.
+- Plasmie's settings and state: `~/Library/Application Support/Plasmie`. Logs: `~/Library/Logs/Plasmie` (including a record of what was sent to the on-device model, so you can check it).
+- Sign-ins (tokens, the Outlook refresh token, your Atlassian email): your **login Keychain**, as items named "Plasmie", never in a plain file.
 
 ## Network use
 
-- Each connector you enable talks to its own service (Slack, GitHub, your Atlassian site), to read your own account.
-- One-time setup downloads: the AI and search models from huggingface.co, Python packages from PyPI, and the search tool (qmd) from npm.
-- That's all. The app itself has no telemetry and no analytics, and nothing is uploaded.
+- Each connector you switch on talks only to its own service (Slack, GitHub, your Atlassian site, Microsoft for Outlook) to read your own account. A connector that's off makes no calls.
+- First setup downloads, once: the search engine (qmd, from npm) and its search models (from Hugging Face).
+- That's all. No telemetry, no analytics, no crash reports, nothing uploaded. (Plasmie's code is checked for this: a test fails if a new network address appears without being listed here.)
 
 ## The AI
 
-Summaries and answers run on your Mac. Plasmie uses Apple's on-device model (Apple Intelligence) when available, and otherwise a Gemma model it downloads and runs locally. Nightly filing runs on the local model too. Private Cloud Compute (Apple's cloud) is not used.
+Summaries, nightly filing and answers all run on your Mac with Apple's on-device model (Apple Intelligence). Apple's cloud (Private Cloud Compute) is never used, and no other AI service is called.
 
-## Secrets
+## iCloud sync (optional, off by default)
 
-Connector tokens are saved as plain text in `~/.claude/.env`, readable only by your account (permissions 600). That file is shared with other tools such as Claude Code. Moving them into the macOS Keychain is planned. Until then, don't share that file.
+If you turn it on, Plasmie copies your curated notes, daily digests and Obsidian display settings to iCloud Drive › Plasmie so you can read them on your iPhone or iPad. It never copies raw captures (your Slack messages, sessions), your questions, plugin settings, or any note that looks like it holds a password. While it's on, those notes are also stored in your iCloud account (end-to-end encrypted only if you use Apple's Advanced Data Protection).
+
+## Diagnostics
+
+**Copy diagnostics** puts a report on your clipboard for you to send if you choose: versions, which connectors are on and working, and recent run summaries. It leaves out your notes, messages, account names and passwords. Nothing is sent automatically.
 
 ## Deleting everything
 
-See "Uninstall" in the Quickstart. Deleting the app, the two Plasmie folders, and your notes folder removes everything Plasmie made, apart from tokens in `~/.claude/.env`. Disconnecting a connector in Plasmie removes its token from that file.
+Plasmie window > Maintain > **Reset Plasmie…** removes Plasmie's background jobs, data, logs and preferences, then quits. Then delete the app. Your notes folder is never touched; delete it yourself if you want the notes gone. Plasmie's Keychain items can be removed in Keychain Access (search "Plasmie").

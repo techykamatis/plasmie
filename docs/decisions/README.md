@@ -33,6 +33,7 @@ work is from 2026-10-04. Product truth lives in `/PRODUCT.md`, the visual system
 | [0023](0023-icloud-mirror.md) | iCloud sync: a one-way mirror the app runs | Accepted |
 | [0024](0024-opt-in-connectors.md) | Connectors are opt-in; nothing about the owner is a default | Accepted |
 | [0025](0025-apple-fm-only.md) | Apple FM only, via a native helper; map-reduce for long input | Accepted |
+| [0026](0026-background-jobs-smappservice.md) | Background jobs belong to the app (SMAppService) | Accepted |
 
 ## Design
 | # | Decision | Status |

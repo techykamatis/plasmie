@@ -60,17 +60,19 @@ The wizard has 8 idempotent, skippable steps:
 7. **Loops** — `launchd/install.sh` installs every agent in `launchd/`.
 8. **App** — builds the menu-bar app into `/Applications`, optional launch-at-login.
 
-The wizard does not install **qmd** or Node; `app-setup.sh` (run by the app on first launch) does, via `npm install -g @tobilu/qmd`, registers the `raw`/`wiki` collections, runs `qmd embed`, and performs the first-time crawl (see `docs/first-run-crawl.goal.md`). With the wizard, install qmd yourself. Starter vault only: `./scaffold-vault.sh [dir]`.
+The app's first-run setup (`app-setup.sh`) installs Plasmie's own qmd with the Node that ships in the app (into `~/Library/Application Support/Plasmie/qmd`), registers the `raw`/`wiki` collections, runs `qmd embed`, and performs the first-time crawl (skipped for an existing vault, whose ingest watermarks are seeded instead). With the Terminal wizard, install qmd yourself. Starter vault only: `./scaffold-vault.sh [dir]`.
 
-Agents, all templates in `launchd/` (the installer rewrites `__LOOP_DIR__`/`__HOME__`; `launchd/install.sh uninstall` removes them):
+Background jobs belong to the app (ADR 0026): `Plasmie.app/Contents/Library/LaunchAgents`, registered with SMAppService, listed in Login Items, running the bundled engine:
 
 | Agent | Runs | When |
 |-------|------|------|
-| `com.plasmie.dev-ingest` | `run-ingest.sh` | hourly :07 |
-| `com.plasmie.dev-summarize` | `summarize.sh` | hourly :15 |
-| `com.plasmie.dev-improve` | `plasmie-improve.py` | hourly :17 |
-| `com.plasmie.dev-promote` | `promote.sh` | nightly 02:30 |
-| `com.plasmie.dev-snapshot` | `plasmie-snapshot.sh` | daily 00:47 |
+| `com.plasmie.ingest` | `run-ingest.sh` | hourly :07 |
+| `com.plasmie.summarize` | `summarize.sh` | hourly :15 |
+| `com.plasmie.improve` | `plasmie-improve.sh` → `plasmie-improve.py` | hourly :17 |
+| `com.plasmie.promote` | `promote.sh` | nightly 02:30 |
+| `com.plasmie.snapshot` | `plasmie-snapshot.sh` | daily 00:47 |
+
+**Dev checkout only:** `launchd/install.sh` installs `com.plasmie.*` agents that run the checkout instead (`uninstall` removes them). Never run both sets: ingest appends, so two would double-capture (the app won't register while any `com.plasmie.*` agent exists).
 
 `launchd/install.sh` also boots out agents the repo no longer ships (the retired `com.plasmie.mlx-server`).
 

@@ -36,12 +36,12 @@ struct NotchGeometry: Equatable {
     }
 }
 
-enum NotchMode: Equatable, CaseIterable { case resting, working, expanded, celebrating, asking, answering }
+enum NotchMode: Equatable, CaseIterable { case resting, working, expanded, celebrating, asking, answering, tour }
 
 extension NotchMode {
-    static func resolve(ask: Bool, answered: Bool, hover: Bool, banner: Bool, working: Bool) -> NotchMode {
+    static func resolve(ask: Bool, answered: Bool, tour: Bool, hover: Bool, banner: Bool, working: Bool) -> NotchMode {
         ask ? (answered ? .answering : .asking)
-            : hover ? .expanded : banner ? .celebrating : working ? .working : .resting
+            : tour ? .tour : hover ? .expanded : banner ? .celebrating : working ? .working : .resting
     }
     func size(_ g: NotchGeometry) -> CGSize {
         // flush with the hardware notch, ONE ear on the left for the character: the right side
@@ -50,7 +50,7 @@ extension NotchMode {
         switch self {
         case .resting:     return rest
         case .working:     return CGSize(width: g.notchW + 2 * Self.ear + 140, height: rest.height)
-        case .expanded:    return CGSize(width: 460, height: 260)
+        case .expanded, .tour: return CGSize(width: 460, height: 260)
         case .celebrating: return CGSize(width: 360, height: 70)
         case .asking, .answering: return CGSize(width: 560, height: 470)
         }
@@ -60,7 +60,7 @@ extension NotchMode {
     /// so text never crowds the curve (one value for the hover island and Ask).
     static let inset: CGFloat = 30
     /// Modes whose height follows their content (the size above is only the ceiling).
-    var fits: Bool { self == .expanded || self == .asking || self == .answering }
+    var fits: Bool { [.expanded, .asking, .answering, .tour].contains(self) }
     /// Horizontal offset of the shape's centre from the notch's centre (resting leans left).
     func shift(_ g: NotchGeometry) -> CGFloat { self == .resting && g.hasNotch ? -Self.ear / 2 : 0 }
     /// Content inset for the shoulders; matches what NotchShape draws at each mode's size.
@@ -105,6 +105,13 @@ struct NotchInfo {
     var activity = ""
     var celebrating: String? = nil
     var pending = 0                   // items held for review
+    var tourStep: Int? = nil          // the first-run tour, when it's showing
+    /// Something the user should act on, in plain words, or nil when all is well.
+    var attention: String? {
+        if status == "error" { return reason.isEmpty ? "Something stopped working. Open Plasmie to see what." : reason }
+        if pending > 0 { return "\(pending) item\(pending == 1 ? " is" : "s are") waiting for your review." }
+        return nil
+    }
     var vault = "", notes = ""
 
     var working: Bool { [.ingest, .summarize, .promote, .ask].contains(pipeline) }
@@ -138,6 +145,8 @@ struct NotchActions {
     var quit: () -> Void = {}
     var closeAsk: () -> Void = {}
     var answered: (Bool) -> Void = { _ in }
+    var tourNext: () -> Void = {}
+    var tourSkip: () -> Void = {}
 }
 
 // MARK: - view
@@ -162,7 +171,7 @@ struct NotchView: View {
     // One spring on the whole shape, hung from the top edge: it grows down and out of the
     // (black) notch and halts with a small bounce; closing glides back up, fast-to-slow.
     // Content arrives a beat after the shape and leaves with it, scaling toward the notch.
-    private var opening: Bool { [.expanded, .celebrating, .asking, .answering].contains(mode) }
+    private var opening: Bool { [.expanded, .celebrating, .asking, .answering, .tour].contains(mode) }
     private var anim: Animation {
         if reduceMotion { return .easeInOut(duration: 0.15) }
         return opening ? .spring(response: 0.36, dampingFraction: 0.72)
@@ -183,6 +192,10 @@ struct NotchView: View {
             case .working:     working.transition(.opacity)
             case .expanded:    expanded.fixedSize(horizontal: false, vertical: true).measured().transition(fromNotch)
             case .celebrating: banner.transition(fromNotch)
+            case .tour:
+                NotchTourView(step: info.tourStep ?? 0, next: actions.tourNext, skip: actions.tourSkip)
+                    .padding(.top, geo.notchH + 12)
+                    .fixedSize(horizontal: false, vertical: true).measured().transition(fromNotch)
             case .asking, .answering:                      // one branch: the conversation keeps its state as it grows
                 AskOverlay(vault: info.vault, notes: info.notes, onClose: actions.closeAsk,
                            inNotch: true, topInset: geo.notchH, onAnswer: actions.answered)
@@ -269,7 +282,7 @@ struct NotchView: View {
                     Spacer(minLength: 4)
                     StatusPill(state: info.status, reason: info.reason).lineLimit(1)
                 }
-                factView.padding(.top, 8)
+                Group { if let a = info.attention { attentionRow(a) } else { factView } }.padding(.top, 8)
                 // the few things worth doing from the notch; everything else is one click away
                 HStack(spacing: 6) {
                     NotchChip(title: "Ask", symbol: "sparkle.magnifyingglass", label: "Ask Plasmie", action: actions.ask)
@@ -289,6 +302,22 @@ struct NotchView: View {
         .padding(.horizontal, NotchMode.inset)
         .padding(.top, geo.notchH + 10)
         .padding(.bottom, 18)
+    }
+
+    // A failure or held items take the fact's place: what happened, in plain words, and
+    // one button to the place that fixes it.
+    private func attentionRow(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: info.status == "error" ? "exclamationmark.triangle.fill" : "tray.full.fill")
+                .foregroundStyle(info.status == "error" ? Color.red : Color.orange)
+                .accessibilityHidden(true)
+            Text(text).font(.klLabel).foregroundStyle(.white)
+                .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            NotchChip(title: info.status == "error" ? "Fix" : "Review", symbol: "arrow.up.forward.app",
+                      label: info.status == "error" ? "Open Plasmie to fix this" : "Open Plasmie to review", action: actions.openApp)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder private var factView: some View {
@@ -396,6 +425,7 @@ final class NotchModel: ObservableObject {
     @Published var panelShift: CGFloat = 0        // panel centre minus notch centre (pt)
     @Published var asking = false                 // Ask is open in the island (sticky: hover can't close it)
     @Published var answered = false               // an answer is on screen: the island grows to hold it
+    @Published var tourStep: Int? = nil           // first-run tour step, nil when not touring
     private var collapse: DispatchWorkItem?
     private var bannerEnd: DispatchWorkItem?
 
@@ -435,7 +465,7 @@ private struct NotchRoot: View {
                              stageName: m.stage?.name, accessory: m.stage?.accessory, fact: m.funFact,
                              activity: m.s.activity, celebrating: nm.bannerText, pending: m.s.pending,
                              vault: m.s.vault, notes: m.s.notes)
-        let mode = NotchMode.resolve(ask: nm.asking, answered: nm.answered, hover: nm.hovering, banner: nm.banner, working: info.working)
+        let mode = NotchMode.resolve(ask: nm.asking, answered: nm.answered, tour: nm.tourStep != nil, hover: nm.hovering, banner: nm.banner, working: info.working)
         NotchView(info: info, geo: geo, mode: mode, actions: actions, panelShift: nm.panelShift,
                   onTarget: { onMode(mode, $0) })
     }
@@ -533,7 +563,9 @@ final class NotchController {
             openApp: { SettingsController.shared.show() },
             quit: { NSApp.terminate(nil) },
             closeAsk: { [weak self] in self?.closeAsk() },
-            answered: { [weak self] in self?.nm.answered = $0 })
+            answered: { [weak self] in self?.nm.answered = $0 },
+            tourNext: { [weak self] in self?.advanceTour() },
+            tourSkip: { [weak self] in self?.endTour() })
         let host = NotchHostingView(rootView: NotchRoot(m: model, nm: nm, geo: geo, actions: actions) { [weak self] in
             self?.target($0, $1)
         })
@@ -543,6 +575,9 @@ final class NotchController {
         p.setFrame(frame, display: true)
         p.orderFrontRegardless()
         target(NotchMode.resting, NotchMode.resting.size(geo))
+        if !TourPrefs.done && backendReady() {                // once, after setup: where Plasmie lives
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in self?.startTour() }
+        }
         startPointer()
     }
 
@@ -564,6 +599,18 @@ final class NotchController {
         panel?.resignKey(); panel?.allowsKey = false
         if SettingsController.shared.isOpen == false { NSApp.deactivate() }   // hand focus back to the previous app
     }
+
+    /// The first-run tour (also replayable from the Plasmie window).
+    func startTour() {
+        guard panel != nil, !nm.asking else { return }
+        nm.tourStep = 0
+        panel?.ignoresMouseEvents = false
+    }
+    private func advanceTour() {
+        guard let s = nm.tourStep else { return }
+        if s + 1 < TourStep.all.count { nm.tourStep = s + 1 } else { endTour() }
+    }
+    private func endTour() { nm.tourStep = nil; TourPrefs.done = true }
 
     private func reposition() {
         guard let p = panel else { return }

@@ -221,6 +221,9 @@ struct Panel: View {
             groupLabel("Maintain").padding(.top, 4)
             ActionRow(title: "Reindex check", symbol: "magnifyingglass",
                       detail: "Rebuild catalog & flag dead links · changes nothing") { m.reindexCheck() }
+            ActionRow(title: "Show the tour", symbol: "sparkles", detail: "Where Plasmie lives and what it can do") {
+                NotchController.shared.startTour()
+            }
             ActionRow(title: "Plasmie in the notch", symbol: "capsule.tophalf.filled",
                       detail: notchOn ? "On · replaces the menu-bar icon" : "Off · using the menu-bar icon") { notchOn.toggle() }
         }

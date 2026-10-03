@@ -14,7 +14,7 @@ say() { printf '\n== %s ==\n' "$1"; }
 say "Plasmie $VERSION: quality gates"
 T="$(mktemp -d)"
 ( cd "$ROOT" && PLASMIE_HOME="$T/home" PLASMIE_LOGS="$T/logs" "$PY" -m pytest -q ) | tail -1
-n="$(cd "$ROOT" && ruff check . 2>/dev/null | sed -nE 's/^Found ([0-9]+) errors?\./\1/p')"
+n="$(cd "$ROOT" && { ruff check . 2>/dev/null || true; } | sed -nE 's/^Found ([0-9]+) errors?\./\1/p')"
 n="${n:-0}"
 [ "$n" -le "$RUFF_BASELINE" ] || { echo "ruff: $n errors > baseline $RUFF_BASELINE"; exit 1; }
 echo "ruff: $n (baseline $RUFF_BASELINE)"

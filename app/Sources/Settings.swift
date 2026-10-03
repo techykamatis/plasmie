@@ -124,6 +124,7 @@ struct SettingsView: View {
 
     @StateObject private var conn = ConnectorsModel()
     @FocusState private var vaultFocused: Bool
+    @AppStorage(NotchPrefs.key) private var notchOn = true
 
     private var loop: String { "\(NSHomeDirectory())/.plasmie" }
 
@@ -162,6 +163,10 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 28) {
                     connectorsPage
                     vaultPage
+                    VStack(alignment: .leading, spacing: 6) {
+                        Toggle("Plasmie in the notch (experimental)", isOn: $notchOn).font(.klBody)
+                        Text("A small island under the notch shows Plasmie's status and opens on hover. The menu-bar icon stays.").klNote()
+                    }
                 }
                 .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 32)
             }

@@ -42,6 +42,7 @@ struct PlasmieApp: App {
                 if m.s.pending > 0 { Text("\(m.s.pending)") }
             }
             .foregroundStyle(tint)
+            .onAppear { NotchController.shared.start(model: m) }   // experimental notch island (toggle: plasmie.notch)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(m.s.pending > 0 ? "\(m.plasmie.label), \(m.s.pending) held" : m.plasmie.label)
         }

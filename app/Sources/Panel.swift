@@ -94,6 +94,7 @@ struct Panel: View {
     @ObservedObject var m: Model
     private enum Confirm { case approve, dismiss }
     @State private var confirm: Confirm?
+    @AppStorage(NotchPrefs.key) private var notchOn = true
     private var working: Bool { m.s.state == "running" || m.busy }
 
     private func groupLabel(_ t: String) -> some View {
@@ -200,6 +201,8 @@ struct Panel: View {
                 groupLabel("Maintain").padding(.top, 4)
                 ActionRow(title: "Reindex check", symbol: "magnifyingglass",
                           detail: "Rebuild catalog & flag dead links · changes nothing") { m.reindexCheck() }
+                ActionRow(title: "Plasmie in the notch", symbol: "capsule.tophalf.filled",
+                          detail: notchOn ? "On · experimental" : "Off · experimental") { notchOn.toggle() }
                 ActionRow(title: "Settings", symbol: "gearshape", key: ",") { SettingsController.shared.show() }
             }
             .padding(.horizontal, 6).padding(.vertical, 4)

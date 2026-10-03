@@ -138,6 +138,17 @@ def audit_tail(n: int = 15) -> list[str]:
     return tail(logs[-1], n) if logs else ["(no audit log yet)"]
 
 
+def last_ingest() -> list[str]:
+    """The newest ingest run's summary and error lines only (the rest can quote content)."""
+    runs = sorted(Path(paths.LOG_DIR).glob("ingest-*.log"))
+    if not runs:
+        return ["(no ingest run yet)"]
+    keep = re.compile(r"SUMMARY|ERROR|ERR\b|Traceback|time limit|secrets:")
+    lines = [c for c in (clean_stderr(ln) for ln in runs[-1].read_text(errors="replace").splitlines()
+                         if keep.search(ln)) if c]
+    return [runs[-1].name, *lines[-12:]] if lines else [runs[-1].name, "(no errors)"]
+
+
 def report() -> str:
     sections = [
         ("System", system()),
@@ -147,6 +158,7 @@ def report() -> str:
         ("Config", config_keys()),
         ("Recent ingests (feed.log)", tail(Path(paths.DATA_DIR) / "feed.log", TAIL["feed.log"])),
         ("Recent jobs (audit log)", audit_tail()),
+        ("Last ingest run (summary and errors, masked)", last_ingest()),
         ("launchd.log (errors, masked)", tail(Path(paths.LOG_DIR) / "launchd.log", TAIL["launchd.log"], clean_stderr)),
     ]
     out = [f"Plasmie diagnostics · {datetime.now():%Y-%m-%d %H:%M}",

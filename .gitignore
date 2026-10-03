@@ -25,3 +25,4 @@ config.env
 app/build/
 app/build-cache/
 app/*.iconset
+.achievements.json

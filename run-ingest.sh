@@ -60,6 +60,9 @@ fi
 [ -n "$qmd_err" ] && summary="${summary:-(no summary)} · QMD-ERR $qmd_err"
 status "Ingested · ${summary:-done}"
 
+# trophies + evolution: cheap, read-only on the vault; notifies only on NEW unlocks
+"$SELF/.venv/bin/python3" "$SELF/plasmie-achievements.py" --notify >/dev/null 2>>"$LOG" || true
+
 # one summary line → rolling feed. Written AFTER indexing so a qmd failure lands
 # on the feed line too — `tail feed.log` is the one place failures get noticed.
 # ERR count makes a broken stage greppable instead of buried mid-string.

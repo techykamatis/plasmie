@@ -19,13 +19,16 @@ final class SetupController {
     private var win: NSWindow?
     func showIfNeeded() {
         guard !backendReady() else { return }
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 250),
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 300),
                          styleMask: [.titled, .closable], backing: .buffered, defer: false)
         w.title = "Set up Plasmie"
         w.center()
         w.isReleasedWhenClosed = false
         w.level = .floating
-        w.contentView = NSHostingView(rootView: SetupView { [weak self] in self?.win?.orderOut(nil) })
+        // A hosting controller resizes the window to its content, so a long error grows it.
+        w.contentViewController = NSHostingController(rootView: SetupView { [weak self] in self?.win?.orderOut(nil) })
+        w.contentMinSize = NSSize(width: 460, height: 300)
+        w.center()
         win = w
         NSApp.activate(ignoringOtherApps: true)
         w.makeKeyAndOrderFront(nil)
@@ -45,15 +48,14 @@ struct SetupView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                Image(nsImage: kLogo)
+                Image(nsImage: kLogo).accessibilityHidden(true)
                 Text(done ? "You're all set" : "Setting up Plasmie")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.klTitle)
             }
             if done {
                 Text("Plasmie is ready. Press ⌃⌥⌘K anywhere to ask a question about "
                      + "your notes — look for the brain icon in your menu bar at the top of the screen.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .klNote()
                 Spacer()
                 HStack {
                     Spacer()
@@ -63,20 +65,22 @@ struct SetupView: View {
             } else {
                 Text("One-time setup: this installs the local AI and creates your notes vault. "
                      + "It can take several minutes (a large download) — you can keep using your Mac.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .klNote()
                 if let f = failed {
-                    Text(f).font(.system(size: 12)).foregroundStyle(.red)
+                    Text(f).font(.klLabel).foregroundStyle(.red)
+                        .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                     Button("Try again") { run() }
+                        .keyboardShortcut(.defaultAction)
+                        .controlSize(.large)
                 } else {
                     ProgressView(value: pct, total: 100)
-                    Text(msg).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                    Text(msg).font(.klLabel).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
             }
         }
-        .padding(20).frame(width: 460, height: 250)
+        .padding(20).frame(minWidth: 460, maxWidth: 460, minHeight: 300)
         .onAppear { if !running { run() } }
     }
 

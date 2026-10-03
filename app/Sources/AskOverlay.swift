@@ -49,7 +49,7 @@ final class OverlayController {
 
     private func show() {
         let st = loadStatus()
-        let root = AskOverlay(loop: st.loop, vault: st.vault) { [weak self] in self?.panel?.orderOut(nil) }
+        let root = AskOverlay(loop: st.loop, vault: st.vault, notes: st.notes) { [weak self] in self?.panel?.orderOut(nil) }
         let p = panel ?? makePanel()
         panel = p
         p.contentView = NSHostingView(rootView: root)
@@ -93,38 +93,50 @@ struct MarkdownText: View {
     let text: String
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            let lines = text.components(separatedBy: "\n")
-            ForEach(Array(lines.enumerated()), id: \.offset) { _, raw in row(raw) }
+            ForEach(Array(Self.classify(text).enumerated()), id: \.offset) { _, line in row(line) }
         }
     }
 
-    @ViewBuilder private func row(_ raw: String) -> some View {
-        let t = raw.trimmingCharacters(in: .whitespaces)
-        if t.isEmpty {
+    /// Marks each line as inside a ``` fence (rendered verbatim, monospaced) or not.
+    private static func classify(_ text: String) -> [(raw: String, code: Bool)] {
+        var inFence = false
+        var out: [(String, Bool)] = []
+        for raw in text.components(separatedBy: "\n") {
+            if raw.trimmingCharacters(in: .whitespaces).hasPrefix("```") { inFence.toggle(); continue }
+            out.append((raw, inFence))
+        }
+        return out
+    }
+
+    @ViewBuilder private func row(_ line: (raw: String, code: Bool)) -> some View {
+        let t = line.raw.trimmingCharacters(in: .whitespaces)
+        if line.code {
+            Text(line.raw).font(.klMono).frame(maxWidth: .infinity, alignment: .leading)
+        } else if t.isEmpty {
             Spacer().frame(height: 3)
-        } else if t.hasPrefix("### ") {
-            inline(String(t.dropFirst(4))).font(.system(size: 13.5, weight: .semibold)).padding(.top, 4)
-        } else if t.hasPrefix("## ") {
-            inline(String(t.dropFirst(3))).font(.system(size: 15, weight: .bold)).padding(.top, 5)
-        } else if t.hasPrefix("# ") {
-            inline(String(t.dropFirst(2))).font(.system(size: 16.5, weight: .bold)).padding(.top, 5)
+        } else if let h = ["### ", "## ", "# "].first(where: t.hasPrefix) {
+            inline(String(t.dropFirst(h.count))).font(.klHeading).padding(.top, 5)
+                .accessibilityAddTraits(.isHeader)
         } else if t.hasPrefix("* ") || t.hasPrefix("- ") || t.hasPrefix("• ") {
             HStack(alignment: .top, spacing: 7) {
-                Text("•").font(.system(size: 12.5)).foregroundStyle(.secondary)
-                inline(String(t.dropFirst(2))).font(.system(size: 12.5))
+                Text("•").font(.klBody).foregroundStyle(.secondary).accessibilityHidden(true)
+                inline(String(t.dropFirst(2))).font(.klBody).lineSpacing(3)
                 Spacer(minLength: 0)
             }
         } else {
-            inline(t).font(.system(size: 12.5))
+            inline(t).font(.klBody).lineSpacing(3)
         }
     }
 
+    /// Inline markdown; `code` spans get the mono face from the shared scale.
     private func inline(_ s: String) -> Text {
-        if let a = try? AttributedString(
-            markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-            return Text(a)
+        guard var a = try? AttributedString(
+            markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
+        else { return Text(s) }
+        for run in a.runs where run.inlinePresentationIntent?.contains(.code) == true {
+            a[run.range].font = .klMono
         }
-        return Text(s)
+        return Text(a)
     }
 }
 
@@ -132,11 +144,13 @@ struct MarkdownText: View {
 struct AskOverlay: View {
     let loop: String
     let vault: String
+    var notes = ""
     let onClose: () -> Void
     @State private var query = ""
     @State private var answer = ""
     @State private var status = ""
     @State private var busy = false
+    @State private var gapLogged = false
     @State private var answerHeight: CGFloat = 0
     @FocusState private var focused: Bool
 
@@ -146,11 +160,13 @@ struct AskOverlay: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 Image(systemName: "sparkle.magnifyingglass").font(.system(size: 18)).foregroundStyle(.secondary)
-                TextField("Ask anything in the vault…", text: $query)
-                    .textFieldStyle(.plain).font(.system(size: 20))
+                    .accessibilityHidden(true)
+                TextField(placeholder, text: $query)
+                    .textFieldStyle(.plain).font(.klTitle)
                     .focused($focused)
+                    .accessibilityLabel("Ask your vault")
                     .onSubmit(run)
-                if busy { ProgressView().controlSize(.small) }
+                if busy { ProgressView().controlSize(.small).accessibilityLabel("Searching") }
             }
             .padding(.horizontal, 18).padding(.vertical, 16)
 
@@ -158,9 +174,9 @@ struct AskOverlay: View {
             if busy {
                 Divider()
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
+                    ProgressView().controlSize(.small).accessibilityHidden(true)
                     Text(status.isEmpty ? "Searching your vault…" : status)
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                        .font(.klLabel).foregroundStyle(.secondary)
                         .lineLimit(1).truncationMode(.tail)
                     Spacer()
                 }
@@ -179,19 +195,26 @@ struct AskOverlay: View {
                         MarkdownText(text: body)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityAddTraits(busy ? .updatesFrequently : [])
+                        if gapLogged && !busy {
+                            Text("Tentative: the vault has little on this. The gap was logged so it can be filled.")
+                                .klNote()
+                        }
                         if !sources.isEmpty {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Sources").font(.system(size: 11, weight: .semibold))
+                                Text("Sources").font(.klMeta.weight(.semibold))
                                     .foregroundStyle(.secondary)
                                 ForEach(Array(sources.enumerated()), id: \.offset) { _, src in
                                     Button { openInObsidian("\(vault)/\(src.path)") } label: {
                                         HStack(spacing: 6) {
-                                            Image(systemName: "doc.text").font(.system(size: 10))
-                                            Text(src.path).font(.system(size: 11)).underline()
+                                            Image(systemName: "doc.text").font(.system(size: 10)).accessibilityHidden(true)
+                                            Text(src.path).font(.klMeta).underline()
                                             Spacer(minLength: 0)
                                         }
                                     }
                                     .buttonStyle(.plain).foregroundStyle(.blue)
+                                    .accessibilityLabel("Open \(src.path) in Obsidian")
+                                    .help("Open in Obsidian")
                                 }
                             }
                         }
@@ -210,7 +233,7 @@ struct AskOverlay: View {
                 Divider()
                 HStack(spacing: 6) {
                     Spacer()
-                    Text("Esc to close · ⌃⌥⌘K to toggle").font(.system(size: 10)).foregroundStyle(.tertiary)
+                    Text("Esc to close · ⌃⌥⌘K to toggle").font(.klMeta).foregroundStyle(.tertiary)
                 }
                 .padding(.horizontal, 18).padding(.vertical, 8)
             }
@@ -225,14 +248,26 @@ struct AskOverlay: View {
         .onExitCommand(perform: onClose)   // Esc closes
     }
 
+    private var placeholder: String {
+        let n = Int(notes.trimmingCharacters(in: .whitespaces)) ?? 0
+        return n > 0 ? "Ask your vault — \(n) notes" : "Ask your vault"
+    }
+
+    /// Spoken once when the stream ends, so VoiceOver users know the answer is complete.
+    private func announceDone() {
+        guard !answer.isEmpty else { return }
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+                             userInfo: [.announcement: "Answer ready", .priority: NSAccessibilityPriorityLevel.high.rawValue])
+    }
+
     private func run() {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty, !busy else { return }
-        busy = true; answer = ""; status = ""; answerHeight = 0
+        busy = true; answer = ""; status = ""; answerHeight = 0; gapLogged = false
         runStreaming("/usr/bin/python3", ["\(loop)/ask.py", q, vault],
-                     onStatus: { status = $0 },
+                     onStatus: { status = $0; if $0.contains("coverage gap") { gapLogged = true } },
                      onChunk: { answer = $0 },
-                     onDone: { busy = false; answer = answer.trimmingCharacters(in: .whitespacesAndNewlines) })
+                     onDone: { busy = false; answer = answer.trimmingCharacters(in: .whitespacesAndNewlines); announceDone() })
     }
 
     /// Split ask.py's output into the markdown body and the parsed source list.

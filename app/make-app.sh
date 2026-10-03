@@ -5,6 +5,8 @@
 # into Contents/MacOS: building needs the macOS 26+ SDK, running needs nothing.
 set -euo pipefail
 SELF="$(cd "$(dirname "$0")" && pwd)"
+VERSION="${PLASMIE_VERSION:-$(tr -d '[:space:]' < "$SELF/../VERSION" 2>/dev/null || echo 0.0.0)}"
+BUILD_NO="$(git -C "$SELF/.." rev-list --count HEAD 2>/dev/null || echo 1)"   # monotonic build number
 APP="$SELF/build/Plasmie.app"
 ARCH="$(uname -m)"
 
@@ -32,7 +34,7 @@ for m in "$LOOP"/*.py "$LOOP"/*.sh "$LOOP"/launchd "$LOOP"/vault-template; do
   cp -R "$m" "$BACKEND/"
 done
 shopt -u nullglob
-rm -f "$BACKEND"/test_*.py "$BACKEND/conftest.py" "$BACKEND/install.sh"   # dev-only / brew-based
+rm -f "$BACKEND"/test_*.py "$BACKEND/conftest.py" "$BACKEND/conftest.py" "$BACKEND/install.sh"   # dev-only / brew-based
 say "bundled backend ($(ls "$BACKEND" | wc -l | tr -d ' ') items)"
 
 # standalone Python 3.12 (bare: the engine is stdlib-only, nothing is pip-installed). Cached
@@ -59,15 +61,15 @@ else
 fi
 rm -rf "$ICONSET" "$LOGOBIN"
 
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleName</key><string>Plasmie</string>
   <key>CFBundleDisplayName</key><string>Plasmie</string>
   <key>CFBundleIdentifier</key><string>com.plasmie.legacy</string>
-  <key>CFBundleVersion</key><string>1.0</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>${BUILD_NO}</string>
+  <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleExecutable</key><string>Plasmie</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>

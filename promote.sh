@@ -19,18 +19,23 @@ YEST="$(date -v-1d +%F 2>/dev/null || date -d 'yesterday' +%F)"
 DRAFT="$VAULT/meta/promotion-drafts/$TODAY.md"
 mkdir -p "$VAULT/meta/promotion-drafts"
 
-# gather recent raw activity across sources (cap to keep generation bounded)
+# raw dirs to read: every connector not switched Off in the app (paths.py owns the rule)
+DIRS="$("$SELF/.venv/bin/python3" "$SELF/paths.py" activity-dirs 2>/dev/null || python3 "$SELF/paths.py" activity-dirs)" \
+  || { audit "FAILED: paths.py activity-dirs"; exit 1; }
+# gather recent raw activity across sources. Each present file gets an equal share
+# of the 24k budget (tail = newest): a global tail used to drop whole sources.
+present=()
+for d in "$YEST" "$TODAY"; do for s in $DIRS; do
+  [ -f "$VAULT/raw/$s/$d.md" ] && present+=("$s/$d")
+done; done
+per=$(( 24000 / (${#present[@]} > 0 ? ${#present[@]} : 1) ))
 input=""
-for d in "$YEST" "$TODAY"; do
-  for s in slack claude outlook; do
-    f="$VAULT/raw/$s/$d.md"
-    [ -f "$f" ] && input="$input
+for sd in ${present[@]+"${present[@]}"}; do
+  input="$input
 
-===== $s $d =====
-$(cat "$f")"
-  done
+===== ${sd%/*} ${sd#*/} =====
+$(tail -c "$per" "$VAULT/raw/$sd.md")"
 done
-input="$(printf '%s' "$input" | tail -c 24000)"
 
 # also surface manually-dropped raw/inbox items so each gets a proposed target.
 # Markdown/text drops (plasmie-capture.sh writes these) are included WITH their body —
@@ -69,7 +74,7 @@ $inbox_block"
 
 [ -n "$input" ] || { echo "no recent raw activity to promote"; exit 0; }
 
-prompt="You maintain a knowledge wiki (curated folders: wiki/concepts, wiki/people, wiki/projects, wiki/tech). From the raw activity below, identify durable, reusable knowledge worth promoting into the wiki: decisions, how-tos, project status changes, people/meeting facts. Also propose a target for each file in the 'raw/inbox' list, if present. Ignore noise and one-off chatter. Output ONLY markdown (no preamble): for each item a '## <title>', then 'Target:' a wiki folder, 'Description:' ONE sentence stating the durable takeaway (this drives search — make it specific and self-contained, not a topic label), a 2-3 line summary, and 'Source:' the source+date or 'raw/inbox/<filename>'. If nothing is worth promoting, output 'Nothing to promote.'
+prompt="You maintain a knowledge wiki (one flat folder of notes, organised by tags). From the raw activity below, identify durable, reusable knowledge worth promoting into the wiki: decisions, how-tos, project status changes, people/meeting facts. Also propose a target for each file in the 'raw/inbox' list, if present. Ignore noise and one-off chatter. Output ONLY markdown (no preamble): for each item a '## <title>', then 'Target:' one kind — concept, person, project, tech, how-to, security or clipping (it becomes a tag), 'Description:' ONE sentence stating the durable takeaway (this drives search — make it specific and self-contained, not a topic label), a 2-3 line summary, and 'Source:' the source+date or 'raw/inbox/<filename>'. If nothing is worth promoting, output 'Nothing to promote.'
 
 $input"
 

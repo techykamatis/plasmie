@@ -24,34 +24,19 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths  # noqa: E402
+
 H = os.path.expanduser("~")
 TIMEOUT = 15
 
 
 def _load_env():
-    """Mirror run-ingest.sh: ~/.claude/.env, tolerating `export ` and quotes.
-
-    Parsed line-by-line rather than sourced, so one malformed value cannot
-    silently truncate everything below it the way `.` does in a shell.
-    """
-    for path in (f"{H}/.claude/.env", f"{H}/.plasmie/config.env"):
-        try:
-            with open(path, encoding="utf-8", errors="replace") as fh:
-                for raw in fh:
-                    line = raw.strip()
-                    if not line or line.startswith("#"):
-                        continue
-                    if line.startswith("export "):
-                        line = line[7:]
-                    k, _, v = line.partition("=")
-                    if not _:
-                        continue
-                    v = v.strip()
-                    if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
-                        v = v[1:-1]
-                    os.environ.setdefault(k.strip(), v)
-        except OSError:
-            pass
+    """Mirror run-ingest.sh: ~/.claude/.env then config.env, via paths.read_config —
+    line by line, so one malformed value can't truncate everything below it."""
+    for path in (f"{H}/.claude/.env", paths.CONFIG):
+        for k, v in paths.read_config(path).items():
+            os.environ.setdefault(k, v)
 
 
 def _result(configured, ok, detail, hint=""):
@@ -261,8 +246,7 @@ def _age_days(name):
     """
     if name not in RAW_DIR:
         return None
-    vault = os.environ.get("VAULT_DIR") or f"{H}/knowledge"
-    d = os.path.join(os.path.expanduser(vault), RAW_DIR[name])
+    d = os.path.join(paths.vault(), RAW_DIR[name])
     newest = max((os.path.getmtime(f) for f in glob.iglob(d + "/**/*.md", recursive=True)),
                  default=None)
     return None if newest is None else (time.time() - newest) / 86400
@@ -271,8 +255,13 @@ def _age_days(name):
 def main():
     _load_env()
     want = [a for a in sys.argv[1:] if a in CHECKS] or list(CHECKS)
+    off = paths.disabled_sources()
     out = {}
     for name in want:
+        if name in off:                           # switched Off in the app: don't probe
+            out[name] = {**_result(True, None, "Switched off — not ingested."),
+                         "enabled": False, "age_days": None, "stale": False}
+            continue
         try:
             out[name] = CHECKS[name]()
         except Exception as e:                    # a probe must never take the page down
@@ -282,11 +271,19 @@ def main():
         except OSError:
             age = None
         r = out[name]
+        r["enabled"] = True
         r["age_days"] = None if age is None else round(age, 1)
-        r["stale"] = bool(r.get("ok") and age is not None and age > STALE_AFTER_DAYS)
-        if r["stale"]:
+        # Stale = it used to deliver and has stopped. Two shapes: reachable but not
+        # arriving, and (the 93-day Confluence blind spot) credentials gone after it
+        # had delivered. Never-configured has no data, so it is not stale.
+        old = age is not None and age > STALE_AFTER_DAYS
+        r["stale"] = bool(old and r.get("ok") is not False and (r.get("ok") or not r.get("configured")))
+        if r["stale"] and r.get("ok"):
             r["detail"] += f" Last file landed {int(age)}d ago — reachable but not arriving."
             r["hint"] = r["hint"] or "Credentials work; the ingest for this source is not running."
+        elif r["stale"]:
+            r["detail"] += f" It was delivering until {int(age)}d ago."
+            r["hint"] = r["hint"] or "Reconnect it, or switch it Off if you no longer want it."
     print(json.dumps(out))
 
 

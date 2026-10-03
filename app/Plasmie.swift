@@ -122,11 +122,6 @@ func openInObsidian(_ path: String) {
 }
 func detectObsidian() -> Bool { NSWorkspace.shared.urlForApplication(withBundleIdentifier: "md.obsidian") != nil }
 
-/// OneDrive sync is set up iff config.env defines MIRROR_DEST (wizard writes it).
-func syncConfigured(_ loop: String) -> Bool {
-    (try? String(contentsOfFile: "\(loop)/config.env", encoding: .utf8))?.contains("MIRROR_DEST=") ?? false
-}
-
 func loadStatus() -> Status {
     let out = runCapture("/usr/bin/python3", ["\(NSHomeDirectory())/.plasmie/plasmie-status.py"])
     guard let data = out.data(using: .utf8) else { return Status() }
@@ -475,10 +470,6 @@ struct Panel: View {
                           detail: "Find new knowledge & auto-file it · runs nightly") { m.kick("com.plasmie.dev-promote", "Promote") }
                 ActionRow(title: "Run ingest now", symbol: "tray.and.arrow.down",
                           detail: "Capture latest Slack & sessions · runs hourly") { m.kick("com.plasmie.dev-ingest", "Ingest") }
-                if syncConfigured(m.s.loop) {
-                    ActionRow(title: "Sync to OneDrive now", symbol: "cloud",
-                              detail: "Copy notes to OneDrive for other devices · runs hourly") { m.kickTracked("com.plasmie.dev-mirror", "Sync to OneDrive") }
-                }
                 ActionRow(title: "Open vault in Obsidian", symbol: "folder",
                           detail: "Browse & edit all your notes") { openInObsidian(m.s.vault) }
                 if !m.s.journal.isEmpty {
@@ -490,7 +481,7 @@ struct Panel: View {
                 ActionRow(title: "Open activity log", symbol: "doc.plaintext",
                           detail: "History of every ingest & promote run") { openExternal("\(m.s.loop)/feed.log") }
                 ActionRow(title: "Settings", symbol: "gearshape",
-                          detail: "Vault, OneDrive sync & connector tokens") { SettingsController.shared.show() }
+                          detail: "Vault, connector tokens & On/Off switches") { SettingsController.shared.show() }
                 ActionRow(title: "Refresh", symbol: "arrow.clockwise",
                           detail: "Re-read status now · auto every 60s") { m.refresh() }
             }
@@ -906,7 +897,7 @@ struct SetupView: View {
 // MARK: - configuration store (connectors + sync)
 
 /// Reads/writes the loop's configuration, which lives in two plain files:
-///   ~/.plasmie/config.env  — VAULT_DIR, MIRROR_DEST (quoted, spaces-safe)
+///   ~/.plasmie/config.env  — VAULT_DIR, PLASMIE_DISABLED_SOURCES (quoted, spaces-safe)
 ///   ~/.claude/.env                — connector secrets, SHARED with other tools; we
 ///                                   upsert only our own keys and preserve the rest.
 enum ConfigStore {
@@ -986,6 +977,7 @@ struct ConnectorHealth: Codable {
     var ok: Bool? = nil
     var detail = ""
     var hint = ""
+    var enabled: Bool? = nil   // optional: an older plasmie-doctor.py omits it
 }
 
 /// Static description of a connector: what to call it, which key it uses in
@@ -1027,10 +1019,11 @@ struct Connector: Identifiable {
 /// conflating the two is what let a dead Confluence ingest look fine for weeks,
 /// and a phantom GitHub error look broken for 43 days.
 enum ConnVerdict {
-    case notSetUp, failing, lastRunFailed, noData, quiet, flowing, checking
+    case off, notSetUp, failing, lastRunFailed, noData, quiet, flowing, checking
 
     var label: String {
         switch self {
+        case .off:            return "Off"
         case .notSetUp:       return "Not set up"
         case .failing:        return "Not working"
         case .lastRunFailed:  return "Failed last run"
@@ -1042,7 +1035,7 @@ enum ConnVerdict {
     }
     var color: Color {
         switch self {
-        case .notSetUp, .quiet: return .secondary
+        case .off, .notSetUp, .quiet: return .secondary
         case .failing:          return .red
         case .lastRunFailed,
              .noData:           return .orange
@@ -1052,7 +1045,8 @@ enum ConnVerdict {
     }
 }
 
-func connVerdict(_ c: Connector, health: ConnectorHealth?, status: Status, checking: Bool) -> ConnVerdict {
+func connVerdict(_ c: Connector, health: ConnectorHealth?, status: Status, checking: Bool, off: Bool = false) -> ConnVerdict {
+    if off { return .off }
     if checking { return .checking }
     guard let h = health else { return .checking }
     if !h.configured { return .notSetUp }
@@ -1076,6 +1070,26 @@ final class ConnectorsModel: ObservableObject {
     @Published var health: [String: ConnectorHealth] = [:]
     @Published var checking: Set<String> = []
     @Published var status = Status()
+    /// Connectors switched Off — PLASMIE_DISABLED_SOURCES in config.env, read by
+    /// paths.disabled_sources() in every job. Off means off: no fetch, and the
+    /// watermark keeps moving, so switching back On never backfills the gap.
+    @Published var off: Set<String> = ConnectorsModel.readOff()
+
+    static func readOff() -> Set<String> {
+        let raw = ConfigStore.read(ConfigStore.configEnv)["PLASMIE_DISABLED_SOURCES"] ?? ""
+        return Set(raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+                      .filter { !$0.isEmpty })
+    }
+
+    /// Applies immediately (no Save): a switch that waits for another button lies.
+    func setEnabled(_ id: String, _ on: Bool) {
+        var next = ConnectorsModel.readOff()          // re-read: the file may have been hand-edited
+        if on { next.remove(id) } else { next.insert(id) }
+        ConfigStore.upsert(ConfigStore.configEnv, ["PLASMIE_DISABLED_SOURCES": next.sorted().joined(separator: ",")],
+                           exportPrefix: false, quoted: true)
+        off = ConnectorsModel.readOff()
+        refresh([id])
+    }
 
     private var loop: String { "\(NSHomeDirectory())/.plasmie" }
     private var python: String {
@@ -1112,15 +1126,25 @@ struct ConnectorCard<Fields: View>: View {
 
     private var health: ConnectorHealth? { m.health[c.id] }
     private var isChecking: Bool { m.checking.contains(c.id) }
-    private var verdict: ConnVerdict { connVerdict(c, health: health, status: m.status, checking: isChecking) }
+    private var isOff: Bool { m.off.contains(c.id) }
+    private var verdict: ConnVerdict { connVerdict(c, health: health, status: m.status, checking: isChecking, off: isOff) }
+    private var onBinding: Binding<Bool> {
+        Binding(get: { !isOff }, set: { m.setEnabled(c.id, $0) })
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             header
             Text(c.blurb).font(.system(size: 11)).foregroundStyle(.secondary)
-            detailLine
-            fields()
-            controls
+            if isOff {
+                Text("Switched off — nothing is pulled from \(c.name) and it is left out of digests and promotion. Switching it back on resumes from now; the off period is not backfilled.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                detailLine
+                fields()
+                controls
+            }
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
@@ -1143,6 +1167,10 @@ struct ConnectorCard<Fields: View>: View {
             .padding(.horizontal, 8).padding(.vertical, 3)
             .background(Capsule().fill(verdict.color.opacity(0.16)))
             .foregroundStyle(verdict.color)
+            Toggle("", isOn: onBinding)
+                .toggleStyle(.switch).controlSize(.small).labelsHidden()
+                .accessibilityLabel("\(c.name) on or off")
+                .help(isOff ? "Turn \(c.name) on" : "Turn \(c.name) off")
         }
     }
 
@@ -1192,8 +1220,6 @@ struct SettingsView: View {
 
     // non-secret (prefilled)
     @State private var vaultDir = ""
-    @State private var syncEnabled = false
-    @State private var mirrorDest = ""
     @State private var jiraBase = ""
     @State private var jiraEmail = ""
     @State private var githubOrgs = ""
@@ -1211,7 +1237,7 @@ struct SettingsView: View {
             titleBar
             Picker("", selection: $tab) {
                 Text("Connectors").tag(0)
-                Text("Vault & Sync").tag(1)
+                Text("Vault").tag(1)
             }
             .pickerStyle(.segmented).labelsHidden()
             .padding(.horizontal, 20).padding(.bottom, 12)
@@ -1265,7 +1291,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             summaryBar
             ForEach(Connector.all) { c in card(for: c) }
-            Text("Changes to tokens take effect on the next hourly ingest. Use Test to check a connector right now.")
+            Text("On/Off switches apply immediately; token changes on Save. Both take effect from the next hourly ingest. Use Test to check a connector right now.")
                 .font(.system(size: 10.5)).foregroundStyle(.secondary)
         }
     }
@@ -1273,14 +1299,17 @@ struct SettingsView: View {
     /// The one-glance answer: how many are actually working, and is the loop running
     /// at all. A connector page that cannot say "3 of 5" makes you open five cards.
     private var summaryBar: some View {
-        let live = Connector.all.filter { conn.health[$0.id]?.ok == true }.count
-        let broken = Connector.all.filter { conn.health[$0.id]?.ok == false }.count
+        let on = Connector.all.filter { !conn.off.contains($0.id) }
+        let live = on.filter { conn.health[$0.id]?.ok == true }.count
+        let broken = on.filter { conn.health[$0.id]?.ok == false }.count
+        let offCount = Connector.all.count - on.count
         return HStack(spacing: 8) {
             Image(systemName: broken > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                 .foregroundStyle(broken > 0 ? .orange : .green)
             VStack(alignment: .leading, spacing: 1) {
-                Text("\(live) of \(Connector.all.count) connectors working"
-                     + (broken > 0 ? " · \(broken) need attention" : ""))
+                Text("\(live) of \(on.count) connectors working"
+                     + (broken > 0 ? " · \(broken) need attention" : "")
+                     + (offCount > 0 ? " · \(offCount) off" : ""))
                     .font(.system(size: 12, weight: .medium))
                 if let mins = conn.status.staleMinutes {
                     Text("Last ingest run \(mins) min ago").font(.system(size: 10.5)).foregroundStyle(.secondary)
@@ -1353,12 +1382,11 @@ struct SettingsView: View {
 
     private var vaultPage: some View {
         VStack(alignment: .leading, spacing: 16) {
-            group("Vault & sync") {
+            group("Vault") {
                 labeled("Vault folder") { TextField("~/knowledge", text: $vaultDir).textFieldStyle(.roundedBorder) }
-                Toggle("Sync a copy to OneDrive (for other devices)", isOn: $syncEnabled)
-                if syncEnabled {
-                    labeled("OneDrive folder") { TextField("…/OneDrive/AI Labs/knowledge", text: $mirrorDest).textFieldStyle(.roundedBorder) }
-                }
+                Text("Keep the vault on local disk. Background jobs cannot read from iCloud/OneDrive folders.")
+                    .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             group("Where things live") {
                 pathRow("Vault", conn.status.vault.isEmpty ? vaultDir : conn.status.vault)
@@ -1398,8 +1426,6 @@ struct SettingsView: View {
     private func load() {
         let cfg = ConfigStore.read(ConfigStore.configEnv)
         vaultDir = cfg["VAULT_DIR"] ?? "\(NSHomeDirectory())/knowledge"
-        mirrorDest = cfg["MIRROR_DEST"] ?? ""
-        syncEnabled = !mirrorDest.isEmpty
         let env = ConfigStore.read(ConfigStore.dotEnv)
         jiraBase = env["JIRA_BASE_URL"] ?? ""
         jiraEmail = env["JIRA_EMAIL"] ?? ""
@@ -1410,7 +1436,6 @@ struct SettingsView: View {
     private func save() {
         ConfigStore.upsert(ConfigStore.configEnv, [
             "VAULT_DIR": vaultDir.trimmingCharacters(in: .whitespaces),
-            "MIRROR_DEST": syncEnabled ? mirrorDest.trimmingCharacters(in: .whitespaces) : "",
         ], exportPrefix: false, quoted: true)
 
         // Connector settings go in ~/.claude/.env, NOT config.env: run-ingest.sh

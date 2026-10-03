@@ -1,5 +1,5 @@
 #!/bin/bash
-# Hourly: condense today's raw activity (Slack + Claude sessions + Outlook) into a
+# Hourly: condense today's raw activity (every connector switched On) into a
 # few bullets via the on-device Apple model (local Gemma fallback). Text in / text out — no file tools, no
 # Slack creds. Writes a rolling daily digest to meta/digests/YYYY-MM-DD.md,
 # regenerated each run so it's always current and idempotent (no marker needed).
@@ -14,21 +14,25 @@ audit(){ printf '%s | summarize | %s\n' "$(date '+%F %T')" "$1" >> "$SELF/logs/a
 VAULT="${VAULT_DIR:-$HOME/knowledge}"
 DAY="$(date +%F)"
 
-# gather today's raw source files. retry: a read can race the hourly ingest
-# rewriting the same file; a few attempts ride it out.
+# raw dirs to read: every connector not switched Off in the app (paths.py owns the rule)
+DIRS="$("$SELF/.venv/bin/python3" "$SELF/paths.py" activity-dirs 2>/dev/null || python3 "$SELF/paths.py" activity-dirs)" \
+  || { audit "FAILED: paths.py activity-dirs"; exit 1; }
+# gather today's raw source files. Each present source gets an equal share of the
+# 20k budget (tail = newest), so one chatty source can't crowd the rest out.
+# retry: a read can race the hourly ingest rewriting the same file.
+present=(); for s in $DIRS; do [ -f "$VAULT/raw/$s/$DAY.md" ] && present+=("$s"); done
+per=$(( 20000 / (${#present[@]} > 0 ? ${#present[@]} : 1) ))
 input=""
-for s in slack claude outlook; do
+for s in ${present[@]+"${present[@]}"}; do
   f="$VAULT/raw/$s/$DAY.md"
-  [ -f "$f" ] || continue
   for _ in 1 2 3 4; do
-    c="$(cat "$f" 2>/dev/null)" && { input="$input
+    c="$(tail -c "$per" "$f" 2>/dev/null)" && { input="$input
 
 ===== $s =====
 $c"; break; }
     sleep 0.5
   done
 done
-input="$(printf '%s' "$input" | tail -c 20000)"
 [[ "$input" == *[![:space:]]* ]] || { echo "no raw activity today"; exit 0; }
 
 # The digest is a rolling whole-day rollup, so it is regenerated rather than

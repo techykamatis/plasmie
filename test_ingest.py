@@ -12,9 +12,13 @@ pagination contract against fakes rather than importing it.
 
 Usage:  pytest test_ingest.py
 """
+import os
+
 import pytest
 
 import ingest_window
+
+HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def paged_slack(fetch, last_run, until, max_pages=10):
@@ -234,3 +238,74 @@ def test_a_silent_failure_always_logs():
 def test_unconfigured_source_is_a_steady_state_not_an_error():
     """Outlook is permanently unconnected; it must not resurrect the empty-run entry."""
     assert not paths.ingest_worth_logging([], 0, errors=("outlook: creds not set",))
+
+
+# --- connector switches + one config reader ---------------------------------
+
+def _cfg(tmp_path, text):
+    p = tmp_path / "config.env"
+    p.write_text(text)
+    return str(p)
+
+
+def test_config_reader_tolerates_quotes_export_and_a_bad_line(tmp_path):
+    """One malformed line must not swallow the keys below it (the .env lesson)."""
+    c = paths.read_config(_cfg(tmp_path, 'VAULT_DIR="/v ault"\nthis is junk\nexport PLASMIE_DISABLED_SOURCES=\'git, slack\'\n'))
+    assert c == {"VAULT_DIR": "/v ault", "PLASMIE_DISABLED_SOURCES": "git, slack"}
+
+
+def test_disabled_sources_parse_and_ignore_unknown_names(tmp_path, monkeypatch):
+    monkeypatch.delenv("PLASMIE_DISABLED_SOURCES", raising=False)
+    f = _cfg(tmp_path, 'PLASMIE_DISABLED_SOURCES="GitHub, confluence,,nonsense"\n')
+    assert paths.disabled_sources(f) == {"github", "confluence"}
+    assert paths.source_enabled("slack", f) and not paths.source_enabled("github", f)
+
+
+def test_env_overrides_config_for_disabled_sources(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLASMIE_DISABLED_SOURCES", "")
+    assert paths.disabled_sources(_cfg(tmp_path, 'PLASMIE_DISABLED_SOURCES="slack"\n')) == set()
+
+
+def test_vault_resolution_order(tmp_path, monkeypatch):
+    """PLASMIE_VAULT (set by launchd wrappers) > VAULT_DIR env > config.env > ~/knowledge."""
+    f = _cfg(tmp_path, 'VAULT_DIR="~/from-config"\n')
+    monkeypatch.delenv("PLASMIE_VAULT", raising=False)
+    monkeypatch.delenv("VAULT_DIR", raising=False)
+    assert paths.vault(f).endswith("/from-config")
+    monkeypatch.setenv("VAULT_DIR", "/from-env")
+    assert paths.vault(f) == "/from-env"
+    monkeypatch.setenv("PLASMIE_VAULT", "/kl")
+    assert paths.vault(f) == "/kl"
+    monkeypatch.delenv("PLASMIE_VAULT")
+    monkeypatch.delenv("VAULT_DIR")
+    assert paths.vault(str(tmp_path / "missing.env")).endswith("/knowledge")
+
+
+def test_ingest_with_every_source_off_fetches_and_writes_nothing(tmp_path):
+    """Off means off: no network, no raw file. Backfill mode (PLASMIE_SINCE) so the live
+    watermark in ~/.plasmie/.loop-state.json is never written."""
+    import subprocess
+    import sys as _sys
+    env = {**os.environ, "PLASMIE_VAULT": str(tmp_path), "PLASMIE_DISABLED_SOURCES": ",".join(paths.SOURCES),
+           "PLASMIE_SINCE": "2026-01-01T00:00:00", "PLASMIE_UNTIL": "2026-01-01T01:00:00",
+           "SLACK_USER_TOKEN": "xoxp-would-call-slack", "PLASMIE_GITHUB_ORGS": "would-call-gh",
+           "PATH": "/nonexistent"}  # any gh/git subprocess would now fail loudly
+    r = subprocess.run([_sys.executable, os.path.join(HERE, "loop-ingest.py")],
+                       env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    summary = next(ln for ln in r.stdout.splitlines() if ln.startswith("SUMMARY: "))
+    assert "-ERR" not in summary and "raw 0 file(s)" in summary
+    assert "off agentcli,claude,confluence,git,github,outlook,slack" in summary
+    assert not (tmp_path / "raw").exists()
+
+
+def test_activity_dirs_follow_the_switches(tmp_path, monkeypatch):
+    """summarize/promote read raw/<dir>/<day>.md for these. GitHub and git were
+    missing, so that activity aged out of raw/ without ever reaching the wiki."""
+    monkeypatch.delenv("PLASMIE_DISABLED_SOURCES", raising=False)
+    f = _cfg(tmp_path, "")
+    assert paths.activity_dirs(f) == ["slack", "claude", "outlook", "github", "git"]
+    # claude + agentcli share raw/claude: it drops only when both are Off
+    assert "claude" in paths.activity_dirs(_cfg(tmp_path, 'PLASMIE_DISABLED_SOURCES="claude"\n'))
+    assert paths.activity_dirs(_cfg(tmp_path, 'PLASMIE_DISABLED_SOURCES="claude,agentcli,github"\n')) == \
+        ["slack", "outlook", "git"]

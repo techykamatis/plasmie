@@ -20,7 +20,10 @@ import paths  # vault layout constants
 from scrub import redact  # shared redactor — default keeps emails (journal attribution)
 import msgraph  # Microsoft Graph (Outlook mail + calendar)
 
-VAULT = os.environ.get("PLASMIE_VAULT") or os.path.expanduser("~/knowledge")
+VAULT = paths.vault()
+# Connectors switched Off in the app. Off means off: no fetch, no network, and the
+# watermark still advances, so switching back On never backfills the Off period.
+OFF = paths.disabled_sources()
 STATE = os.path.expanduser("~/.plasmie/.loop-state.json")
 SESS_ROOT = os.path.expanduser("~/.claude/projects")
 NOW = time.time()
@@ -97,7 +100,7 @@ def name_of(uid):
 slack_lines = []
 slack_counts = []
 slack_err = None
-if TOKEN:
+if TOKEN and "slack" not in OFF:
     try:
         uname = slack("auth.test").get("user", "")
         _mark = SRC_MARK["slack"]
@@ -141,7 +144,7 @@ if TOKEN:
             slack_err = None  # got results; clear any transient per-query error
     except Exception as e:
         slack_err = str(e)
-else:
+elif "slack" not in OFF:
     failed.add("slack")  # not set up (e.g. Disconnected): silent, like outlook — but hold the watermark
 
 # ---- outlook (Microsoft Graph: mail + calendar) ----
@@ -151,6 +154,8 @@ cal_lines = []
 ms_err = None
 MS_RT = os.environ.get("MS_REFRESH_TOKEN", "")
 if os.environ.get("PLASMIE_OUTLOOK", "0") != "1":  # off for now — set PLASMIE_OUTLOOK=1 to re-enable
+    MS_RT = ""
+if "outlook" in OFF:
     MS_RT = ""
 ms_enabled = bool(MS_RT)  # shelved until an Entra app is registered — silent when off
 if MS_RT:
@@ -218,7 +223,7 @@ CONF_TOKEN = os.environ.get("CONFLUENCE_API_TOKEN") or os.environ.get("JIRA_API_
 def _strip_html(s):
     return html.unescape(re.sub(r"<[^>]+>", " ", s or ""))
 
-if CONF_BASE and CONF_EMAIL and CONF_TOKEN:
+if CONF_BASE and CONF_EMAIL and CONF_TOKEN and "confluence" not in OFF:
     try:
         auth = base64.b64encode(f"{CONF_EMAIL}:{CONF_TOKEN}".encode()).decode()
         # broad CQL query with a tz buffer (CQL time is the account's tz, not UTC);
@@ -269,7 +274,7 @@ if CONF_BASE and CONF_EMAIL and CONF_TOKEN:
             truncated.append("confluence")
     except Exception as e:
         conf_err = str(e)
-else:
+elif "confluence" not in OFF:
     failed.add("confluence")  # not set up (e.g. Disconnected): silent, like outlook — but hold the watermark
 
 # ---- github (recent PRs/issues/commits I authored or commented on) ----
@@ -305,7 +310,7 @@ def _gh_search(q):
     return items
 
 
-if GH_ORGS:
+if GH_ORGS and "github" not in OFF:
     try:
         _who = subprocess.run([GH_BIN, "api", "user", "--jq", ".login"],
                               capture_output=True, text=True, timeout=30)
@@ -348,7 +353,7 @@ if GH_ORGS:
 # ---- claude sessions ----
 sess_lines = []
 updated = []
-for f in glob.glob(os.path.join(SESS_ROOT, "*", "*.jsonl")):
+for f in ([] if "claude" in OFF else glob.glob(os.path.join(SESS_ROOT, "*", "*.jsonl"))):
     try:
         if SRC_MARK["claude"] < os.path.getmtime(f) <= UNTIL:
             updated.append(f)
@@ -407,7 +412,7 @@ for f in updated[:40]:
 # sessions (parent_id set), like glob("*/*.jsonl") skips Claude's subagents.
 agentcli_sids, agentcli_err = [], None
 AGENTCLI_DB = os.path.expanduser(os.environ.get("PLASMIE_AGENTCLI_DB", "~/.agentcli/cli/db/db.sqlite"))
-if os.path.exists(AGENTCLI_DB):
+if "agentcli" not in OFF and os.path.exists(AGENTCLI_DB):
     import sqlite3
     try:
         _db = sqlite3.connect(f"file:{AGENTCLI_DB}?mode=ro", uri=True, timeout=5)
@@ -452,7 +457,7 @@ GIT_ROOTS = [os.path.expanduser(p.strip())
 GIT_BODY_CAP = int(os.environ.get("PLASMIE_GIT_BODY_CAP", "800"))
 
 git_lines, git_counts, git_err, git_dropped = [], [], None, 0
-if GIT_ROOTS:
+if GIT_ROOTS and "git" not in OFF:
     try:
         _mark_git = SRC_MARK["git"]
         _since = datetime.datetime.fromtimestamp(_mark_git).isoformat()
@@ -649,6 +654,7 @@ gitn = sum(n for _, n in git_counts)
 agentcli_seg = f" · agentcli {len(agentcli_sids)} session(s)" if (agentcli_sids or agentcli_err) else ""
 git_seg = (f" · git {gitn} commit(s)" + (f" ({git_dropped} filtered)" if git_dropped else "")) if (git_counts or git_err) else ""
 print(f"SUMMARY: slack {len(slack_counts)} convos / {msgs} msgs{outlook_seg}{github_seg}{git_seg}{agentcli_seg} · confluence {conf_count} pages · sessions {len(updated)} files · raw {len(written)} file(s)"
+      + (f" · off {','.join(sorted(OFF))}" if OFF else "")
       + (f" · SLACK-ERR {slack_err}" if slack_err else "")
       + (f" · MS-ERR {ms_err}" if ms_err else "")
       + (f" · GH-ERR {gh_err}" if gh_err else "")

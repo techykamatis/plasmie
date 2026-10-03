@@ -15,6 +15,69 @@ Layout (llm-wiki):
 import datetime
 import os
 
+# --- config.env: the ONE reader (the app writes it; shell scripts source it) ---
+LOOP_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG = os.path.join(LOOP_DIR, "config.env")
+
+# Every connector the menu-bar app shows a card (and an On/Off switch) for.
+SOURCES = ("slack", "github", "git", "confluence", "outlook", "claude", "agentcli")
+
+
+def read_config(path=CONFIG):
+    """KEY=value lines, tolerating `export ` and quotes. Parsed line by line, so
+    one malformed line can't truncate everything below it the way `.` does."""
+    out = {}
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if line.startswith("export "):
+                    line = line[7:]
+                k, eq, v = line.partition("=")
+                if not eq or line.startswith("#") or not k.strip().isidentifier():
+                    continue
+                v = v.strip()
+                if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+                    v = v[1:-1]
+                out[k.strip()] = v
+    except OSError:
+        pass
+    return out
+
+
+def vault(config=CONFIG):
+    """Vault root: PLASMIE_VAULT (launchd wrappers) > VAULT_DIR env > config.env > ~/knowledge."""
+    v = (os.environ.get("PLASMIE_VAULT") or os.environ.get("VAULT_DIR")
+         or read_config(config).get("VAULT_DIR") or "~/knowledge")
+    return os.path.expanduser(v)
+
+
+def disabled_sources(config=CONFIG):
+    """Connectors switched Off in the app (PLASMIE_DISABLED_SOURCES, comma-separated).
+    The env var wins when set, even empty, so a test or one-off run can override."""
+    raw = os.environ.get("PLASMIE_DISABLED_SOURCES")
+    if raw is None:
+        raw = read_config(config).get("PLASMIE_DISABLED_SOURCES", "")
+    return {s.strip().lower() for s in raw.split(",")} & set(SOURCES)
+
+
+def source_enabled(name, config=CONFIG):
+    return name not in disabled_sources(config)
+
+
+# connector -> its dated raw/ activity dir (confluence is a mirror, not dated dumps)
+_ACTIVITY = (("slack", "slack"), ("claude", "claude"), ("agentcli", "claude"),
+             ("outlook", "outlook"), ("github", "github"), ("git", "git"))
+
+
+def activity_dirs(config=CONFIG):
+    """raw/ subdirs summarize + promote read, minus connectors switched Off."""
+    off, out = disabled_sources(config), []
+    for src, d in _ACTIVITY:
+        if src not in off and d not in out:
+            out.append(d)
+    return out
+
 # --- raw sources (qmd collection "raw") ---
 RAW = "raw"
 RAW_SLACK = "raw/slack"
@@ -126,3 +189,9 @@ def log_event(vault, header, bullets=()):
     with open(p, "a") as fh:
         fh.write("\n".join(lines) + "\n")
     return ts
+
+
+if __name__ == "__main__":  # `paths.py activity-dirs` — for the shell jobs
+    import sys
+    if sys.argv[1:] == ["activity-dirs"]:
+        print(" ".join(activity_dirs()))

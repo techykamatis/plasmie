@@ -130,10 +130,15 @@ def plan(item, vault):
         tgt = f.get("Target")
         if not tgt:
             return ("skip", item["title"], None, "create needs Target:")
-        t = _in_vault(vroot, tgt)
-        if t is None:
+        # Target is a kind hint ("pattern", "gotcha"), not a place: type + tag come from
+        # the hint, the file always lands flat in wiki/. Rewriting the hint to "wiki"
+        # first (as auto() used to) turned every promoted note into a tagless "note".
+        pathlike = "/" in tgt or tgt.endswith(".md")
+        t = _in_vault(vroot, tgt) if pathlike else vroot / paths.WIKI
+        if t is None:                                    # containment check runs on the real hint
             return ("skip", item["title"], None, f"path escapes vault: {tgt}")
-        path = t / f"{slug(item['title'])}.md" if (t.is_dir() or not t.suffix) else t
+        # an explicit file stays explicit (and is never overwritten); a folder flattens into wiki/
+        path = t if t.suffix else vroot / paths.WIKI / f"{slug(item['title'])}.md"
         if path.exists():
             return ("skip", item["title"], None, f"already exists: {path.relative_to(vroot)} (use merge?)")
         rtitle, rbody = redact(item["title"]), redact(item["body"])
@@ -221,6 +226,7 @@ def _near_score(fields):
     return float(m.group(1)) if m else 0.0
 
 
+
 def _norm_create_target(t):
     """Every note lands flat in wiki/. The model can no longer invent a directory."""
     return paths.resolve_target(t)
@@ -259,7 +265,7 @@ def auto(draft_path, vault):
         if act == "merge" and _near_score(it["fields"]) >= AUTO_MERGE_AT:
             pass                                                   # confident dup → merge
         elif act == "create":
-            decided["fields"]["Target"] = _norm_create_target(decided["fields"].get("Target"))
+            pass                                                   # plan() files flat, keeps the kind hint
         elif act == "move":
             decided["fields"]["Target"] = _norm_move_target(decided["fields"].get("Target"))
         else:

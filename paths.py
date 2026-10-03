@@ -124,12 +124,17 @@ TARGET_TAGS = {
     "security": "security",
     "clipping": "clipping", "clippings": "clipping",
     "area": "area", "areas": "area",
+    # the load-bearing kinds the vault contract names; the drafter can now say them
+    "gotcha": "gotcha", "gotchas": "gotcha", "trap": "gotcha", "pitfall": "gotcha",
+    "decision": "decision", "decisions": "decision",
+    "pattern": "pattern", "patterns": "pattern",
 }
 
 # Target string -> frontmatter type. Type used to be inferred from the folder a
 # note landed in; with one folder it comes from the same hint, defaulting to note.
 TARGET_TYPES = {"person": "person", "project": "project", "concept": "reference",
-                "tech": "reference", "how-to": "reference", "security": "reference"}
+                "tech": "reference", "how-to": "reference", "security": "reference",
+                "gotcha": "gotcha", "decision": "decision", "pattern": "pattern"}
 
 
 def resolve_target(t, default=WIKI):

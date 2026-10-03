@@ -137,6 +137,7 @@ final class Model: ObservableObject {
     @Published var output = ""          // captured output of the last in-process run
     @Published var busy = false         // an in-process python run is underway
     @Published var spin = 0.0           // menu-bar logo rotation, driven only while active
+    @Published var runningJobs: Set<String> = []   // labels of launchd jobs we kicked and are following
     private var poll: Timer?            // adaptive state poll (fast while active, slow idle)
     private var anim: Timer?            // 30fps spinner, alive only while active
     private var hintUntil = Date.distantPast   // optimistic "running" right after a click
@@ -169,6 +170,12 @@ final class Model: ObservableObject {
 
     /// start/stop the spinner so it animates exactly while work is happening
     private func updateAnimation() {
+        // Reduce Motion: the logo stays static (the tint + status pill still say "working").
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            anim?.invalidate(); anim = nil
+            if spin != 0 { spin = 0 }
+            return
+        }
         if active, anim == nil {
             anim = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
                 guard let self else { return }
@@ -182,13 +189,43 @@ final class Model: ObservableObject {
 
     private var py: String { "/usr/bin/python3" }
 
-    /// fire a launchd job; spin immediately (optimistic) and poll fast until it lands
+    /// Fire a launchd job (spin immediately, poll fast) and follow it to completion:
+    /// the row shows a running state, then a "<label> finished · <summary>" note.
     func kick(_ job: String, _ label: String) {
-        note = "\(label)…"
+        guard !runningJobs.contains(label) else { return }
+        runningJobs.insert(label)
+        note = "\(label) running…"
         hintUntil = Date().addingTimeInterval(8)
         updateAnimation(); schedulePoll()
         fireAndForget("/bin/launchctl", ["kickstart", "-p", "gui/\(getuid())/\(job)"])
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.note = "\(label) started"; self.refresh() }
+        DispatchQueue.global().async {
+            let start = Date()
+            let ceiling: TimeInterval = 15 * 60
+            var sawRunning = false, exit = "0", finished = false
+            while Date().timeIntervalSince(start) < ceiling {
+                Thread.sleep(forTimeInterval: 2)
+                let out = runCapture("/bin/launchctl", ["list", job])
+                let running = out.contains("\"PID\" =")
+                if running { sawRunning = true }
+                if let r = out.range(of: "\"LastExitStatus\" = ") {
+                    exit = String(out[r.upperBound...].prefix(while: { $0.isNumber || $0 == "-" }))
+                }
+                if !running && (sawRunning || Date().timeIntervalSince(start) > 6) { finished = true; break }
+            }
+            let fresh = finished ? loadStatus() : nil
+            DispatchQueue.main.async {
+                self.runningJobs.remove(label)
+                if let fresh {
+                    self.s = fresh
+                    let summary = fresh.activity.isEmpty ? "\(fresh.notes) notes in vault" : fresh.activity
+                    self.note = exit == "0" ? "\(label) finished · \(summary)"
+                                            : "\(label) failed (exit \(exit)) · \(summary)"
+                } else {
+                    self.note = "\(label) still running in background"
+                }
+                self.updateAnimation(); self.schedulePoll()
+            }
+        }
     }
 
     /// Kick a launchd job and follow it to completion: real spinner while it runs,

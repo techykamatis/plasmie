@@ -48,7 +48,7 @@ struct SetupView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                PlasmieView(state: done ? .success : (failed != nil ? .error : .ingest), size: 88)
+                InteractivePlasmie(state: done ? .success : (failed != nil ? .error : .ingest), size: 88)
                 Text(done ? "You're all set" : "Hi, I'm Plasmie. Setting things up")
                     .font(.klTitle)
             }

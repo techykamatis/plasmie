@@ -106,13 +106,9 @@ struct Panel: View {
         VStack(alignment: .leading, spacing: 0) {
             // header: Plasmie is the hero — its shape is the status, so it gets the stage
             VStack(spacing: 6) {
-                Button { OverlayController.shared.toggle() } label: {
-                    PlasmieView(state: m.plasmie, size: 104)
-                        .frame(maxWidth: .infinity)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("Ask Plasmie (⌃⌥⌘K)")
+                InteractivePlasmie(state: m.plasmie, size: 104)
+                    .frame(maxWidth: .infinity)
+                    .help("Click to say hi · drag to pet")
                 .padding(.top, 16)
                 Text("Plasmie").font(.klTitle)
                 StatusPill(state: m.s.state, reason: m.s.reason)

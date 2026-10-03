@@ -240,6 +240,60 @@ private enum PlasmiePropArt {
                              style: StrokeStyle(lineWidth: 1.9, lineCap: .round, lineJoin: .round))
                 }
             }
+        case .hello:
+            // a small "hi!" bubble pops in beside the raised hand, then fades
+            let pop = motion ? min(max(age / 0.22, 0), 1) : 1
+            let fade = motion ? min(max((1.9 - age) / 0.35, 0), 1) : 1
+            let sc = CGFloat(0.3 + 0.7 * (1 - pow(1 - pop, 3)))
+            guard fade > 0.001 else { return }
+            var l = c
+            l.translateBy(x: 76, y: 17)
+            l.scaleBy(x: sc, y: sc)
+            l.opacity = fade
+            var bubble = Path(roundedRect: CGRect(x: -15, y: -8.5, width: 30, height: 17), cornerRadius: 8.5)
+            bubble.move(to: CGPoint(x: -8, y: 7)); bubble.addLine(to: CGPoint(x: -11.5, y: 13)); bubble.addLine(to: CGPoint(x: -3, y: 8))
+            l.fill(bubble, with: .color(.white.opacity(0.97)))
+            l.stroke(bubble, with: .color(ink), style: StrokeStyle(lineWidth: 1.3, lineJoin: .round))
+            let word = l.resolve(Text("hi!").font(.system(size: 11, weight: .bold, design: .rounded)).foregroundColor(ink))
+            l.draw(word, at: .zero, anchor: .center)
+        case .vein:
+            // the classic anger mark: four short curved strokes, pulsing
+            let pulse = motion ? 1 + 0.14 * CGFloat(sin(2 * .pi * t / 0.55)) : 1
+            var l = c
+            l.translateBy(x: 80, y: 20)
+            l.scaleBy(x: pulse, y: pulse)
+            var m = Path()
+            for q in 0..<4 {
+                let a = Double(q) * .pi / 2 + .pi / 4
+                let ca = CGFloat(cos(a)), sa = CGFloat(sin(a))
+                // each stroke is a bracket whose belly points at the centre, leaving a plus-shaped gap
+                let p0 = CGPoint(x: ca * 8 - sa * 4.6, y: sa * 8 + ca * 4.6)
+                let p1 = CGPoint(x: ca * 8 + sa * 4.6, y: sa * 8 - ca * 4.6)
+                m.move(to: p0)
+                m.addQuadCurve(to: p1, control: CGPoint(x: ca * 3.4, y: sa * 3.4))
+            }
+            l.stroke(m, with: .color(PlasmieHues.blush.color(scheme)),
+                     style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
+        case .hearts:
+            // a few small hearts float up and fade
+            let xs: [CGFloat] = [34, 66, 50]
+            for i in 0..<3 {
+                let ph = motion ? frac(t / 1.6 + Double(i) / 3) : [0.3, 0.5, 0.7][i]
+                let x = xs[i] + 4 * CGFloat(sin(ph * 5 + Double(i) * 2))
+                let y = 26 - 22 * CGFloat(ph)
+                let r = CGFloat(3.4 + 2.6 * sin(.pi * min(ph * 1.6, 1)))
+                var h = Path()
+                h.move(to: CGPoint(x: x, y: y + 0.85 * r))
+                h.addCurve(to: CGPoint(x: x - r, y: y - 0.2 * r), control1: CGPoint(x: x - 0.5 * r, y: y + 0.5 * r), control2: CGPoint(x: x - r, y: y + 0.2 * r))
+                h.addCurve(to: CGPoint(x: x, y: y - 0.3 * r), control1: CGPoint(x: x - r, y: y - r), control2: CGPoint(x: x - 0.1 * r, y: y - r))
+                h.addCurve(to: CGPoint(x: x + r, y: y - 0.2 * r), control1: CGPoint(x: x + 0.1 * r, y: y - r), control2: CGPoint(x: x + r, y: y - r))
+                h.addCurve(to: CGPoint(x: x, y: y + 0.85 * r), control1: CGPoint(x: x + r, y: y + 0.2 * r), control2: CGPoint(x: x + 0.5 * r, y: y + 0.5 * r))
+                c.drawLayer { l in
+                    l.opacity = motion ? sin(.pi * ph) : 1
+                    l.fill(h, with: .color(PlasmieHues.blush.color(scheme)))
+                    l.stroke(h, with: .color(ink), style: StrokeStyle(lineWidth: 1, lineJoin: .round))
+                }
+            }
         case .sparkles:
             // one burst when Plasmie enters `success`, ~0.9s
             if motion {
@@ -310,7 +364,7 @@ struct PlasmieView: View {
     }
 
     private func composed(_ bodyLayer: PlasmieBody, t: Double, age: Double) -> some View {
-        let x = xform(t)
+        let x = xform(t, age: age)
         return ZStack {
             bodyLayer
                 .scaleEffect(x: x.sx, y: x.sy, anchor: .bottom)
@@ -324,10 +378,17 @@ struct PlasmieView: View {
     }
 
     /// One transform for the whole body, from time alone — the path is never rebuilt for it.
-    private func xform(_ t: Double) -> (sx: CGFloat, sy: CGFloat, rot: Double) {
+    private func xform(_ t: Double, age: Double) -> (sx: CGFloat, sy: CGFloat, rot: Double) {
         guard !reduceMotion else { return (1, 1, 0) }
         let w = sin(2 * .pi * t / 2.4)
         switch shown {
+        case .hi:        // wave: ~3 Hz, ±7°, fading out after ~1.2s
+            let env = max(0, min(1, (1.4 - age) / 0.3)) * min(1, age / 0.08)
+            return (1, 1, 7 * env * sin(2 * .pi * 3 * age))
+        case .annoyed:   // puffed, tiny fast tremble
+            return (1 + 0.012 * CGFloat(w), 1, 1.6 * sin(2 * .pi * 9 * t))
+        case .petted:    // content little squish-purr
+            let k = sin(2 * .pi * t / 0.7); return (1 + 0.025 * k, 1 - 0.03 * k, 0)
         case .off:       return (1, 1, 0)
         case .summarize: let k = sin(2 * .pi * t / 1.6); return (1 + 0.05 * k, 1 - 0.06 * k, 0)   // knead
         case .error:     return (1, 1, 3 * sin(2 * .pi * t / 0.9))                                 // wobble
@@ -350,6 +411,127 @@ struct PlasmieView: View {
                 shown = new
                 if phase == 1 { f0 = new; phase = 0 } else { f1 = new; phase = 1 }
             }
+        }
+    }
+}
+
+// MARK: - mouse reactions
+
+/// Horizontal shake driven by an animatable counter: each +1 is two quick wiggles.
+private struct PlasmieShake: GeometryEffect {
+    var shakes: CGFloat
+    var amount: CGFloat
+    var animatableData: CGFloat {
+        get { shakes }
+        set { shakes = newValue }
+    }
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        ProjectionTransform(CGAffineTransform(translationX: amount * sin(shakes * 2 * .pi * 2), y: 0))
+    }
+}
+
+/// PlasmieView plus a transient mouse reaction on top of the real pipeline state.
+/// One tap says hi; four quick taps annoy it; click-and-drag pets it. A single
+/// DragGesture(minimumDistance: 0) owns both tap and drag, so they cannot double-fire:
+/// the release is a tap only if the pointer never travelled past the 3pt threshold.
+/// Reactions are timed, never sticky, so the pipeline state always comes back.
+struct InteractivePlasmie: View {
+    let state: PlasmieState
+    var size: CGFloat = 104
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var reaction: PlasmieState?
+    @State private var token = 0                 // invalidates stale "return to pipeline" timers
+    @State private var taps: [Date] = []
+    @State private var annoyedUntil = Date.distantPast
+    @State private var petting = false
+    @State private var lean: CGSize = .zero
+    @State private var shakes: CGFloat = 0
+    @State private var pop = false
+
+    private enum Timing {
+        static let hi = 1.6, annoyed = 2.2, extend = 1.2, petLinger = 0.9
+        static let burstWindow = 1.5, burstTaps = 4, dragSlop: CGFloat = 3
+    }
+
+    var body: some View {
+        PlasmieView(state: reaction ?? state, size: size)
+            .modifier(PlasmieShake(shakes: shakes, amount: size * 0.03))
+            .rotationEffect(.degrees(Double(lean.width / max(size, 1)) * 40), anchor: .bottom)
+            .scaleEffect(x: 1 + abs(lean.width) / size * 0.5, y: 1 - abs(lean.width) / size * 0.35, anchor: .bottom)
+            .offset(x: lean.width, y: lean.height * 0.5)
+            .scaleEffect(pop ? 1.05 : 1, anchor: .bottom)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0).onChanged(dragChanged).onEnded(dragEnded))
+            .accessibilityAction(named: "Say hi") { tap() }
+    }
+
+    // MARK: gestures
+
+    private func dragChanged(_ v: DragGesture.Value) {
+        guard hypot(v.translation.width, v.translation.height) > Timing.dragSlop else { return }
+        if !petting {
+            petting = true
+            react(.petted, for: nil)
+        }
+        guard !reduceMotion else { return }
+        let lim = size * 0.12
+        let target = CGSize(width: max(-lim, min(lim, v.translation.width * 0.2)),
+                            height: max(-lim, min(lim, v.translation.height * 0.2)))
+        withAnimation(.interactiveSpring(response: 0.25, dampingFraction: 0.8)) { lean = target }
+    }
+
+    private func dragEnded(_ v: DragGesture.Value) {
+        if petting {
+            petting = false
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) { lean = .zero }
+            react(.petted, for: Timing.petLinger)          // linger, then back to the pipeline
+        } else {
+            tap()
+        }
+    }
+
+    private func tap() {
+        let now = Date()
+        taps = taps.filter { now.timeIntervalSince($0) < Timing.burstWindow } + [now]
+        if !reduceMotion {
+            withAnimation(.easeOut(duration: 0.08)) { pop = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { pop = false }
+            }
+        }
+        if reaction == .annoyed && now < annoyedUntil {
+            // still cross: each extra tap buys a little more time and a shake
+            annoyedUntil = now.addingTimeInterval(Timing.extend)
+            shake()
+            react(.annoyed, for: Timing.extend)
+        } else if taps.count >= Timing.burstTaps {
+            taps = []
+            annoyedUntil = now.addingTimeInterval(Timing.annoyed)
+            shake()
+            react(.annoyed, for: Timing.annoyed)
+        } else {
+            react(.hi, for: Timing.hi)
+        }
+    }
+
+    // MARK: reaction timing
+
+    private func shake() {
+        guard !reduceMotion else { return }
+        withAnimation(.linear(duration: 0.4)) { shakes += 1 }
+    }
+
+    /// Show `s` now; with a duration, hand back to the pipeline state after it.
+    private func react(_ s: PlasmieState, for seconds: Double?) {
+        token += 1
+        let mine = token
+        if reaction != s { reaction = s }
+        guard let seconds else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+            guard token == mine, !petting else { return }
+            reaction = nil
+            taps = []
         }
     }
 }

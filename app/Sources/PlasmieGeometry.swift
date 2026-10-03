@@ -6,10 +6,12 @@ import SwiftUI
 // anchors is the morph. Face marks are plain paths so the live view (ink on body) and
 // the menu-bar glyph (knocked out of a template silhouette) share one drawing.
 
-// MARK: - the 11 states
+// MARK: - the 14 states (11 pipeline + 3 mouse reactions)
 
 enum PlasmieState: String, CaseIterable {
     case idle, ingest, summarize, promote, ask, held, error, busy, quiet, off, success
+    // transient reactions to the mouse; never derived from the pipeline
+    case hi, annoyed, petted
 
     var anchors: [CGPoint] { PlasmieShapes.anchors[rawValue] ?? PlasmieShapes.anchors["idle"] ?? [] }
 
@@ -26,6 +28,9 @@ enum PlasmieState: String, CaseIterable {
         case .quiet:     return "Plasmie is quiet. Nothing new for a while"
         case .off:       return "Plasmie is switched off"
         case .success:   return "Plasmie finished successfully"
+        case .hi:        return "Plasmie waves hi"
+        case .annoyed:   return "Plasmie is annoyed"
+        case .petted:    return "Plasmie is enjoying the pets"
         }
     }
 
@@ -114,9 +119,9 @@ struct PlasmieShape: Shape {
 
 // MARK: - face table (mirrors FACES in app/brand/gen_shapes.py)
 
-enum PlasmieEyes { case dot, happy, wink, up, worried, flat, closed }
-enum PlasmieMouth { case smile, o, flat, small, wobble, grin, none }
-enum PlasmieProp { case dots, card, spark, bang, sweat, sand, zzz, sparkles }
+enum PlasmieEyes { case dot, happy, wink, up, worried, flat, closed, angry }
+enum PlasmieMouth { case smile, o, flat, small, wobble, grin, pout, none }
+enum PlasmieProp { case dots, card, spark, bang, sweat, sand, zzz, sparkles, hello, vein, hearts }
 
 /// Where the face sits, relative to the body's bounding box so it stays on the body in
 /// every shape. Blended across a morph.
@@ -139,6 +144,7 @@ struct PlasmieFace {
     let mouth: PlasmieMouth
     let prop: PlasmieProp?
     var blush = false
+    var blushScale: CGFloat = 1
     var layout = PlasmieLayout()
 }
 
@@ -156,6 +162,9 @@ extension PlasmieState {
         case .quiet:     return PlasmieFace(eyes: .closed, mouth: .none, prop: .zzz, layout: PlasmieLayout(cy: 0.42, gap: 0.14))
         case .off:       return PlasmieFace(eyes: .closed, mouth: .none, prop: nil, layout: PlasmieLayout(cy: 0.5, gap: 0.15, scale: 0.9))
         case .success:   return PlasmieFace(eyes: .happy, mouth: .grin, prop: .sparkles, blush: true, layout: PlasmieLayout(cy: 0.5, gap: 0.15, mouthDy: 8.5))
+        case .hi:        return PlasmieFace(eyes: .happy, mouth: .grin, prop: .hello, blush: true, layout: PlasmieLayout(cy: 0.5, gap: 0.15, mouthDy: 8.5))
+        case .annoyed:   return PlasmieFace(eyes: .angry, mouth: .pout, prop: .vein, layout: PlasmieLayout(cy: 0.5, gap: 0.17, mouthDy: 10))
+        case .petted:    return PlasmieFace(eyes: .happy, mouth: .smile, prop: .hearts, blush: true, blushScale: 1.35, layout: PlasmieLayout(cy: 0.42, gap: 0.17, mouthDy: 8.5))
         }
     }
 }
@@ -219,6 +228,11 @@ enum PlasmieFaceArt {
             out += [lineMark(CGPoint(x: l.x - 3.2 * s, y: l.y), CGPoint(x: l.x + 3.2 * s, y: l.y), w * 1.05),
                     lineMark(CGPoint(x: r.x - 3.2 * s, y: r.y), CGPoint(x: r.x + 3.2 * s, y: r.y), w * 1.05)]
         case .closed:  out += [closed(l), closed(r)]
+        case .angry:
+            out += [dot(l), dot(r)]
+            // brows slanted inward; fine detail, skipped on the 18pt glyph like the worried brows
+            if line <= 1.01 { out += [lineMark(CGPoint(x: l.x - 3.8 * s, y: l.y - 8.6 * s), CGPoint(x: l.x + 3.4 * s, y: l.y - 5 * s), 2 * s * line),
+                    lineMark(CGPoint(x: r.x + 3.8 * s, y: r.y - 8.6 * s), CGPoint(x: r.x - 3.4 * s, y: r.y - 5 * s), 2 * s * line)] }
         }
 
         let mx = ex
@@ -243,13 +257,14 @@ enum PlasmieFaceArt {
             p.addQuadCurve(to: CGPoint(x: mx + 5.6 * s, y: my - 1.4 * s), control: CGPoint(x: mx, y: my + 12 * s))
             p.closeSubpath()
             out.append(PlasmieMark(path: p, stroke: nil, tone: .ink))
+        case .pout: out.append(arc(CGPoint(x: mx - 3.6 * s, y: my + 1.6 * s), CGPoint(x: mx + 3.6 * s, y: my + 1.6 * s), CGPoint(x: mx, y: my - 2.8 * s), w))
         case .none: break
         }
 
         if face.blush {
             for sign: CGFloat in [-1, 1] {
                 let c = CGPoint(x: ex + sign * (gap + 5.4 * s), y: ey + 5.6 * s)
-                out.append(PlasmieMark(path: Path(ellipseIn: CGRect(x: c.x - 4.2 * s, y: c.y - 2.6 * s, width: 8.4 * s, height: 5.2 * s)),
+                out.append(PlasmieMark(path: Path(ellipseIn: CGRect(x: c.x - 4.2 * s * face.blushScale, y: c.y - 2.6 * s * face.blushScale, width: 8.4 * s * face.blushScale, height: 5.2 * s * face.blushScale)),
                                      stroke: nil, tone: .blush))
             }
         }

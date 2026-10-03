@@ -12,7 +12,6 @@ struct Status: Codable {
     var reason = ""          // why we're in `state` (e.g. "ingest: CONF-ERR")
     var pending = 0
     var pendingFile = ""
-    var pendingBase = ""
     var pendingItems = 0
     var notes = "?"
     var recent: [String] = []
@@ -224,38 +223,6 @@ final class Model: ObservableObject {
                     self.note = "\(label) still running in background"
                 }
                 self.updateAnimation(); self.schedulePoll()
-            }
-        }
-    }
-
-    /// Kick a launchd job and follow it to completion: real spinner while it runs,
-    /// then a ✓/✗ result from its exit status. Used for quick jobs (sync) where the
-    /// user wants to see it actually finish, not just "started".
-    func kickTracked(_ job: String, _ label: String) {
-        busy = true; note = "\(label)…"
-        hintUntil = Date().addingTimeInterval(2)
-        updateAnimation()
-        fireAndForget("/bin/launchctl", ["kickstart", "-p", "gui/\(getuid())/\(job)"])
-        DispatchQueue.global().async {
-            let start = Date()
-            var sawRunning = false
-            var exit = "0"
-            while Date().timeIntervalSince(start) < 30 {
-                Thread.sleep(forTimeInterval: 0.5)
-                let out = runCapture("/bin/launchctl", ["list", job])
-                let running = out.contains("\"PID\" =")
-                if running { sawRunning = true }
-                if let r = out.range(of: "\"LastExitStatus\" = ") {
-                    exit = String(out[r.upperBound...].prefix(while: { $0.isNumber || $0 == "-" }))
-                }
-                if !running && (sawRunning || Date().timeIntervalSince(start) > 1.5) { break }
-            }
-            DispatchQueue.main.async {
-                self.busy = false
-                self.note = (exit == "0") ? "\(label) done ✓"
-                                          : "\(label) failed (exit \(exit)) — check Full Disk Access for /bin/bash"
-                self.updateAnimation()
-                self.refresh()
             }
         }
     }

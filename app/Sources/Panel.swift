@@ -11,11 +11,11 @@ struct StatusPill: View {
     private var spec: (String, Color) {
         switch state {
         case "pending": return ("Needs review", .orange)
-        case "running": return ("Working", .blue)
-        // reason comes from plasmie-status.py; falling back to the old wording keeps
-        // an older status script working, but ingest errors now say so.
-        case "error":   return (reason.isEmpty ? "Promote skipped" : reason, .red)
-        default:        return ("Healthy", .green)
+        case "running": return ("Working…", .blue)
+        // Vocabulary matches the connector cards. reason (from plasmie-status.py) says
+        // why; without one the pill just says "Needs attention".
+        case "error":   return (reason.isEmpty ? "Needs attention" : reason, .red)
+        default:        return ("All flowing", .green)
         }
     }
     private var animated: Bool { (state == "running" || state == "pending") && !reduceMotion }
@@ -122,6 +122,7 @@ struct Panel: View {
                         Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).frame(width: 14)
                     }
                     Text(m.s.activity).font(.klLabel).foregroundStyle(working ? .primary : .secondary)
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 12).padding(.bottom, 9)
@@ -141,7 +142,7 @@ struct Panel: View {
             Button { OverlayController.shared.toggle() } label: {
                 HStack(spacing: 7) {
                     Image(systemName: "sparkle.magnifyingglass").foregroundStyle(.secondary)
-                    Text("Ask anything in the vault…").font(.klLabel).foregroundStyle(.secondary)
+                    Text("Ask your vault").font(.klLabel).foregroundStyle(.secondary)
                     Spacer(minLength: 0)
                     Text("⌃⌥⌘K").font(.klMeta.weight(.medium))
                         .foregroundStyle(.secondary)
@@ -162,8 +163,8 @@ struct Panel: View {
                 Label("\(m.s.notes) notes in vault", systemImage: "doc.text")
                     .font(.klLabel).foregroundStyle(.secondary)
                 ForEach(m.s.recent.prefix(3), id: \.self) { line in
-                    Text(line).font(.klMono).foregroundStyle(.tertiary)
-                        .lineLimit(1).truncationMode(.middle)
+                    Text(FeedLine.humanize(line)).font(.klMeta).foregroundStyle(.tertiary)
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 }
             }
             .padding(.horizontal, 12).padding(.vertical, 9)
@@ -227,7 +228,9 @@ struct Panel: View {
                 .padding(.horizontal, 6).padding(.vertical, 3)
         }
         .frame(width: 320)
-        // ⌘R: refresh has no row (status auto-refreshes every 60s) but keeps its shortcut.
+        // ⌘R: refresh has no row (status auto-refreshes every 60s) but keeps its shortcut;
+        // it is surfaced as a hint on the panel.
+        .help("Status refreshes every minute · ⌘R to refresh now")
         .background(Button("Refresh") { m.refresh() }.keyboardShortcut("r", modifiers: .command)
             .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true))
     }
@@ -237,8 +240,8 @@ struct Panel: View {
             Label("\(m.s.pendingItems) held for review", systemImage: "tray.full.fill")
                 .font(.klHeading).foregroundStyle(.orange)
             if let c = confirm {
-                Text(c == .approve ? "File all \(m.s.pendingItems) as suggested? This can't be undone."
-                                   : "Discard \(m.s.pendingItems) held items without filing? This can't be undone.")
+                Text(c == .approve ? "Approve all \(m.s.pendingItems) held items? They're filed as suggested."
+                                   : "Dismiss \(m.s.pendingItems) held items? Nothing is filed; this can't be undone.")
                     .klNote()
                 HStack(spacing: 8) {
                     Button("Cancel") { confirm = nil }
@@ -279,5 +282,38 @@ struct Panel: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Turns a raw feed.log line (pipes already replaced by "·" in plasmie-status.py) into
+/// "HH:MM · slack 1 convos / 3 msgs · github 2 · confluence, outlook off".
+/// Defensive: any line that doesn't parse is shown as-is.
+enum FeedLine {
+    static func humanize(_ raw: String) -> String {
+        let parts = raw.components(separatedBy: " · ").map { $0.trimmingCharacters(in: .whitespaces) }
+        guard parts.count > 1, let time = clock(parts[0]) else { return raw }
+        var out: [String] = []
+        for seg in parts.dropFirst() where !seg.isEmpty {
+            if seg.hasPrefix("exit ") {
+                if seg != "exit 0" { out.append(seg) }
+            } else if seg.hasPrefix("errors ") {
+                if seg != "errors 0" { out.append(seg) }
+            } else if seg.hasPrefix("off ") {
+                let names = seg.dropFirst(4).split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                if !names.isEmpty { out.append(names.joined(separator: ", ") + " off") }
+            } else if seg.contains(where: \.isNumber), !seg.contains(where: { $0.isNumber && $0 != "0" }) {
+                continue   // every count is zero: nothing to report
+            } else {
+                out.append(seg)
+            }
+        }
+        return ([time] + (out.isEmpty ? ["nothing new"] : out)).joined(separator: " · ")
+    }
+
+    /// "2026-10-03 21:07:05" -> "21:07"
+    private static func clock(_ s: String) -> String? {
+        let f = s.split(separator: " ")
+        guard f.count == 2, f[1].count >= 5, f[1].dropFirst(2).first == ":" else { return nil }
+        return String(f[1].prefix(5))
     }
 }

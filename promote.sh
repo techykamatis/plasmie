@@ -1,99 +1,60 @@
 #!/bin/bash
-# Daily: local Gemma (via Claude Code) drafts promotions from recent raw activity
-# into a review note. Text-in / text-out — the script does the file I/O,
-# so it doesn't depend on the small local model driving CC's tool-use (which it
-# doesn't do reliably). Output is a draft for you to review, never direct edits.
+# Daily: Apple's on-device model drafts promotions from recent raw activity into a
+# review note, then dedupe + auto-apply. Text-in / text-out: promote_plan.py reads
+# yesterday+today's raw activity (every connector switched On) and raw/inbox drops
+# (scrubbed), map-reduces it to fit the model's live context window (ADR 0021), and
+# prints the draft body; this script owns the draft file, the audit and the apply.
+#
+#   promote.sh                  nightly run (writes meta/promotion-drafts/<today>.md)
+#   promote.sh --dry-run DIR    draft into DIR only: no vault writes, no dedupe/apply
 set -euo pipefail
 umask 077   # audit/transcript logs are owner-only (contain your data)
 SELF="$(cd "$(dirname "$0")" && pwd)"
 . "$SELF/plasmie-env.sh"
+DRY=""
+[ "${1:-}" = --dry-run ] && { DRY="${2:?usage: promote.sh --dry-run DIR}"; mkdir -p "$DRY"; }
 # one audit line per run -> logs/audit-YYYY-MM-DD.log (one file per day; pruned after 90d)
 audit(){ printf '%s | promote | %s\n' "$(date '+%F %T')" "$1" >> "$PLASMIE_LOGS/audit-$(date +%F).log"
          find "$PLASMIE_LOGS" -name 'audit-*.log' -mtime +90 -delete 2>/dev/null || true; }
 # live one-line heartbeat the menu-bar app reads: "<epoch>|<message>"
-status(){ printf '%s|%s' "$(date +%s)" "$1" > "$PLASMIE_HOME/.status"; }
+STATUS_FILE="$PLASMIE_HOME/.status"
+status(){ [ -n "$DRY" ] || printf '%s|%s' "$(date +%s)" "$1" > "$STATUS_FILE"; }
 VAULT="${VAULT_DIR:-$HOME/knowledge}"
 TODAY="$(date +%F)"
 YEST="$(date -v-1d +%F 2>/dev/null || date -d 'yesterday' +%F)"
-DRAFT="$VAULT/meta/promotion-drafts/$TODAY.md"
-mkdir -p "$VAULT/meta/promotion-drafts"
+if [ -n "$DRY" ]; then DRAFT="$DRY/$TODAY.md"
+else DRAFT="$VAULT/meta/promotion-drafts/$TODAY.md"; mkdir -p "$VAULT/meta/promotion-drafts"; fi
 
-# raw dirs to read: every connector not switched Off in the app (paths.py owns the rule)
-DIRS="$("$PY" "$SELF/paths.py" activity-dirs)" \
-  || { audit "FAILED: paths.py activity-dirs"; exit 1; }
-# gather recent raw activity across sources. Each present file gets an equal share
-# of the 24k budget (tail = newest): a global tail used to drop whole sources.
-present=()
-for d in "$YEST" "$TODAY"; do for s in $DIRS; do
-  [ -f "$VAULT/raw/$s/$d.md" ] && present+=("$s/$d")
-done; done
-per=$(( 24000 / (${#present[@]} > 0 ? ${#present[@]} : 1) ))
-input=""
-for sd in ${present[@]+"${present[@]}"}; do
-  input="$input
-
-===== ${sd%/*} ${sd#*/} =====
-$(tail -c "$per" "$VAULT/raw/$sd.md")"
-done
-
-# also surface manually-dropped raw/inbox items so each gets a proposed target.
-# Markdown/text drops (plasmie-capture.sh writes these) are included WITH their body —
-# a filename alone gives the model nothing to classify on, which made hand-captured
-# notes effectively untriageable. Binaries are still listed by name only.
-# Inbox bodies go through scrub.py first. Every other source is redacted at
-# ingest, but a hand-dropped file never passes through loop-ingest.py — and this
-# text reaches the local model AND the full-prompt transcript log, so it must be
-# scrubbed here or it is the one unredacted path into logs/transcript-*.log.
-redact_stdin(){ PLASMIE_SELF="$SELF" "$PY" -c \
-  'import sys,os; sys.path.insert(0,os.environ["PLASMIE_SELF"]); from scrub import redact; print(redact(sys.stdin.read()), end="")'; }
-
-inbox_block=""
-if [ -d "$VAULT/raw/inbox" ]; then
-  while IFS= read -r f; do
-    [ -f "$f" ] || continue
-    b="$(basename "$f")"
-    case "$b" in .gitkeep) continue ;; esac
-    case "$b" in
-      *.md|*.txt|*.markdown)
-        inbox_block="$inbox_block
-
---- raw/inbox/$b ---
-$(head -c 4000 "$f" | redact_stdin)" ;;
-      *)
-        inbox_block="$inbox_block
-
---- raw/inbox/$b (binary/unreadable — classify from the filename) ---" ;;
-    esac
-  done < <(find "$VAULT/raw/inbox" -maxdepth 1 -type f | sort)
-fi
-[ -n "$inbox_block" ] && input="$input
-
-===== raw/inbox (untriaged manual drops — propose a target for each) =====
-$inbox_block"
-
-[ -n "$input" ] || { echo "no recent raw activity to promote"; exit 0; }
-
-prompt="You maintain a knowledge wiki (one flat folder of notes, organised by tags). From the raw activity below, identify durable, reusable knowledge worth promoting into the wiki: decisions, how-tos, project status changes, people/meeting facts. Also propose a target for each file in the 'raw/inbox' list, if present. Ignore noise and one-off chatter. Output ONLY markdown (no preamble): for each item a '## <title>', then 'Target:' one kind — gotcha (a trap and how to escape it), decision (a choice and its reason), pattern (a shape that recurs across work), how-to, concept, person, project, tech, security or clipping (it sets the note's type and tag), 'Description:' ONE sentence stating the durable takeaway (this drives search — make it specific and self-contained, not a topic label), a 2-3 line summary, and 'Source:' the source+date or 'raw/inbox/<filename>'. If nothing is worth promoting, output 'Nothing to promote.'
-
-$input"
-
-# uses the 4-bit E4B (5GB); gen.sh handles guard + on-demand load + timeout + free.
-# Generous timeout since promote runs nightly while idle and reads more context.
-status "Generating draft — local Gemma (~1–2 min)…"
-out="$("$SELF/gen.sh" 480 "$prompt")" || { audit "skipped (busy or timed out)"; status "Skipped — machine busy"; echo "promote skipped — retries tomorrow"; exit 0; }
+status "Drafting on-device…"
+rc=0
+args=(--vault "$VAULT" --dates "$YEST,$TODAY")
+if [ -n "$DRY" ]; then args+=(--no-guard); else args+=(--status-file "$STATUS_FILE"); fi
+out="$("$PY" "$SELF/promote_plan.py" "${args[@]}" 2>"$PLASMIE_LOGS/promote-plan.err")" || rc=$?
+plan="$(grep '^PLAN:' "$PLASMIE_LOGS/promote-plan.err" 2>/dev/null | tail -1 | sed 's/^PLAN: //')"
+case "$rc" in
+  0) ;;
+  3) audit "skipped (machine busy) ${plan}"; status "Skipped — machine busy"
+     echo "promote skipped (machine busy) — retries tomorrow"; exit 0 ;;
+  4) audit "skipped: Apple Intelligence unavailable ${plan}"; status "Skipped — Apple Intelligence is off"
+     echo "promote skipped: Apple Intelligence is unavailable (${plan})"; exit 0 ;;
+  6) echo "no recent raw activity to promote"; exit 0 ;;
+  *) audit "FAILED (promote_plan rc=$rc) ${plan}: $(grep -v '^PLAN:' "$PLASMIE_LOGS/promote-plan.err" | tail -c 200 | tr '\n' ' ')"
+     status "Promote failed — retries tomorrow"; echo "promote failed (rc=$rc) — retries tomorrow"; exit 0 ;;
+esac
 
 {
-  printf -- '---\ntype: note\ntitle: promotion-draft %s\ntags: [promotion-draft]\ntimestamp: %sT00:00:00Z\n---\n\n# Promotion draft %s\n_Local-Gemma suggestions from raw activity %s–%s. Review before promoting._\n\n' "$TODAY" "$TODAY" "$TODAY" "$YEST" "$TODAY"
+  printf -- '---\ntype: note\ntitle: promotion-draft %s\ntags: [promotion-draft]\ntimestamp: %sT00:00:00Z\n---\n\n# Promotion draft %s\n_On-device suggestions from raw activity %s–%s. Review before promoting._\n\n' "$TODAY" "$TODAY" "$TODAY" "$YEST" "$TODAY"
   printf '%s\n' "$out"
 } > "$DRAFT"
-n=$(printf '%s' "$out" | wc -l | tr -d ' ')
-audit "ok: wrote ${n}-line draft -> $DRAFT"
-echo "wrote promotion draft -> $DRAFT ($n lines)"
+n=$(printf '%s' "$out" | grep -c '^## ' || true)
+audit "ok: ${n}-item draft (${plan}) -> $DRAFT"
+echo "wrote promotion draft -> $DRAFT ($n items; $plan)"
+[ -z "$DRY" ] || exit 0
 
 # enrich + AUTO-APPLY: dedupe assigns each item an Action; promote-apply --auto then
 # applies the confident items (new notes normalized into concepts/, confident-merge only)
 # and holds the uncertain ones in <date>.hold.md for a quick review. No human gate.
-if command -v python3 >/dev/null 2>&1; then
+{
   status "Finding duplicates…"
   "$PY" "$SELF/dedupe.py" "$DRAFT" "$VAULT" --write && audit "ok: dedupe-enriched draft" || audit "dedupe skipped (error)"
   status "Auto-applying…"
@@ -109,4 +70,4 @@ if command -v python3 >/dev/null 2>&1; then
     if [ "${held:-0}" -gt 0 ] 2>/dev/null; then msg="$msg · ${held} held for review"; fi
     osascript -e "display notification \"$msg\" with title \"Plasmie 🧠\"" 2>/dev/null || true
   fi
-fi
+}

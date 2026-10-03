@@ -1,7 +1,7 @@
 #!/bin/bash
 # Hourly: condense today's raw activity (every connector switched On) into a
-# few bullets via the on-device Apple model (local Gemma fallback). Text in / text out — no file tools, no
-# Slack creds. Writes a rolling daily digest to meta/digests/YYYY-MM-DD.md,
+# few bullets via Apple's on-device model (digest.py). Text in / text out — no file
+# tools, no Slack creds. Writes a rolling daily digest to meta/digests/YYYY-MM-DD.md,
 # regenerated each run so it's always current and idempotent (no marker needed).
 set -euo pipefail
 umask 077   # audit/transcript logs are owner-only (contain your data)
@@ -35,7 +35,7 @@ done
 [[ "$input" == *[![:space:]]* ]] || { echo "no raw activity today"; exit 0; }
 
 # The digest is a rolling whole-day rollup, so it is regenerated rather than
-# appended. But regenerating identical input just burns local-LLM cycles and
+# appended. But regenerating identical input just burns model cycles and
 # lets a worse sample overwrite a better one — so skip when nothing changed.
 DIGEST_DIR="$VAULT/meta/digests"
 DIGEST="$DIGEST_DIR/$DAY.md"
@@ -47,28 +47,23 @@ if [ -f "$DIGEST" ] && [ -f "$STAMP" ] && [ "$hash" = "$(cat "$STAMP" 2>/dev/nul
   exit 0
 fi
 
-# Faithfulness rules: the bare prompt put an unsupported claim (a plan reported
-# as done, "merged"/"live" nobody said, an invented team) in 14/15 real digests;
-# these cut it to 3/15 and won blind 11-3 (docs/fm-baseline.md, 2026-09-30).
-prompt="Condense this raw activity log into 4-8 terse markdown bullets: real decisions, blockers, and who/what changed.
-Rules:
-- State only what the log explicitly says. Never upgrade a status: write merged, deployed, live, fixed or confirmed only if the log says exactly that. A request, plan or attempt stays a request, plan or attempt.
-- Copy names, PR numbers and identifiers exactly as written. Never invent people, teams, milestones or follow-up work.
-- If unsure, leave it out: fewer accurate bullets beat more guessed ones.
-No preamble, no headings, bullets only.
-
-$input"
-
-# gen.sh handles guard + on-demand load + hard timeout + free. Skips quietly if busy.
-# On-device Apple FM first: beat Gemma blind 9-6 on 15 real digests with equal
-# unsupported-claim counts (2026-09-30), and needs no 5GB model load. fm.generate
-# returns "" (-> Gemma) when unavailable, busy, over the context window, or slow.
+# Generation lives in digest.py: Apple's on-device model, the measured
+# faithfulness prompt (docs/fm-baseline.md), one call when the day fits the live
+# context window and map-reduce when it doesn't. It defers (rc 3) while the
+# machine is busy or hot, like every background job.
 model="Apple on-device"
-out="$(printf '%s' "$prompt" | "$PY" -c 'import sys; sys.path.insert(0, sys.argv[1]); import fm; print(fm.generate(sys.stdin.read(), timeout=90, max_tokens=800) or "", end="")' "$SELF" 2>>"$PLASMIE_LOGS/gen.err")" || out=""
-if [ -z "$out" ]; then
-  model="Local-Gemma"
-  out="$("$SELF/gen.sh" 200 "$prompt")" || { audit "skipped (busy or timed out)"; echo "summarize skipped — retries next hour"; exit 0; }
-fi
+rc=0
+out="$(printf '%s' "$input" | "$PY" "$SELF/digest.py" 2>"$PLASMIE_LOGS/digest.err")" || rc=$?
+case "$rc" in
+  0) ;;
+  3) audit "skipped (machine busy)"; echo "summarize skipped (machine busy) — retries next hour"; exit 0 ;;
+  4) why="$(tail -c 300 "$PLASMIE_LOGS/digest.err" 2>/dev/null | tr '\n' ' ')"
+     audit "skipped: Apple Intelligence unavailable — $why"
+     echo "summarize skipped: Apple Intelligence is unavailable. $why"; exit 0 ;;
+  *) audit "FAILED (digest.py rc=$rc): $(tail -c 200 "$PLASMIE_LOGS/digest.err" 2>/dev/null | tr '\n' ' ')"
+     echo "summarize failed — retries next hour"; exit 0 ;;
+esac
+[[ "$out" == *[![:space:]]* ]] || { audit "FAILED: empty digest"; exit 0; }
 
 mkdir -p "$DIGEST_DIR"
 { printf -- '---\ntype: note\ntitle: digest %s\ntags: [digest]\ntimestamp: %sT00:00:00Z\n---\n\n# Digest · %s\n_%s rollup of the day'"'"'s raw activity. Regenerated when raw activity changes._\n\n%s\n' \

@@ -160,18 +160,12 @@ struct AskOverlay: View {
     private let maxAnswerHeight: CGFloat = 460
     private static let edge: CGFloat = 18      // panel inset, leading and trailing
     private static let gutter: CGFloat = 14    // Plasmie column to field
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Plasmie's size: the hero (88) while asking, a step down (56) when an answer is on screen.
     private var plasmieSize: CGFloat { answer.isEmpty ? 88 : 56 }
 
     private var plasmieState: PlasmieState {
         busy ? .ask : (outcome == .failed ? .error : (outcome == .done ? .success : .idle))
-    }
-
-    /// DESIGN.md spring (response 0.32, damping 0.86, no bounce); Reduce Motion gets a short fade.
-    private var motion: Animation {
-        reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.32, dampingFraction: 0.86)
     }
 
     var body: some View {
@@ -243,6 +237,7 @@ struct AskOverlay: View {
                     })
                 }
                 .frame(height: min(max(answerHeight, 1), maxAnswerHeight))
+                .transition(.opacity.combined(with: .offset(y: 6)))
                 .onPreferenceChange(HeightKey.self) { answerHeight = $0 }
             }
 
@@ -255,7 +250,7 @@ struct AskOverlay: View {
                 .padding(.horizontal, 18).padding(.vertical, 8)
             }
         }
-        .animation(motion, value: plasmieSize)
+        .motion(Motion.glide, value: plasmieSize)          // 88 -> 56 and the answer reveal glide into place
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.12)))

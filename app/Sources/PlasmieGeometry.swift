@@ -169,6 +169,120 @@ extension PlasmieState {
     }
 }
 
+// MARK: - face parameters (what animates)
+
+/// Everything the face is made of, as plain numbers, so an expression change is an
+/// interpolation instead of a crossfade. Eyes: openness 0...1 (a dot's height), curve
+/// -1...1 (happy arc up, closed arc down), brow tilt (-1 worried ... +1 angry). Mouth:
+/// width, curve (end drop and belly depth), openness (stroke -> filled), wobble.
+struct PlasmieFaceParams {
+    // layout
+    var cx: CGFloat = 0.5, cy: CGFloat = 0.46, gap: CGFloat = 0.17, mouthDy: CGFloat = 8, scale: CGFloat = 1
+    // eyes
+    var eyeLOpen: CGFloat = 1, eyeLCurve: CGFloat = 0, eyeROpen: CGFloat = 1, eyeRCurve: CGFloat = 0
+    var look: CGFloat = 0, browTilt: CGFloat = 0, browAlpha: CGFloat = 0
+    // mouth: half width, end drop, upper/lower edge control offsets, control spread, filled, wobble, visible
+    var mHW: CGFloat = 4.6, mEnd: CGFloat = 0, mUp: CGFloat = 0, mLow: CGFloat = 3.6, mKx: CGFloat = 1.0 / 3
+    var mFill: CGFloat = 0, mWob: CGFloat = 0, mVis: CGFloat = 1
+    // blush
+    var blush: CGFloat = 0, blushScale: CGFloat = 1
+    var dim: CGFloat = 0          // 1 = switched off (grey body)
+
+    static let count = 23
+
+    var array: [CGFloat] {
+        [cx, cy, gap, mouthDy, scale, eyeLOpen, eyeLCurve, eyeROpen, eyeRCurve, look, browTilt, browAlpha,
+         mHW, mEnd, mUp, mLow, mKx, mFill, mWob, mVis, blush, blushScale, dim]
+    }
+
+    init(array a: [CGFloat]) {
+        var v = a
+        while v.count < Self.count { v.append(0) }
+        (cx, cy, gap, mouthDy, scale, eyeLOpen, eyeLCurve, eyeROpen, eyeRCurve, look, browTilt, browAlpha) =
+            (v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9], v[10], v[11])
+        (mHW, mEnd, mUp, mLow, mKx, mFill, mWob, mVis, blush, blushScale, dim) =
+            (v[12], v[13], v[14], v[15], v[16], v[17], v[18], v[19], v[20], v[21], v[22])
+    }
+
+    init(_ face: PlasmieFace, layout: PlasmieLayout? = nil) {
+        let l = layout ?? face.layout
+        (cx, cy, gap, mouthDy, scale) = (l.cx, l.cy, l.gap, l.mouthDy, l.scale)
+        switch face.eyes {
+        case .dot:     break
+        case .happy:   (eyeLOpen, eyeLCurve, eyeROpen, eyeRCurve) = (0, 1, 0, 1)
+        case .wink:    (eyeROpen, eyeRCurve) = (0, 1)
+        case .up:      look = -2.6
+        case .worried: (browTilt, browAlpha) = (-1, 1)
+        case .flat:    (eyeLOpen, eyeROpen) = (0, 0)
+        case .closed:  (eyeLOpen, eyeLCurve, eyeROpen, eyeRCurve) = (0, -1, 0, -1)
+        case .angry:   (browTilt, browAlpha) = (1, 1)
+        }
+        switch face.mouth {
+        case .smile:  break
+        case .small:  (mHW, mLow) = (2.8, 2)
+        case .flat:   (mHW, mLow) = (3.6, 0)
+        case .pout:   (mHW, mEnd, mLow) = (3.6, 1.6, -2.93)
+        case .o:      (mHW, mUp, mLow, mKx, mFill) = (2.9, -4.67, 4.67, 1.333, 1)
+        case .wobble: (mHW, mLow, mWob) = (5.5, 0, 1)
+        case .grin:   (mHW, mEnd, mLow, mFill) = (5.6, -1.4, 8.93, 1)
+        case .none:   (mHW, mLow, mVis) = (3.6, 0, 0)
+        }
+        blush = face.blush ? 1 : 0
+        blushScale = face.blushScale
+    }
+}
+
+// MARK: - body pose = polar anchors + face
+
+/// One animatable vector: [cx, cy, (angle, radius) x N, face params]. The body morphs in
+/// POLAR form about its centroid, so a star and an hourglass swap by growing and shrinking
+/// along rays instead of cutting through themselves the way a straight-line blend can.
+enum PlasmiePose {
+    private static func wrap(_ x: Double) -> Double { x - 2 * .pi * (x / (2 * .pi)).rounded() }
+
+    static func polar(_ pts: [CGPoint]) -> [CGFloat] {
+        guard !pts.isEmpty else { return [] }
+        let cx = pts.reduce(0) { $0 + $1.x } / CGFloat(pts.count)
+        let cy = pts.reduce(0) { $0 + $1.y } / CGFloat(pts.count)
+        var out: [CGFloat] = [cx, cy]
+        var prev = 0.0
+        for (i, p) in pts.enumerated() {
+            let raw = atan2(Double(p.y - cy), Double(p.x - cx))
+            let a = i == 0 ? -.pi / 2 + wrap(raw + .pi / 2) : prev + wrap(raw - prev)   // unwrapped, clockwise
+            prev = a
+            out += [CGFloat(a), hypot(p.x - cx, p.y - cy)]
+        }
+        return out
+    }
+
+    /// Total angular sweep of a state's anchors; 2 pi for every well-formed (star-shaped) body.
+    static func sweep(_ s: PlasmieState) -> Double {
+        let v = polar(s.anchors)
+        guard v.count >= 6 else { return 0 }
+        return Double(v[v.count - 2] - v[2])
+    }
+
+    private static let table: [PlasmieState: PlasmieVector] = Dictionary(
+        uniqueKeysWithValues: PlasmieState.allCases.map { st -> (PlasmieState, PlasmieVector) in
+            var f = PlasmieFaceParams(st.face)
+            f.dim = st == .off ? 1 : 0
+            return (st, PlasmieVector(v: polar(st.anchors) + f.array))
+        })
+
+    static func vector(_ s: PlasmieState) -> PlasmieVector { table[s] ?? .zero }
+
+    static func decode(_ vec: PlasmieVector) -> (points: [CGPoint], face: PlasmieFaceParams) {
+        let v = vec.v
+        let n = (v.count - 2 - PlasmieFaceParams.count) / 2
+        guard n >= 3 else { return ([], PlasmieFaceParams(array: [])) }
+        let pts = (0..<n).map { i -> CGPoint in
+            let a = Double(v[2 + 2 * i]), r = max(v[3 + 2 * i], 0)
+            return CGPoint(x: v[0] + r * CGFloat(cos(a)), y: v[1] + r * CGFloat(sin(a)))
+        }
+        return (pts, PlasmieFaceParams(array: Array(v[(2 + 2 * n)...])))
+    }
+}
+
 // MARK: - face marks
 
 struct PlasmieMark {
@@ -176,96 +290,105 @@ struct PlasmieMark {
     var path: Path
     var stroke: CGFloat?     // nil = filled
     var tone: Tone
+    var alpha: Double = 1
 }
 
 enum PlasmieFaceArt {
-    /// Eyes, mouth and blush for `face`, positioned inside `box` (canvas units).
-    /// `eye`/`line` scale dot size and stroke weight (the 18pt glyph needs bolder marks).
+    /// Marks for a settled face (menu-bar glyph, proofs).
     static func marks(_ face: PlasmieFace, layout: PlasmieLayout, box: CGRect,
                       eye: CGFloat = 1, line: CGFloat = 1) -> [PlasmieMark] {
-        let s = layout.scale
-        let ex = box.minX + layout.cx * box.width
-        let ey = box.minY + layout.cy * box.height
-        let gap = layout.gap * box.width
-        let l = CGPoint(x: ex - gap, y: ey), r = CGPoint(x: ex + gap, y: ey)
-        let my = ey + layout.mouthDy * s
+        marks(PlasmieFaceParams(face, layout: layout), box: box, eye: eye, line: line)
+    }
+
+    /// Eyes, mouth and blush for `p`, positioned inside `box` (canvas units).
+    /// `eye`/`line` scale dot size and stroke weight (the 18pt glyph needs bolder marks);
+    /// `blink` (0...1) closes dot eyes.
+    static func marks(_ p: PlasmieFaceParams, box: CGRect, eye: CGFloat = 1, line: CGFloat = 1,
+                      blink: CGFloat = 0) -> [PlasmieMark] {
+        let s = p.scale
+        let ex = box.minX + p.cx * box.width
+        let ey = box.minY + p.cy * box.height
+        let gap = p.gap * box.width
+        let my = ey + p.mouthDy * s
         let w = 2.3 * s * line
         var out: [PlasmieMark] = []
 
-        func dot(_ c: CGPoint) -> PlasmieMark {
-            let rad = 3.0 * s * eye
-            return PlasmieMark(path: Path(ellipseIn: CGRect(x: c.x - rad, y: c.y - rad, width: 2 * rad, height: 2 * rad)),
-                             stroke: nil, tone: .ink)
+        func eyeMarks(_ x: CGFloat, open: CGFloat, curve: CGFloat) {
+            let c = CGPoint(x: x, y: ey + p.look * s)
+            let o = max(open, 0) * (1 - blink)
+            if o > 0.03 {
+                let rx = 3.0 * s * eye
+                out.append(PlasmieMark(path: Path(ellipseIn: CGRect(x: c.x - rx, y: c.y - rx * min(o, 1.2), width: 2 * rx, height: 2 * rx * min(o, 1.2))),
+                                     stroke: nil, tone: .ink))
+            }
+            let a = Double(min(max(1 - o, 0), 1))
+            guard a > 0.02 else { return }
+            let hw = (3.2 + 0.4 * abs(curve)) * s
+            let endY = (curve >= 0 ? 1.6 * curve : curve) * s
+            let ctlY = -curve * (curve >= 0 ? 4.6 : 4.2) * s
+            var path = Path()
+            path.move(to: CGPoint(x: c.x - hw, y: c.y + endY))
+            path.addQuadCurve(to: CGPoint(x: c.x + hw, y: c.y + endY), control: CGPoint(x: c.x, y: c.y + ctlY))
+            out.append(PlasmieMark(path: path, stroke: w * (1.05 - 0.05 * min(abs(curve), 1)), tone: .ink, alpha: a))
         }
-        func arc(_ a: CGPoint, _ b: CGPoint, _ ctl: CGPoint, _ width: CGFloat) -> PlasmieMark {
-            var p = Path(); p.move(to: a); p.addQuadCurve(to: b, control: ctl)
-            return PlasmieMark(path: p, stroke: width, tone: .ink)
-        }
-        func happy(_ c: CGPoint) -> PlasmieMark {
-            arc(CGPoint(x: c.x - 3.6 * s, y: c.y + 1.6 * s), CGPoint(x: c.x + 3.6 * s, y: c.y + 1.6 * s),
-                CGPoint(x: c.x, y: c.y - 4.6 * s), w)
-        }
-        func closed(_ c: CGPoint) -> PlasmieMark {
-            arc(CGPoint(x: c.x - 3.6 * s, y: c.y - 1 * s), CGPoint(x: c.x + 3.6 * s, y: c.y - 1 * s),
-                CGPoint(x: c.x, y: c.y + 4.2 * s), w)
-        }
-        func lineMark(_ a: CGPoint, _ b: CGPoint, _ width: CGFloat) -> PlasmieMark {
-            var p = Path(); p.move(to: a); p.addLine(to: b)
-            return PlasmieMark(path: p, stroke: width, tone: .ink)
+        eyeMarks(ex - gap, open: p.eyeLOpen, curve: p.eyeLCurve)
+        eyeMarks(ex + gap, open: p.eyeROpen, curve: p.eyeRCurve)
+
+        // brows are fine detail: skipped on the 18pt glyph (line > 1), where they read as noise
+        if p.browAlpha > 0.02 && line <= 1.01 {
+            let outer = -6.9 - 1.85 * p.browTilt, inner = -6.9 + 1.85 * p.browTilt
+            for sign: CGFloat in [-1, 1] {
+                let x = ex + sign * gap
+                var path = Path()
+                path.move(to: CGPoint(x: x - sign * 3.7 * s, y: ey + outer * s))
+                path.addLine(to: CGPoint(x: x + sign * 3.3 * s, y: ey + inner * s))
+                out.append(PlasmieMark(path: path, stroke: 1.9 * s * line, tone: .ink, alpha: Double(p.browAlpha)))
+            }
         }
 
-        switch face.eyes {
-        case .dot:     out += [dot(l), dot(r)]
-        case .happy:   out += [happy(l), happy(r)]
-        case .wink:    out += [dot(l), happy(r)]
-        case .up:      out += [dot(CGPoint(x: l.x, y: l.y - 2.6 * s)), dot(CGPoint(x: r.x, y: r.y - 2.6 * s))]
-        case .worried:
-            out += [dot(l), dot(r)]
-            // brows are fine detail: skipped on the 18pt glyph (line > 1), where they read as noise
-            if line <= 1.01 { out += [lineMark(CGPoint(x: l.x - 3.6 * s, y: l.y - 5.2 * s), CGPoint(x: l.x + 3.2 * s, y: l.y - 8.6 * s), 1.8 * s * line),
-                    lineMark(CGPoint(x: r.x + 3.6 * s, y: r.y - 5.2 * s), CGPoint(x: r.x - 3.2 * s, y: r.y - 8.6 * s), 1.8 * s * line)] }
-        case .flat:
-            out += [lineMark(CGPoint(x: l.x - 3.2 * s, y: l.y), CGPoint(x: l.x + 3.2 * s, y: l.y), w * 1.05),
-                    lineMark(CGPoint(x: r.x - 3.2 * s, y: r.y), CGPoint(x: r.x + 3.2 * s, y: r.y), w * 1.05)]
-        case .closed:  out += [closed(l), closed(r)]
-        case .angry:
-            out += [dot(l), dot(r)]
-            // brows slanted inward; fine detail, skipped on the 18pt glyph like the worried brows
-            if line <= 1.01 { out += [lineMark(CGPoint(x: l.x - 3.8 * s, y: l.y - 8.6 * s), CGPoint(x: l.x + 3.4 * s, y: l.y - 5 * s), 2 * s * line),
-                    lineMark(CGPoint(x: r.x + 3.8 * s, y: r.y - 8.6 * s), CGPoint(x: r.x - 3.4 * s, y: r.y - 5 * s), 2 * s * line)] }
+        // mouth: one parametric shape. Stroked lower edge, filled lens, or the wobble line.
+        let vis = Double(p.mVis)
+        if vis > 0.02 {
+            let kxBlend = min(max((p.mKx - 1.0 / 3) / 1.0, 0), 1)
+            let k = 1 + (eye - 1) * kxBlend                       // only the round "o" grows with `eye`
+            let hw = p.mHW * s * k, kx = p.mKx
+            let ya = my + p.mEnd * s
+            let a = CGPoint(x: ex - hw, y: ya), b = CGPoint(x: ex + hw, y: ya)
+            let lowY = ya + p.mLow * s * k, upY = ya + p.mUp * s * k
+            let strokeA = Double((1 - min(max(p.mFill, 0), 1)) * (1 - min(max(p.mWob, 0), 1))) * vis
+            if strokeA > 0.02 {
+                var path = Path()
+                path.move(to: a)
+                path.addCurve(to: b, control1: CGPoint(x: ex - hw * kx, y: lowY), control2: CGPoint(x: ex + hw * kx, y: lowY))
+                out.append(PlasmieMark(path: path, stroke: w, tone: .ink, alpha: strokeA))
+            }
+            let fillA = Double(min(max(p.mFill, 0), 1)) * vis
+            if fillA > 0.02 {
+                var path = Path()
+                path.move(to: a)
+                path.addCurve(to: b, control1: CGPoint(x: ex - hw * kx, y: upY), control2: CGPoint(x: ex + hw * kx, y: upY))
+                path.addCurve(to: a, control1: CGPoint(x: ex + hw * kx, y: lowY), control2: CGPoint(x: ex - hw * kx, y: lowY))
+                path.closeSubpath()
+                out.append(PlasmieMark(path: path, stroke: nil, tone: .ink, alpha: fillA))
+            }
+            let wobA = Double(min(max(p.mWob, 0), 1)) * vis
+            if wobA > 0.02 {
+                var path = Path()
+                path.move(to: CGPoint(x: ex - 5.5 * s, y: my))
+                path.addCurve(to: CGPoint(x: ex, y: my),
+                              control1: CGPoint(x: ex - 4 * s, y: my - 3 * s), control2: CGPoint(x: ex - 1.6 * s, y: my + 3 * s))
+                path.addCurve(to: CGPoint(x: ex + 5.5 * s, y: my),
+                              control1: CGPoint(x: ex + 1.6 * s, y: my - 3 * s), control2: CGPoint(x: ex + 4 * s, y: my + 3 * s))
+                out.append(PlasmieMark(path: path, stroke: w, tone: .ink, alpha: wobA))
+            }
         }
 
-        let mx = ex
-        switch face.mouth {
-        case .smile: out.append(arc(CGPoint(x: mx - 4.6 * s, y: my), CGPoint(x: mx + 4.6 * s, y: my), CGPoint(x: mx, y: my + 5.4 * s), w))
-        case .small: out.append(arc(CGPoint(x: mx - 2.8 * s, y: my), CGPoint(x: mx + 2.8 * s, y: my), CGPoint(x: mx, y: my + 3 * s), w))
-        case .flat:  out.append(lineMark(CGPoint(x: mx - 3.6 * s, y: my), CGPoint(x: mx + 3.6 * s, y: my), w))
-        case .o:
-            let rx = 2.9 * s * eye, ry = 3.5 * s * eye
-            out.append(PlasmieMark(path: Path(ellipseIn: CGRect(x: mx - rx, y: my - ry, width: 2 * rx, height: 2 * ry)), stroke: nil, tone: .ink))
-        case .wobble:
-            var p = Path()
-            p.move(to: CGPoint(x: mx - 5.5 * s, y: my))
-            p.addCurve(to: CGPoint(x: mx, y: my),
-                       control1: CGPoint(x: mx - 4 * s, y: my - 3 * s), control2: CGPoint(x: mx - 1.6 * s, y: my + 3 * s))
-            p.addCurve(to: CGPoint(x: mx + 5.5 * s, y: my),
-                       control1: CGPoint(x: mx + 1.6 * s, y: my - 3 * s), control2: CGPoint(x: mx + 4 * s, y: my + 3 * s))
-            out.append(PlasmieMark(path: p, stroke: w, tone: .ink))
-        case .grin:
-            var p = Path()
-            p.move(to: CGPoint(x: mx - 5.6 * s, y: my - 1.4 * s))
-            p.addQuadCurve(to: CGPoint(x: mx + 5.6 * s, y: my - 1.4 * s), control: CGPoint(x: mx, y: my + 12 * s))
-            p.closeSubpath()
-            out.append(PlasmieMark(path: p, stroke: nil, tone: .ink))
-        case .pout: out.append(arc(CGPoint(x: mx - 3.6 * s, y: my + 1.6 * s), CGPoint(x: mx + 3.6 * s, y: my + 1.6 * s), CGPoint(x: mx, y: my - 2.8 * s), w))
-        case .none: break
-        }
-
-        if face.blush {
+        if p.blush > 0.02 {
+            let bs = p.blushScale
             for sign: CGFloat in [-1, 1] {
                 let c = CGPoint(x: ex + sign * (gap + 5.4 * s), y: ey + 5.6 * s)
-                out.append(PlasmieMark(path: Path(ellipseIn: CGRect(x: c.x - 4.2 * s * face.blushScale, y: c.y - 2.6 * s * face.blushScale, width: 8.4 * s * face.blushScale, height: 5.2 * s * face.blushScale)),
-                                     stroke: nil, tone: .blush))
+                out.append(PlasmieMark(path: Path(ellipseIn: CGRect(x: c.x - 4.2 * s * bs, y: c.y - 2.6 * s * bs, width: 8.4 * s * bs, height: 5.2 * s * bs)),
+                                     stroke: nil, tone: .blush, alpha: Double(p.blush)))
             }
         }
         return out

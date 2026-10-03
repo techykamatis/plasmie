@@ -31,6 +31,7 @@ struct StatusPill: View {
         .padding(.horizontal, 8).padding(.vertical, 3)
         .background(Capsule().fill(spec.1.opacity(0.16)))
         .foregroundStyle(spec.1)
+        .motion(Motion.glide, value: spec.0)
         .accessibilityElement(children: .combine)
         .onAppear {
             guard animated else { return }
@@ -255,9 +256,11 @@ struct Panel: View {
             Button { TrophiesController.shared.show(m) } label: {
                 HStack(spacing: 3) {
                     Text(text).font(.klMeta).foregroundStyle(m.celebrating == nil ? .secondary : .primary)
+                        .id(text).transition(.opacity.combined(with: .offset(y: 5)))
                     Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
                 }
                 .contentShape(Rectangle())
+                .motion(m.celebrating == nil ? Motion.glide : Motion.pop, value: text)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(m.celebrating.map { "New trophy: \($0). Open trophies" } ?? "\(text). Open trophies")

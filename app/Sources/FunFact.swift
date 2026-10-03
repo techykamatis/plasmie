@@ -67,7 +67,8 @@ struct FunFactCardBody: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .id(fact.id ?? fact.text)
-                .transition(.opacity)
+                .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 5)),
+                                        removal: .opacity.combined(with: .offset(y: -5))))
             }
             .buttonStyle(.plain)
             .help(fact.quote.map { $0 == fact.text ? "Open the note in Obsidian" : "In your notes: \($0)" } ?? "Open the note in Obsidian")
@@ -85,6 +86,6 @@ struct FunFactCardBody: View {
         .padding(.horizontal, 10).padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color.plasmieBody.opacity(0.08)))
         .padding(.horizontal, 12).padding(.bottom, 9)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: fact)
+        .animation(Motion.resolved(Motion.glide, reduce: reduceMotion), value: fact)
     }
 }

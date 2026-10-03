@@ -226,11 +226,14 @@ struct TrophiesContent: View {
                 Grid(alignment: .topLeading, horizontalSpacing: 20, verticalSpacing: 18) {
                     ForEach(Array(stride(from: 0, to: items.count, by: 2)), id: \.self) { i in
                         GridRow {
-                            TrophyTile(trophy: items[i])
-                            if i + 1 < items.count { TrophyTile(trophy: items[i + 1]) } else { Color.clear.frame(height: 1) }
+                            TrophyTile(trophy: items[i]).transition(.scale(scale: 0.85).combined(with: .opacity))
+                            if i + 1 < items.count {
+                                TrophyTile(trophy: items[i + 1]).transition(.scale(scale: 0.85).combined(with: .opacity))
+                            } else { Color.clear.frame(height: 1) }
                         }
                     }
                 }
+                .motion(Motion.pop, value: items.count)
             }
         }
     }
@@ -342,6 +345,7 @@ private struct SlimBar: View {
             }
         }
         .frame(height: 5)
+        .motion(Motion.glide, value: value)
         .accessibilityElement(children: .ignore)
         .accessibilityValue("\(Int(min(max(value, 0), 1) * 100)) percent")
     }

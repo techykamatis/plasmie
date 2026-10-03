@@ -125,10 +125,24 @@ chrome. No drop shadows, glass, glows or gradients.
 
 ## Components
 
-- **PlasmieView(state:size:)**: morphs with `.spring(response: 0.32,
-  dampingFraction: 0.86)` after a ~70ms anticipation dip (scale 0.96); idle
-  breathing ±1.8% over ~2.4s as a transform (the path is rebuilt only when the
-  shape changes). Per-state loops ~1 cycle/s (zzz ~0.35/s).
+- **Motion tokens** (`Motion.swift`; no ad-hoc curves): `glide` =
+  `timingCurve(0.16, 1, 0.3, 1, 0.42s)`, fast-to-slow, for things moving into
+  place (panels, size changes, text swaps, collapsing); `pop` =
+  `spring(response: 0.36, dampingFraction: 0.58)`, fast with a bounce on halt,
+  for playful arrivals (Plasmie landing in a shape, celebrations, the "hi!"
+  bubble, trophy tiles, the notch expanding); `jelly` = low-damping
+  interpolating spring for secondary wobble. Reduce Motion maps all three to a
+  0.15s ease. Pick by fit: glide when something settles, pop when it arrives.
+- **PlasmieView(state:size:)**: a state change is an ~80ms anticipation squash
+  (x1.05, y0.94), then a `pop` morph that overshoots the new silhouette, then a
+  decaying jelly wobble (~0.6s). Bodies morph in polar form about the centroid
+  so star-to-hourglass never folds through itself. The face is parametric (eye
+  openness/curve, brow tilt, mouth width/curve/openness), so expressions morph,
+  never crossfade; idle blinks every 3-6s. Props are pure functions of time with
+  real physics (gravity falls, bounce on landing, buoyant hearts, burst arcs) and
+  feed body squash on impact. Idle breathing +-1.8% over ~2.4s as a transform
+  (the path is rebuilt only when the shape changes). The menu-bar glyph stays
+  cached frames, no physics.
 - **Connector card**: verdict pill (symbol + word, never colour alone), On/Off
   switch with an accessibility name, freshness bar labelled with the source's
   usual cadence.
@@ -141,8 +155,9 @@ chrome. No drop shadows, glass, glows or gradients.
 
 - **Do** let the shape carry the status; the face carries the mood; one prop at most.
 - **Do** regenerate shapes from `gen_shapes.py`; app and brand page must read the same anchors.
-- **Do** honour Reduce Motion: no loops, morph becomes a 0.15s crossfade.
+- **Do** honour Reduce Motion: no loops, no physics, every token becomes a 0.15s ease.
+- **Do** take curves from `Motion` (glide, pop, jelly); a bounce is welcome when it is `pop` or `jelly` and the thing is arriving.
 - **Don't** show the mascot happy when the pipeline isn't (Plasmie's state is derived from real status).
 - **Don't** add new hues for states; reuse sparkle/sweat/off.
-- **Don't** use bounce or elastic easing, or animate when nothing is running in the menu bar.
+- **Don't** invent per-view curves, or bounce things that are leaving, collapsing or resizing (those glide); don't animate when nothing is running in the menu bar.
 - **Don't** hand-place anchors or edit `PlasmieShapes.swift` / `plasmie-shapes.json` directly.

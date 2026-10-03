@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Apply a REVIEWED promotion draft to the vault — deterministic, no model.
 
-The proposer (promote.sh, local Gemma) writes a draft of suggestions. You skim it
+The proposer (promote.sh / promote_plan.py, on-device model) writes a draft of suggestions. You skim it
 and set an `Action:` on the items you approve; everything else defaults to `skip`,
 so nothing moves without your explicit say-so. Then this script executes only the
 approved items and runs reindex. Dry-run by default; pass --apply to write.
 
-The draft is UNTRUSTED INPUT (a local model wrote it). So every path is confined
+The draft is UNTRUSTED INPUT (a model wrote it). So every path is confined
 to the vault root (no `../`, absolute, or symlink escape) and every written body
 is run through the secret scrubber before it touches disk.
 

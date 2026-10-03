@@ -219,7 +219,7 @@ LOG_CAP = 2_000_000   # bytes; dated logs rotate by name, these never do
 
 
 def cap_logs(d, cap=LOG_CAP):
-    """Trim launchd stdout/stderr logs (mlx-server.log, gen.err, …) to their newest
+    """Trim launchd stdout/stderr logs (launchd.log, digest.err, …) to their newest
     half once they pass `cap` — they are append-only and nothing else rotates them."""
     for f in [*Path(d).glob("*.log"), *Path(d).glob("*.err")]:
         try:

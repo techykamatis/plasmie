@@ -1,7 +1,7 @@
 #!/bin/bash
 # Plasmie (Plasmie) — installation wizard.
-# Gets a fresh machine to a working install: prerequisites, vault, secrets, local
-# model, background loops, and the menu-bar app. Interactive (prompts with defaults).
+# Gets a fresh machine to a working install: prerequisites, vault, secrets, Python
+# env, background loops, and the menu-bar app. (Dev path; friends use the DMG.) Interactive (prompts with defaults).
 # Idempotent and re-runnable — every step detects what's already done and each is skippable.
 set -uo pipefail
 SELF="$(cd "$(dirname "$0")" && pwd)"
@@ -28,7 +28,7 @@ install_app() {
 # 1) preflight — detect what's already here; only offer to install what's missing
 say "1/8 · Preflight — checking prerequisites"
 [ "$(uname)" = Darwin ] || { warn "macOS only."; exit 1; }
-[ "$(uname -m)" = arm64 ] && ok "Apple Silicon" || warn "Intel Mac — the local MLX model won't run; the loops still work."
+[ "$(uname -m)" = arm64 ] && ok "Apple Silicon" || warn "Intel Mac — Apple's on-device model won't run; summaries, filing and answers stay off."
 
 if have brew; then ok "Homebrew ($(brew --version 2>/dev/null | awk 'NR==1{print $2}'))"
 else warn "Homebrew missing (required) — install from https://brew.sh, then re-run."; exit 1; fi
@@ -40,8 +40,7 @@ missing=()   # brew-installable prereqs that aren't here yet
 if [ -x "$PY312" ] || have python3.12; then ok "python3.12 ($("$PY312" -V 2>&1 | awk '{print $2}'))"; else warn "python3.12 — missing"; missing+=("python@3.12"); fi
 if have git; then ok "git"; else warn "git — missing"; missing+=("git"); fi
 if [ -d /Applications/Obsidian.app ]; then ok "Obsidian"; else warn "Obsidian — missing (required to view the vault)"; missing+=("--cask obsidian"); fi
-if have claude; then ok "claude CLI"; else warn "claude CLI — missing (needed for local-model summaries; install Claude Code separately, not via brew)"; fi
-avail="$(df -g "$HOME" 2>/dev/null | awk 'NR==2{print $4}')"; [ "${avail:-0}" -ge 8 ] && ok "${avail} GB free" || warn "low disk (${avail:-?} GB) — the model needs ~5 GB."
+avail="$(df -g "$HOME" 2>/dev/null | awk 'NR==2{print $4}')"; [ "${avail:-0}" -ge 6 ] && ok "${avail} GB free" || warn "low disk (${avail:-?} GB) — qmd's search models need ~4 GB."
 
 if [ ${#missing[@]} -gt 0 ]; then
   warn "missing & brew-installable: ${missing[*]}"
@@ -88,26 +87,21 @@ else
   warn "skipped — add it later in Plasmie's Settings (Slack card)"
 fi
 
-# 5) python env + MLX ---------------------------------------------------------
-say "5/8 · Python environment (MLX)"
+# 5) python env (the engine is stdlib-only; pytest for the test suite) -----------
+say "5/8 · Python environment"
 [ -d "$SELF/.venv" ] && ok ".venv exists" || { "$PY312" -m venv "$SELF/.venv"; ok "created .venv"; }
-if "$VENV_PY" -c "import mlx_vlm" 2>/dev/null; then ok "mlx-vlm installed"
-else warn "installing mlx-vlm (pulls mlx + mlx-lm)…"; "$SELF/.venv/bin/pip" -q install mlx-vlm && ok "installed" || warn "install failed — local model won't serve"; fi
+"$VENV_PY" -c "import pytest" 2>/dev/null || "$SELF/.venv/bin/pip" -q install pytest || warn "pytest install failed (tests only)"
 
-# 6) local models -------------------------------------------------------------
-say "6/8 · Local models (generation) + retrieval"
-# 6a · generation model — mlx Gemma (used by summarize/promote and the ask answer)
-MODEL="$SELF/models/gemma-4-e4b"
-if [ -f "$MODEL/config.json" ]; then
-  ok "generation model already present"
-elif yes "Download the generation model now? (~4.9 GB, no account needed)"; then
-  # mlx-community reupload is ungated — anonymous download, no HF login.
-  "$SELF/.venv/bin/pip" -q install -U "huggingface_hub[cli]"
-  "$SELF/.venv/bin/hf" download mlx-community/gemma-4-e4b-it-4bit --local-dir "$MODEL" \
-    && ok "model downloaded" || warn "download interrupted — re-run install.sh to resume (HF resumes partials)"
-else
-  warn "skipped — promote/summarize skip until the model is present (see models/README.md)"
-fi
+# 6) models -------------------------------------------------------------------
+say "6/8 · Apple Intelligence + retrieval"
+# 6a · generation is Apple's on-device model through plasmie-fm (built with the app in
+# step 8). Nothing to download; Apple Intelligence must be on.
+"$SELF/app/build-fm.sh" >/dev/null 2>&1 && st="$("$SELF/app/build/plasmie-fm" --check 2>/dev/null)"
+case "${st:-}" in
+  available) ok "Apple Intelligence on; on-device model ready" ;;
+  "") warn "couldn't build plasmie-fm (needs the macOS 26+ SDK) — summaries, filing and answers stay off" ;;
+  *) warn "Apple Intelligence: $st — turn it on in System Settings › Apple Intelligence & Siri" ;;
+esac
 
 # 6b · retrieval — qmd (Node) indexes the vault and serves search to ask.py + the
 # MCP. It fetches its own embedding model; nothing to download here.

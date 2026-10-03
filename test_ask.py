@@ -1,8 +1,10 @@
-"""ask.py: on-device-first synthesis, fair prompt budgeting, temporal windows.
+"""ask.py: on-device synthesis, fair prompt budgeting, temporal windows.
 
-No network, no real model: fm.generate / ensure_up / stream_model are faked.
+No network, no real model: fm.generate and fm.probe are faked.
 """
 import datetime
+
+from pathlib import Path
 
 import pytest
 
@@ -18,12 +20,12 @@ def hit(n, text="body", score=0.8):
 
 @pytest.fixture
 def backends(monkeypatch):
-    """Fake FM + Gemma; records which ran and what was said on stderr."""
-    calls = {"fm": 0, "gemma": 0, "prompts": [], "say": []}
-    state = {"fm": "FM answer", "chunks": ["FM ", "answer"], "gemma": "Gemma answer",
-             "partial": []}
+    """Fake on-device model; records calls and what was said on stderr."""
+    calls = {"fm": 0, "prompts": [], "say": []}
+    state = {"fm": "FM answer", "chunks": ["FM ", "answer"], "partial": [],
+             "probe": {"available": True, "hint": ""}}
 
-    def fake_generate(prompt, timeout=None, max_tokens=0, on_chunk=None, guard=True):
+    def fake_generate(prompt, timeout=None, max_tokens=0, on_chunk=None, guard=True, **_k):
         calls["fm"] += 1
         calls["prompts"].append(prompt)
         calls["guard"] = guard
@@ -32,17 +34,10 @@ def backends(monkeypatch):
                 on_chunk(c)
         return state["fm"]
 
-    def fake_stream(prompt, on_chunk):
-        calls["gemma"] += 1
-        on_chunk(state["gemma"])
-        return state["gemma"]
-
     monkeypatch.setattr(ask.fm, "generate", fake_generate)
     monkeypatch.setattr(ask.fm, "context_size", lambda: 8192)
-    monkeypatch.setattr(ask, "ensure_up", lambda: True)
-    monkeypatch.setattr(ask, "stream_model", fake_stream)
+    monkeypatch.setattr(ask.fm, "probe", lambda: state["probe"])
     monkeypatch.setattr(ask, "_say", calls["say"].append)
-    monkeypatch.delenv("PLASMIE_ASK_BACKEND", raising=False)
     calls["state"] = state
     return calls
 
@@ -55,13 +50,12 @@ def vault(tmp_path, monkeypatch):
 
 # ---- backend selection ------------------------------------------------------
 
-def test_fm_path_streams_and_never_touches_gemma(backends, vault):
+def test_answers_on_device_and_streams(backends, vault):
     got = []
     answer, hits = ask.ask("how do I shrink rds?", vault, on_chunk=got.append)
     assert answer == "FM answer" and "".join(got) == "FM answer"
-    assert backends["fm"] == 1 and backends["gemma"] == 0
+    assert backends["fm"] == 1
     assert "Answering on-device…" in backends["say"]
-    assert not any("Gemma" in m for m in backends["say"])
     assert len(hits) == 2
 
 
@@ -70,37 +64,36 @@ def test_interactive_ask_bypasses_the_background_guard(backends, vault):
     assert backends["guard"] is False
 
 
-def test_fm_none_falls_back_to_gemma(backends, vault):
-    backends["state"]["fm"] = None
-    got = []
-    answer, _ = ask.ask("q?", vault, on_chunk=got.append)
-    assert answer == "Gemma answer" and "".join(got) == "Gemma answer"
-    assert backends["fm"] == 1 and backends["gemma"] == 1
-    assert "Asking Gemma…" in backends["say"]
-
-
-def test_fm_failing_after_streaming_keeps_partial_and_skips_gemma(backends, vault):
+def test_fm_failing_after_streaming_keeps_partial(backends, vault):
     backends["state"]["fm"] = None
     backends["state"]["partial"] = ["Half an ", "answer"]
     got = []
     answer, _ = ask.ask("q?", vault, on_chunk=got.append)
-    assert backends["gemma"] == 0
     assert answer.startswith("Half an answer") and "cut short" in answer
     assert "".join(got) == answer                  # what the user saw == what we return
+    assert backends["fm"] == 1                     # no second, different answer on top
 
 
-def test_forced_gemma_backend_skips_fm(backends, vault, monkeypatch):
-    monkeypatch.setenv("PLASMIE_ASK_BACKEND", "gemma")
-    answer, _ = ask.ask("q?", vault)
-    assert answer == "Gemma answer" and backends["fm"] == 0
-    assert "Answering on-device…" not in backends["say"]
-
-
-def test_nothing_available_shows_notes_notice(backends, vault, monkeypatch):
+def test_apple_intelligence_off_says_why_and_shows_notes(backends, vault):
     backends["state"]["fm"] = None
-    monkeypatch.setattr(ask, "ensure_up", lambda: False)
-    answer, hits = ask.ask("q?", vault)
+    backends["state"]["probe"] = {"available": False, "reason": "APPLE_INTELLIGENCE_NOT_ENABLED",
+                                  "hint": "Turn on Apple Intelligence in System Settings."}
+    got = []
+    answer, hits = ask.ask("q?", vault, on_chunk=got.append)
+    assert "Apple Intelligence isn't available" in answer and "System Settings" in answer
     assert "showing the most relevant notes" in answer and len(hits) == 2
+    assert "".join(got) == answer
+
+
+def test_model_failure_when_available_still_shows_notes(backends, vault):
+    backends["state"]["fm"] = None
+    answer, hits = ask.ask("q?", vault)
+    assert "couldn't generate an answer" in answer and len(hits) == 2
+
+
+def test_no_gemma_left_in_ask():
+    src = (Path(ask.__file__)).read_text().lower()
+    assert "gemma" not in src and "8091" not in src and "mlx" not in src
 
 
 # ---- prompt contract --------------------------------------------------------
@@ -150,7 +143,7 @@ def test_budget_reads_the_live_context_window(monkeypatch):
     monkeypatch.setattr(ask.fm, "context_size", lambda: 8192)
     assert ask.prompt_char_budget() > small
     monkeypatch.setattr(ask.fm, "context_size", lambda: None)
-    assert ask.prompt_char_budget() > small         # unknown -> default, not a crash
+    assert ask.prompt_char_budget() == small        # unknown -> Apple's documented 4096, not a crash
 
 
 def test_default_prompt_fits_the_window_in_tokens(monkeypatch):
@@ -219,7 +212,7 @@ def test_recap_answers_on_device_and_lists_files(backends, tmp_path):
     ans, hits = ask.recap_journal("what did I do yesterday", str(tmp_path),
                                   ("yesterday", ["2026-06-28"]), lambda _t: None,
                                   lambda m, h: (m, h), "NA")
-    assert ans == "FM answer" and backends["gemma"] == 0
+    assert ans == "FM answer" and backends["fm"] == 1
     assert hits[0][1]["path"].endswith("2026-06-28.md")
     assert "raw-2026-06-28" in backends["prompts"][0]
 

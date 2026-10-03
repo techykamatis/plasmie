@@ -19,6 +19,17 @@ DOMAIN="gui/$(id -u)"
 
 mkdir -p "$DEST"
 
+# Agents this repo no longer ships. An old install keeps them loaded (and pointing at
+# deleted scripts) until something boots them out, so every install/uninstall does.
+#   com.plasmie.mlx-server — the local Gemma server, retired by ADR 0021 (Apple FM only)
+for label in com.plasmie.mlx-server; do
+  if [ -f "$DEST/$label.plist" ] || launchctl print "$DOMAIN/$label" >/dev/null 2>&1; then
+    launchctl bootout "$DOMAIN/$label" 2>/dev/null || true
+    rm -f "$DEST/$label.plist"
+    echo "retired $label"
+  fi
+done
+
 if [ "${1:-}" = uninstall ]; then
   for tpl in "$SELF"/*.plist; do
     label="$(basename "$tpl" .plist)"
@@ -40,4 +51,4 @@ for tpl in "$SELF"/*.plist; do
   echo "installed $label"
 done
 
-echo "done. ingest :07 hourly · summarize :15 hourly · improve :17 hourly · promote 02:30 · mlx-server on-demand"
+echo "done. ingest :07 hourly · summarize :15 hourly · improve :17 hourly · promote 02:30"

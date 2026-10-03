@@ -4,8 +4,9 @@
 #
 #  1. Move Plasmie's DATA from the old ~/.plasmie layout to the macOS folders
 #     (see plasmie-env.sh). Data only, never code. In a dev checkout (~/.plasmie is
-#     a git repo) it leaves symlinks for .venv and models/ so `.venv/bin/python3 -m
-#     pytest` and the venv's own scripts keep working.
+#     a git repo) it leaves a .venv symlink so `.venv/bin/python3 -m pytest` and the
+#     venv's own scripts keep working. Old local-model weights (models/) are left where
+#     they are: nothing uses them since Apple FM became the only backend (ADR 0025).
 #  2. Credentials and connector defaults (below).
 set -uo pipefail
 . "$(cd "$(dirname "$0")" && pwd)/plasmie-env.sh"
@@ -25,7 +26,6 @@ if [ -d "$OLD" ]; then
     move "$OLD/$f" "$PLASMIE_HOME/$f"
   done
   move "$OLD/.venv" "$PLASMIE_HOME/venv"
-  move "$OLD/models" "$PLASMIE_HOME/models"
   move "$OLD/launchd.log" "$PLASMIE_LOGS/launchd.log"
   if [ -d "$OLD/logs" ] && [ ! -L "$OLD/logs" ]; then
     for f in "$OLD/logs"/* "$OLD/logs"/.[!.]*; do
@@ -35,7 +35,6 @@ if [ -d "$OLD" ]; then
   fi
   if [ -d "$OLD/.git" ]; then          # dev checkout: keep the old names working
     [ -e "$OLD/.venv" ] || ln -s "$PLASMIE_HOME/venv" "$OLD/.venv"
-    [ -e "$OLD/models" ] || ln -s "$PLASMIE_HOME/models" "$OLD/models"
   fi
   echo "migrated $moved item(s) to $PLASMIE_HOME"
 fi

@@ -2,12 +2,12 @@
 """Ask anything in the vault — local-only RAG over your notes.
 
 Retrieve the most relevant notes with **qmd** (vector search — measured best on
-this vault; see eval.py), then answer using ONLY those notes. Synthesis is
-on-device first: Apple's Foundation Model via fm.py (no model load, streams
-immediately). Only when that is unavailable, over its context window, or fails
-before producing anything does it fall back to the local Gemma over the mlx
-server's OpenAI-compatible endpoint (kicked up on demand). If neither can run, it
-falls back to showing the matching notes so you still get an answer.
+this vault; see eval.py), then answer using ONLY those notes. Synthesis runs
+on Apple's on-device Foundation Model via fm.py (no model load, streams
+immediately; ADR 0021 made it the only backend). The prompt is budgeted to the
+live context window, question last. If the model can't answer — Apple
+Intelligence off, still downloading, or a failure before any text — it says why
+and shows the matching notes, so you still get an answer.
 
 The model is never asked to cite: the UI shows the real retrieved Sources list
 (printed from retrieval, not from model output), and a model-written citation
@@ -23,8 +23,6 @@ Two output channels so a UI can show live progress:
   stdout = the answer text (streamed), then a "Sources:" list
   stderr = staged status ("Searching your notes…", "Answering on-device…")
 
-PLASMIE_ASK_BACKEND=gemma forces the Gemma path (A/B runs).
-
 Usage:
   ask.py "how do I shrink RDS storage?" [VAULT]
   ask.py --selfcheck
@@ -37,28 +35,22 @@ import re
 import shutil
 import subprocess
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 import fm
 import paths
+from mapreduce import fair_shares  # noqa: F401  (re-exported; tests use ask.fair_shares)
 
-SELF = Path(__file__).resolve().parent
-ENDPOINT = os.environ.get("PLASMIE_ENDPOINT", "http://127.0.0.1:8091")   # mlx Gemma server
-MODEL = os.environ.get("GEMMA_MODEL") or os.path.join(
-    os.path.expanduser(os.environ.get("PLASMIE_HOME") or "~/Library/Application Support/Plasmie"), "models/gemma-4-e4b")
-TIMEOUT = 90          # seconds for the local model
 TOP_K = 4             # notes fed as context
 PER_NOTE = 4000       # ceiling on chars of one note (the real share is budget-driven)
 JOURNAL_CHARS = 6000  # ceiling on chars of one daily log in a recap prompt
 NUM_PREDICT = 600     # cap answer length so a runaway model can't hang the ask
 FM_TIMEOUT = 60       # seconds for the on-device model (a person is waiting)
 # Conservative: markdown, identifiers and paths tokenize worse than prose. Overshoot
-# makes fm.generate return None (-> Gemma); undershoot just trims a little more.
+# makes fm.generate return None (no answer); undershoot just trims a little more.
 CHARS_PER_TOKEN = 3.0
 TEMPLATE_TOKENS = 200  # chat-template/system overhead not counted in our text
-DEFAULT_CONTEXT = 8192  # when fm can't report one (Gemma has no tight window)
+DEFAULT_CONTEXT = 4096  # when fm can't report one: Apple's documented minimum
 DIGESTS = f"{paths.META}/digests"   # meta/digests/YYYY-MM-DD.md — short on-device rollups
 RECAP_TOKENS = 320    # 8 short bullets; a recap ran 26 bullets / 25s on the shared 600 cap
 RECAP_CHARS = 12000   # recap prompts stay well under the window: prefill time scales with it
@@ -205,19 +197,6 @@ def prompt_char_budget(max_tokens=NUM_PREDICT, ctx=None):
     return max(1000, int((ctx - max_tokens - TEMPLATE_TOKENS) * CHARS_PER_TOKEN))
 
 
-def fair_shares(lengths, total):
-    """Split `total` chars across items by water-filling: short items keep all of
-    their text and the slack goes to the long ones — nobody is dropped."""
-    shares = [0] * len(lengths)
-    todo = sorted(range(len(lengths)), key=lambda i: lengths[i])
-    left = max(0, total)
-    for k, i in enumerate(todo):
-        share = left // (len(todo) - k)
-        shares[i] = min(lengths[i], share)
-        left -= shares[i]
-    return shares
-
-
 def build_prompt(question, hits, weak=False, budget_chars=None):
     """Notes first, QUESTION LAST (fm.generate refuses to trim the tail), with the
     notes trimmed fairly so the whole prompt fits `budget_chars`."""
@@ -237,62 +216,11 @@ def build_prompt(question, hits, weak=False, budget_chars=None):
     return f"{head}{ctx}{tail}"
 
 
-def ensure_up():
-    """Make sure the mlx server is listening; kick it up on demand if not.
-
-    Returns True if the endpoint answers. The first ask after idle pays the
-    model weight-load on the first generation request, not here.
-    """
-    try:
-        urllib.request.urlopen(f"{ENDPOINT}/v1/models", timeout=1.5).read()
-        return True
-    except (urllib.error.URLError, OSError):
-        pass
-    _say("Starting the local model (Gemma)…")
-    try:
-        subprocess.run([str(SELF / "mlx-ctl.sh"), "up"], timeout=TIMEOUT, check=True)
-        return True
-    except (subprocess.SubprocessError, OSError):
-        return False
-
-
-def stream_model(prompt, on_chunk):
-    """Stream Gemma's answer over the OpenAI-compatible SSE endpoint.
-
-    Calls on_chunk(text) per token; returns the full answer, or "" if the
-    server is unreachable/empty (caller falls back to the retrieved notes).
-    """
-    body = json.dumps({
-        "model": MODEL, "stream": True, "max_tokens": NUM_PREDICT, "temperature": 0.2,
-        "messages": [{"role": "user", "content": prompt}],
-    }).encode()
-    req = urllib.request.Request(f"{ENDPOINT}/v1/chat/completions", data=body,
-                                 headers={"Content-Type": "application/json"})
-    parts = []
-    try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-            for line in resp:                     # SSE: "data: {json}" / "data: [DONE]"
-                line = line.strip()
-                if not line.startswith(b"data:"):
-                    continue
-                payload = line[5:].strip()
-                if payload == b"[DONE]":
-                    break
-                chunk = json.loads(payload)["choices"][0].get("delta", {}).get("content") or ""
-                if chunk:
-                    parts.append(chunk)
-                    on_chunk(chunk)
-    except (urllib.error.URLError, OSError, json.JSONDecodeError, KeyError, IndexError):
-        return "".join(parts).strip()
-    return "".join(parts).strip()
-
-
 def fm_answer(prompt, on_chunk, max_tokens=NUM_PREDICT):
     """Stream the on-device answer. Returns the text, or None if FM produced nothing.
 
-    Once any text has streamed the user has seen it, so a late FM failure (timeout,
-    refusal) must NOT start a second, different answer from Gemma on top of it:
-    keep what streamed and say it was cut short.
+    Once any text has streamed the user has seen it, so a late failure (timeout,
+    refusal) keeps what streamed and says it was cut short.
     """
     streamed = []
 
@@ -313,17 +241,22 @@ def fm_answer(prompt, on_chunk, max_tokens=NUM_PREDICT):
     return partial + notice
 
 
+def unavailable_notice():
+    """Why there is no generated answer, in words a person can act on."""
+    p = fm.probe()
+    if p.get("available") is True:
+        return "(couldn't generate an answer — showing the most relevant notes below)"
+    return (f"(Apple Intelligence isn't available, so no answer was written — showing the "
+            f"most relevant notes below. {p.get('hint') or ''})").replace(" )", ")")
+
+
 def synthesize(prompt, on_chunk, max_tokens=NUM_PREDICT):
-    """FM first, Gemma only if FM produced nothing. "" when neither could answer."""
-    if os.environ.get("PLASMIE_ASK_BACKEND", "").lower() != "gemma":
-        out = fm_answer(prompt, on_chunk, max_tokens)
-        if out is not None:
-            return out
-        _say("On-device model unavailable — falling back to local Gemma.")
-    if not ensure_up():
+    """The on-device answer, or "" when the model produced nothing."""
+    out = fm_answer(prompt, on_chunk, max_tokens)
+    if out is None:
+        _say("On-device model unavailable.")
         return ""
-    _say("Asking Gemma…")
-    return stream_model(prompt, on_chunk)
+    return out
 
 
 def detect_window(query, today=None):
@@ -411,7 +344,7 @@ def recap_journal(question, vault, window, on_chunk, done, unavailable):
             for f in files]
     answer = synthesize(prompt, on_chunk, RECAP_TOKENS)
     if not answer:
-        return done(unavailable, hits)
+        return done(unavailable() if callable(unavailable) else unavailable, hits)
     return answer, hits
 
 
@@ -419,15 +352,13 @@ def ask(question, vault=None, on_chunk=None):
     """Retrieve, then stream an answer. on_chunk(text) receives answer tokens live."""
     vault = vault or paths.vault()
     on_chunk = on_chunk or (lambda _t: None)
-    unavailable = "(couldn't generate an answer — showing the most relevant notes below)"
-
     def done(msg, hits):     # every answer path must emit the text, not just the stream
         on_chunk(msg)
         return msg, hits
 
     window = detect_window(question)
     if window:               # temporal question → read the raw logs, not retrieval
-        result = recap_journal(question, vault, window, on_chunk, done, unavailable)
+        result = recap_journal(question, vault, window, on_chunk, done, unavailable_notice)
         if result is not None:
             return result    # else nothing in range — fall through to retrieval
 
@@ -449,14 +380,20 @@ def ask(question, vault=None, on_chunk=None):
     titles = ", ".join(doc["title"] for _, doc in hits[:3])
     _say(f"Found {len(hits)} relevant notes: {titles}")
     answer = synthesize(build_prompt(question, hits, weak=weak), on_chunk)
-    if not answer:  # no model could answer — fall back to the retrieved notes
-        return done(unavailable, hits)
+    if not answer:  # the model couldn't answer — fall back to the retrieved notes
+        return done(unavailable_notice(), hits)
     return answer, hits
 
 
 def selfcheck():
     orig_gen = fm.generate
-    fm.generate = lambda *a, **k: None       # selfcheck exercises the Gemma path
+
+    def fake(prompt, on_chunk=None, **_k):  # selfcheck never touches the real model
+        for part in ("Snap", "shot."):
+            if on_chunk:
+                on_chunk(part)
+        return "Snapshot."
+    fm.generate = fake
     try:
         _selfcheck()
     finally:
@@ -506,26 +443,9 @@ def _selfcheck():
         g = (v / GAPS).read_text()
         assert '(0.21) "how do I bake bread?"' in g and "closest: rds.md" in g, g
 
-        # stream_model parses SSE, assembles chunks in order, fires on_chunk live
-        def _sse(c):
-            return b'data: {"choices":[{"delta":{"content":"%s"}}]}' % c
-
-        class _Fake:
-            _lines = [_sse(b"Snap"), _sse(b"shot."), b"", b"data: [DONE]"]
-            def read(self, *a):
-                return b"{}"
-            def __enter__(self):
-                return iter(self._lines)
-            def __exit__(self, *a):
-                return False
-        origu = urllib.request.urlopen
-        urllib.request.urlopen = lambda *a, **k: _Fake()
-        try:
-            seen = []
-            full = stream_model("p", seen.append)
-            assert full == "Snapshot." and seen == ["Snap", "shot."], (full, seen)
-        finally:
-            urllib.request.urlopen = origu
+        # synthesize streams the on-device answer through on_chunk, in order
+        seen = []
+        assert synthesize("p", seen.append) == "Snapshot." and seen == ["Snap", "shot."], seen
 
         # detect_window date math, relative to a fixed Monday (2026-06-29)
         mon = datetime.date(2026, 6, 29)
@@ -540,16 +460,12 @@ def _selfcheck():
         # recap reads raw per-source files in the window; falls through (None) when empty
         (v / paths.RAW_CLAUDE).mkdir(parents=True)
         (v / paths.RAW_CLAUDE / "2026-06-28.md").write_text("# Claude\nShipped the ask overlay.")
-        urllib.request.urlopen = lambda *a, **k: _Fake()
-        try:
-            ans, hits = recap_journal("what did we do yesterday", str(v),
-                                      ("yesterday", ["2026-06-28"]), lambda _t: None,
-                                      lambda m, h: (m, h), "NA")
-            assert ans == "Snapshot." and hits[0][1]["path"].endswith("2026-06-28.md"), (ans, hits)
-            assert recap_journal("today", str(v), ("today", ["2099-01-01"]),
-                                 lambda _t: None, lambda m, h: (m, h), "NA") is None
-        finally:
-            urllib.request.urlopen = origu
+        ans, hits = recap_journal("what did we do yesterday", str(v),
+                                  ("yesterday", ["2026-06-28"]), lambda _t: None,
+                                  lambda m, h: (m, h), "NA")
+        assert ans == "Snapshot." and hits[0][1]["path"].endswith("2026-06-28.md"), (ans, hits)
+        assert recap_journal("today", str(v), ("today", ["2099-01-01"]),
+                             lambda _t: None, lambda m, h: (m, h), "NA") is None
 
 
 if __name__ == "__main__":

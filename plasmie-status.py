@@ -42,7 +42,7 @@ pfile = pending[0] if pending else ""
 pitems = len(re.findall(r"(?m)^## ", read(pfile))) if pfile else 0
 
 try:
-    subprocess.check_output(["pgrep", "-f", "promote.sh|run-ingest.sh|gen.sh|loop-ingest.py"])
+    subprocess.check_output(["pgrep", "-f", "promote.sh|run-ingest.sh|loop-ingest.py"])
     is_running = True
 except (subprocess.CalledProcessError, OSError):
     is_running = False

@@ -8,6 +8,7 @@ import ServiceManagement
 enum BackgroundJobs {
     static let names = ["ingest", "summarize", "improve", "promote", "snapshot"]
     static func label(_ name: String) -> String { "com.plasmie.\(name)" }
+    private static let registeredKey = "plasmie.jobsRegisteredBuild"
     private static func service(_ name: String) -> SMAppService { .agent(plistName: "com.plasmie.\(name).plist") }
 
     /// Older installs ran com.plasmie.* jobs from ~/Library/LaunchAgents. Both sets at once
@@ -27,6 +28,13 @@ enum BackgroundJobs {
     @discardableResult
     static func ensure() -> [String] {
         guard backendReady(), !legacyPresent else { return [] }
+        // launchd keeps the definitions it registered: after an update whose job plists
+        // changed, re-register so the new schedule/limits apply.
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? ""
+        if UserDefaults.standard.string(forKey: registeredKey) != build {
+            unregisterAll()
+            UserDefaults.standard.set(build, forKey: registeredKey)
+        }
         var failed: [String] = []
         for n in names where service(n).status != .enabled && service(n).status != .requiresApproval {
             do { try service(n).register() } catch {

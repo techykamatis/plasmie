@@ -41,16 +41,16 @@ say "bundled backend ($(ls "$BACKEND" | wc -l | tr -d ' ') items)"
 # Items lists them; they go away with the app). They run the bundled engine in place and
 # log themselves (PLASMIE_JOB_LOG; a bundled plist can't name a path in the user's home).
 LA="$APP/Contents/Library/LaunchAgents"; mkdir -p "$LA"
-job() {   # job <name> <script> <StartCalendarInterval dict body>
+job() {   # job <name> <script> <max minutes> <StartCalendarInterval dict body>
   cat > "$LA/com.plasmie.$1.plist" <<JOB
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key><string>com.plasmie.$1</string>
-  <key>BundleProgram</key><string>Contents/Resources/backend/$2</string>
-  <key>ProgramArguments</key><array><string>$2</string></array>
-  <key>StartCalendarInterval</key><dict>$3</dict>
+  <key>BundleProgram</key><string>Contents/Resources/backend/plasmie-job.sh</string>
+  <key>ProgramArguments</key><array><string>plasmie-job.sh</string><string>$3</string><string>$2</string></array>
+  <key>StartCalendarInterval</key><dict>$4</dict>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin</string>
@@ -62,11 +62,12 @@ job() {   # job <name> <script> <StartCalendarInterval dict body>
 </plist>
 JOB
 }
-job ingest    run-ingest.sh  "<key>Minute</key><integer>7</integer>"
-job summarize summarize.sh   "<key>Minute</key><integer>15</integer>"
-job improve   plasmie-improve.sh  "<key>Minute</key><integer>17</integer>"
-job promote   promote.sh     "<key>Hour</key><integer>2</integer><key>Minute</key><integer>30</integer>"
-job snapshot  plasmie-snapshot.sh "<key>Hour</key><integer>0</integer><key>Minute</key><integer>47</integer>"
+# hard time limits (plasmie-job.sh): a wedged job is stopped, never left hanging
+job ingest    run-ingest.sh  50  "<key>Minute</key><integer>7</integer>"
+job summarize summarize.sh   30  "<key>Minute</key><integer>15</integer>"
+job improve   plasmie-improve.sh  30  "<key>Minute</key><integer>17</integer>"
+job promote   promote.sh     120 "<key>Hour</key><integer>2</integer><key>Minute</key><integer>30</integer>"
+job snapshot  plasmie-snapshot.sh 20  "<key>Hour</key><integer>0</integer><key>Minute</key><integer>47</integer>"
 for f in "$LA"/*.plist; do plutil -lint -s "$f" || { echo "bad plist $f"; exit 1; }; done
 chmod +x "$BACKEND"/*.sh
 say "bundled $(ls "$LA" | wc -l | tr -d ' ') background jobs"

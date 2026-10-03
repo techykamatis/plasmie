@@ -275,7 +275,7 @@ private struct EvolutionStrip: View {
                         .grayscale(i > current ? 1 : 0)
                         .opacity(i > current ? 0.35 : 1)
                         .padding(4)
-                        .overlay(Circle().strokeBorder(Color.accentColor, lineWidth: i == current ? 2 : 0))
+                        .overlay(Circle().strokeBorder(Color.plasmieBlush, lineWidth: i == current ? 2.5 : 0))
                     Text(s.name).font(.klMeta.weight(i == current ? .semibold : .regular))
                         .foregroundStyle(i > current ? .secondary : .primary)
                         .lineLimit(1).minimumScaleFactor(0.9)

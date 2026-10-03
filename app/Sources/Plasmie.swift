@@ -217,12 +217,12 @@ private enum PlasmiePropArt {
             }
         case .sand:
             var stream = Path()
-            stream.move(to: CGPoint(x: 50, y: 50)); stream.addLine(to: CGPoint(x: 50, y: 82))
+            stream.move(to: CGPoint(x: 50, y: 52)); stream.addLine(to: CGPoint(x: 50, y: 79))
             line(stream, sparkle, 1.9, dash: motion ? [2.4, 3.2] : [], phase: motion ? CGFloat(-t * 22) : 0)
             let h: CGFloat = 5 + (motion ? 3 * CGFloat(sin(2 * .pi * t / 1.6)) : 1)
             var mound = Path()
-            mound.move(to: CGPoint(x: 37, y: 87))
-            mound.addQuadCurve(to: CGPoint(x: 63, y: 87), control: CGPoint(x: 50, y: 87 - 2 * h))
+            mound.move(to: CGPoint(x: 38, y: 84))
+            mound.addQuadCurve(to: CGPoint(x: 62, y: 84), control: CGPoint(x: 50, y: 84 - 2 * h))
             mound.closeSubpath()
             solid(mound, sparkle)
         case .zzz:

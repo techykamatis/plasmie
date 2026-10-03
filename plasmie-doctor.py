@@ -198,7 +198,7 @@ def check_foundationmodels():
 
     Off or still downloading reports ok=null (not set up yet, not broken). A Mac
     that can't run it (ineligible, macOS < 26), a missing helper (broken
-    install) or a probe that blew up reports ok=false: since ADR 0021 nothing
+    install) or a probe that blew up reports ok=false: since ADR 0025 nothing
     summarizes, files or answers without it.
     """
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

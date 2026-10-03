@@ -4,7 +4,7 @@
 Retrieve the most relevant notes with **qmd** (vector search — measured best on
 this vault; see eval.py), then answer using ONLY those notes. Synthesis runs
 on Apple's on-device Foundation Model via fm.py (no model load, streams
-immediately; ADR 0021 made it the only backend). The prompt is budgeted to the
+immediately; ADR 0025 made it the only backend). The prompt is budgeted to the
 live context window, question last. If the model can't answer — Apple
 Intelligence off, still downloading, or a failure before any text — it says why
 and shows the matching notes, so you still get an answer.

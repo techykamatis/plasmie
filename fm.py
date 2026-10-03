@@ -4,7 +4,7 @@
 macOS 26+ exposes the model behind Apple Intelligence through the
 FoundationModels framework. Plasmie reaches it through `plasmie-fm`, a tiny Swift
 helper built by app/build-fm.sh and shipped inside Plasmie.app, so a stock Mac
-needs no Xcode, Homebrew or model download (ADR 0021). Apple's Python SDK
+needs no Xcode, Homebrew or model download (ADR 0025). Apple's Python SDK
 (`apple-fm-sdk`) is kept only as an optional dev fallback (fm_sdk.py): it
 installs only with a full Xcode, which friends won't have.
 

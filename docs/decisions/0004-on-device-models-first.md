@@ -1,6 +1,6 @@
 # 0004 · Apple Foundation Models first; local Gemma as fallback
 
-- **Status:** Accepted · summarize 2026-09-30, Ask 2026-10-03
+- **Status:** Superseded by [0025](0025-apple-fm-only.md) (Gemma removed, 2026-10-04) · was Accepted · summarize 2026-09-30, Ask 2026-10-03
 - **Area:** Architecture
 
 ## Context

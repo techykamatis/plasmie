@@ -12,7 +12,7 @@
 # app update; never copied out). Everything written goes to $PLASMIE_HOME (data: config,
 # state, venv) and $PLASMIE_LOGS. See plasmie-env.sh.
 #
-# Generation is Apple's on-device model via the bundled plasmie-fm helper (ADR 0021):
+# Generation is Apple's on-device model via the bundled plasmie-fm helper (ADR 0025):
 # nothing to download or pip-install for it, but Apple Intelligence must be on.
 set -uo pipefail
 

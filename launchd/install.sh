@@ -21,7 +21,7 @@ mkdir -p "$DEST"
 
 # Agents this repo no longer ships. An old install keeps them loaded (and pointing at
 # deleted scripts) until something boots them out, so every install/uninstall does.
-#   com.plasmie.mlx-server — the local Gemma server, retired by ADR 0021 (Apple FM only)
+#   com.plasmie.mlx-server — the local Gemma server, retired by ADR 0025 (Apple FM only)
 for label in com.plasmie.mlx-server; do
   if [ -f "$DEST/$label.plist" ] || launchctl print "$DOMAIN/$label" >/dev/null 2>&1; then
     launchctl bootout "$DOMAIN/$label" 2>/dev/null || true

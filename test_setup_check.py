@@ -1,7 +1,7 @@
 """app-setup.sh --check: the first-run checklist the app renders (Setup.swift).
 
 Apple Intelligence is a REQUIRED check answered by the bundled plasmie-fm helper
-(ADR 0021); Claude Code is no longer a prerequisite. The CHECK line format is a
+(ADR 0025); Claude Code is no longer a prerequisite. The CHECK line format is a
 contract with SetupCheck.parse: CHECK:<id>:<ok|missing|warn>:<required|recommended>:<label>:<detail>.
 """
 import os

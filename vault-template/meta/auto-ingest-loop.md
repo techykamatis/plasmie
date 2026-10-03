@@ -13,10 +13,9 @@ A set of macOS LaunchAgents keeps this vault current with no Claude session open
 | Agent | Runs | Does |
 |-------|------|------|
 | `com.plasmie.dev-ingest` | hourly :07 | `run-ingest.sh` → `loop-ingest.py` appends scrubbed activity to `raw/<source>/YYYY-MM-DD.md`, one line to `log.md`; then `qmd update` + `qmd embed` so it's searchable |
-| `com.plasmie.dev-summarize` | hourly :15 | `summarize.sh` condenses today's `raw/{slack,claude,outlook}` into 4-8 bullets → `meta/digests/YYYY-MM-DD.md` (Apple on-device model first, local Gemma fallback; skipped if the input is unchanged) |
+| `com.plasmie.dev-summarize` | hourly :15 | `summarize.sh` condenses today's `raw/{slack,claude,outlook}` into 4-8 bullets → `meta/digests/YYYY-MM-DD.md` (Apple on-device model; map-reduce when the day doesn't fit its windowk; skipped if the input is unchanged) |
 | `com.plasmie.dev-improve` | hourly :17 | `plasmie-improve.py`: retag, regenerate `wiki/mocs/` + `index.md`, archive resolved drafts, prune raw past retention, close coverage gaps, add `## Related` links, propose duplicate merges, retire stale event notes |
-| `com.plasmie.dev-promote` | nightly 02:30 | `promote.sh` (local Gemma drafts) → `dedupe.py` → `promote-apply.py --auto` → `reindex.py` |
-| `com.plasmie.mlx-server` | on demand | Gemma server on `127.0.0.1:8091`, started/stopped by `gen.sh` via `mlx-ctl.sh` |
+| `com.plasmie.dev-promote` | nightly 02:30 | `promote.sh` (on-device map-reduce drafts) → `dedupe.py` → `promote-apply.py --auto` → `reindex.py` |
 | `plasmie-snapshot.sh` | daily 00:47 | commits the vault to its own git repo (pushes only if a remote exists); agent `com.plasmie.dev-snapshot` |
 
 ## Sources
@@ -35,9 +34,9 @@ Per-connector On/Off: `PLASMIE_DISABLED_SOURCES="github,confluence"` in `~/.plas
 
 ## Promote: propose → dedupe → auto-apply → reindex
 
-The model only *proposes*; deterministic Python does the rest, so a small local model suffices.
+The model only *proposes*; deterministic Python does the rest, so Apple's small on-device model suffices.
 
-1. `promote.sh` feeds yesterday+today's `raw/{slack,claude,outlook}` and the `raw/inbox` contents (scrubbed) to local Gemma → `meta/promotion-drafts/<date>.md`.
+1. `promote.sh` runs `promote_plan.py` over yesterday+today's raw activity (every enabled source) and the `raw/inbox` contents (scrubbed): chunked to the model's live context window, a few candidate notes per chunk, then the model picks the strongest and code folds duplicates → `meta/promotion-drafts/<date>.md`.
 2. `dedupe.py` tags each item with `Action:` (merge/create/move) and a `Near:` line via TF-IDF cosine against existing notes.
 3. `promote-apply.py --auto`: confident merge (cosine >= 0.45) merges into the nearest note; new notes are created **flat in `wiki/`** (the draft's `Target:` becomes a tag, `Source:` is carried into the note); borderline merges and refusals are **held** in `<date>.hold.md`. Then `reindex.py`.
 4. A notification reads `auto-promoted N · M held`.
@@ -62,7 +61,7 @@ Safe by construction: paths confined to the vault, bodies scrubbed (emails too),
 
 ## Logs
 
-`~/.plasmie/feed.log` (last 2000 lines), `logs/ingest-*.log` (14 days), `logs/audit-*.log` (90 days; summarize, promote, improve), `logs/transcript-*.log` and `logs/wire-*.log` (exact prompts to the local model), `launchd.log` (launchd-level errors only).
+`~/.plasmie/feed.log` (last 2000 lines), `logs/ingest-*.log` (14 days), `logs/audit-*.log` (90 days; summarize, promote, improve), `logs/transcript-*.log` (exact prompts to the on-device model), `launchd.log` (launchd-level errors only).
 
 ## Safety
 

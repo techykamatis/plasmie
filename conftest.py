@@ -24,7 +24,7 @@ os.environ["PLASMIE_LEGACY_ENV"] = os.path.join(_tmp, "no-such.env")
 # pointed at through $PLASMIE_FM_BIN, so tests exercise fm.py's actual subprocess
 # plumbing — spawning, JSON in/out, streamed deltas, timeouts — not a mock of it.
 # What it cannot prove is how the real model answers; that is the dry-run and
-# `plasmie-fm` smoke test's job (docs/decisions/0021).
+# `plasmie-fm` smoke test's job (docs/decisions/0025).
 
 import json
 import stat

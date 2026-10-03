@@ -13,7 +13,7 @@ dedupe.py and promote-apply.py consume — one item per '## ' heading:
     Source: <section label, e.g. "slack 2026-10-02", or raw/inbox/<file>>
 
 or exactly "Nothing to promote." A day is 30-100k tokens and the window 4-8k,
-so (ADR 0021):
+so (ADR 0025):
 
   map     each chunk (sized to the LIVE context window) -> at most 3 candidates;
           a candidate whose numbers/identifiers aren't in its chunk is dropped

@@ -27,7 +27,7 @@ decide / learn about X" and get a grounded answer, and the loop runs unattended.
 ## Positioning
 
 Fully local and personal: summarisation and answers run on-device (Apple
-Foundation Models, local Gemma fallback); the only network calls read his own
+Foundation Models, the only backend since ADR 0025); the only network calls read his own
 accounts. Unlike cloud agents (OpenAI dots, Meta Muse, Grok Bot) it never uploads
 the work record — it is a private memory, not a cloud coworker.
 

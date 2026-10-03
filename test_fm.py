@@ -5,7 +5,7 @@
 so these cover fm.py's subprocess plumbing end to end: probe mapping, streamed
 deltas, timeouts, error codes, audit and transcript. Facts only the real model
 can establish (that it answers, its live context size) are checked by the
-helper smoke test and the promote dry-run recorded in ADR 0021.
+helper smoke test and the promote dry-run recorded in ADR 0025.
 
 Usage:  pytest test_fm.py
 """

@@ -1,4 +1,4 @@
-"""promote_plan.py / promote_items.py: the on-device promote planner (ADR 0021).
+"""promote_plan.py / promote_items.py: the on-device promote planner (ADR 0025).
 
 The model is faked (fm.respond, or the plasmie-fm fake for the shell test); what is
 under test is everything deterministic around it: chunking real-shaped input,

@@ -53,7 +53,7 @@ qmd embeds. Write them well.
 **Ingest** (a new raw file appeared): read it, extract durable facts, and
 update/create the relevant `wiki/` pages — then link them. A single source may
 touch several wiki pages. The hourly loop does the *capture*; promotion into the
-wiki is nightly: `promote.sh` (local-Gemma drafts) → `dedupe.py` → `promote-apply.py --auto`
+wiki is nightly: `promote.sh` (on-device map-reduce drafts) → `dedupe.py` → `promote-apply.py --auto`
 (confident items filed into `wiki/`, borderline ones held as `*.hold.md` for human review
 in the menu-bar app, or `promote-apply.py <draft> --apply`).
 

@@ -2,7 +2,7 @@
 # Daily: Apple's on-device model drafts promotions from recent raw activity into a
 # review note, then dedupe + auto-apply. Text-in / text-out: promote_plan.py reads
 # yesterday+today's raw activity (every connector switched On) and raw/inbox drops
-# (scrubbed), map-reduces it to fit the model's live context window (ADR 0021), and
+# (scrubbed), map-reduces it to fit the model's live context window (ADR 0025), and
 # prints the draft body; this script owns the draft file, the audit and the apply.
 #
 #   promote.sh                  nightly run (writes meta/promotion-drafts/<today>.md)

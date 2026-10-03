@@ -45,7 +45,7 @@ spec and the checklist for verifying a seeded install.
 
 0. **Preflight.** Source `~/.claude/.env` and `~/.plasmie/config.env`.
    Print which sources are configured (token present) vs skipped (`plasmie-doctor.py` does this). Confirm qmd is
-   on PATH, the vault exists, and the mlx model is present. Do NOT fail on a
+   on PATH, the vault exists, and Apple Intelligence is on (`plasmie-fm --check`). Do NOT fail on a
    missing source — only fail if *zero* sources are available.
 
 1. **Choose the bootstrap window.** `PLASMIE_BOOTSTRAP_DAYS` — **30** (default; quick,
@@ -96,7 +96,7 @@ spec and the checklist for verifying a seeded install.
   logs are `0600`. Never send raw content to a cloud model.
 - **Don't hammer the machine.** The bootstrap crawl is heavier than an hourly run
   (30 days of Slack, a full Confluence pull, one-time model downloads). Respect
-  the thermal/load/RAM guard (`gen.sh`); if a summarize/promote step is deferred,
+  the thermal/load/RAM guard (`fm.machine_busy`); if a summarize/promote step is deferred,
   that's fine — the loop retries. Bound Slack to the API's page limits.
 - **Graceful degradation.** A source with no creds, or a transient API error,
   logs a note and is skipped — the bootstrap still completes for the rest.

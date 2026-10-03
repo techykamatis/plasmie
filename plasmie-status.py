@@ -125,24 +125,66 @@ def _source_ages(lines, now):
 
 source_ages = _source_ages(feed, datetime.datetime.now())
 
+# Reasons are what the island and window show: plain words and the next step, never a
+# log line (goal item 7).
+# feed.log marks failures as CODE-ERR (loop-ingest.py / run-ingest.sh)
+SOURCE_NAMES = {"SLACK": "Slack", "GH": "GitHub", "CONF": "Confluence", "MS": "Outlook",
+                "GIT": "your git folders", "AGENTCLI": "AgentCLI", "QMD": "vault search",
+                "TRUNC": "a source (too much at once; the rest comes next run)"}
+
+
+def _fm_problem():
+    """Apple Intelligence off / unsupported / helper missing: nothing summarizes, files or
+    answers without it, so it outranks everything else. None when fine or unknowable."""
+    try:
+        import fm
+        p = fm.probe()
+    except Exception:
+        return None
+    return None if p.get("available") in (True, None) else (p.get("hint") or p.get("detail"))
+
+
+def _keychain_notice():
+    try:
+        import keychain
+        if keychain.needs_migration():
+            return ("Plasmie couldn't save your sign-ins to the Keychain yet, so it's still reading them from "
+                    "your old settings file; everything keeps working. If Keychain Access won't accept your "
+                    "Mac password for the login keychain, choose Edit > Change Password for Keychain \"login\".")
+    except Exception:
+        pass
+    return ""
+
+
+def _names(srcs):
+    names = [SOURCE_NAMES.get(s, s) for s in sorted(set(srcs))]
+    return " and ".join(names) if len(names) < 3 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
 state, reason = "healthy", ""
-if is_running:
+fm_problem = _fm_problem()
+if fm_problem:
+    state, reason = "error", fm_problem
+elif is_running:
     state = "running"
 elif errors:
     state = "error"
-    reason = f"ingest: {', '.join(sorted(set(err_sources))) or f'{errors} error(s)'}"
+    who = _names(err_sources) if err_sources else "a source"
+    reason = (f"Couldn't reach {who} on the last run. I'll try again within the hour; if it keeps "
+              "happening, open Plasmie and press Test on that connector.")
 elif is_stale:
     state = "error"
-    reason = f"no ingest for {stale_min} min"
+    hours = max(1, round(stale_min / 60))
+    reason = (f"I haven't caught anything for {hours} hour{'s' if hours != 1 else ''}. If your Mac was "
+              "awake, open Plasmie and choose Run setup again.")
 elif pending:
     state = "pending"
-elif "skipped" in activity.lower():
-    state = "error"
-    reason = "Promote skipped"
+# a promote skipped because the Mac was busy retries on its own: not an error
 
 print(json.dumps({
     "state": state,
     "reason": reason,
+    "notice": _keychain_notice(),
     "errors": errors,
     "errorSources": sorted(set(err_sources)),
     "staleMinutes": stale_min,

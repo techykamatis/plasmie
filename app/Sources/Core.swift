@@ -10,7 +10,8 @@ import SwiftUI
 
 struct Status: Codable {
     var state = "healthy"
-    var reason = ""          // why we're in `state` (e.g. "ingest: CONF-ERR")
+    var reason = ""          // why we're in `state`, in plain words with the next step
+    var notice: String? = nil // something worth fixing that isn't an outage (Keychain)
     var pending = 0
     var pendingFile = ""
     var pendingItems = 0
@@ -132,6 +133,12 @@ func openInObsidian(_ path: String) {
     c.queryItems = [URLQueryItem(name: "path", value: path)]
     if let url = c.url, NSWorkspace.shared.open(url) { return }
     fireAndForget("/usr/bin/open", ["-a", "Obsidian", path])
+}
+/// Keychain Access lives in CoreServices on recent macOS (no longer in Utilities).
+func openKeychainAccess() {
+    let paths = ["/System/Library/CoreServices/Applications/Keychain Access.app",
+                 "/System/Applications/Utilities/Keychain Access.app"]
+    if let p = paths.first(where: { FileManager.default.fileExists(atPath: $0) }) { openExternal(p) }
 }
 func detectObsidian() -> Bool { NSWorkspace.shared.urlForApplication(withBundleIdentifier: "md.obsidian") != nil }
 

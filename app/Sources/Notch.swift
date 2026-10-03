@@ -110,9 +110,11 @@ struct NotchInfo {
     var attention: String? {
         if status == "error" { return reason.isEmpty ? "Something stopped working. Open Plasmie to see what." : reason }
         if pending > 0 { return "\(pending) item\(pending == 1 ? " is" : "s are") waiting for your review." }
-        return nil
+        return notice.isEmpty ? nil : notice
     }
+    var isNotice: Bool { status != "error" && pending == 0 && !notice.isEmpty }
     var vault = "", notes = ""
+    var notice = ""                   // worth fixing, not an outage (plasmie-status)
 
     var working: Bool { [.ingest, .summarize, .promote, .ask].contains(pipeline) }
     var word: String {
@@ -308,14 +310,18 @@ struct NotchView: View {
     // one button to the place that fixes it.
     private func attentionRow(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: info.status == "error" ? "exclamationmark.triangle.fill" : "tray.full.fill")
-                .foregroundStyle(info.status == "error" ? Color.red : Color.orange)
+            Image(systemName: info.status == "error" ? "exclamationmark.triangle.fill" : info.isNotice ? "key.fill" : "tray.full.fill")
+                .foregroundStyle(info.status == "error" ? Color.red : info.isNotice ? Color.yellow : Color.orange)
                 .accessibilityHidden(true)
             Text(text).font(.klLabel).foregroundStyle(.white)
                 .lineLimit(3).fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            NotchChip(title: info.status == "error" ? "Fix" : "Review", symbol: "arrow.up.forward.app",
-                      label: info.status == "error" ? "Open Plasmie to fix this" : "Open Plasmie to review", action: actions.openApp)
+            if info.isNotice {
+                NotchChip(title: "Fix", symbol: "key", label: "Open Keychain Access", action: openKeychainAccess)
+            } else {
+                NotchChip(title: info.status == "error" ? "Fix" : "Review", symbol: "arrow.up.forward.app",
+                          label: info.status == "error" ? "Open Plasmie to fix this" : "Open Plasmie to review", action: actions.openApp)
+            }
         }
         .accessibilityElement(children: .combine)
     }
@@ -464,7 +470,7 @@ private struct NotchRoot: View {
         let info = NotchInfo(hero: m.heroPlasmie, pipeline: m.plasmie, status: m.s.state, reason: m.s.reason,
                              stageName: m.stage?.name, accessory: m.stage?.accessory, fact: m.funFact,
                              activity: m.s.activity, celebrating: nm.bannerText, pending: m.s.pending,
-                             vault: m.s.vault, notes: m.s.notes)
+                             vault: m.s.vault, notes: m.s.notes, notice: m.s.notice ?? "")
         let mode = NotchMode.resolve(ask: nm.asking, answered: nm.answered, tour: nm.tourStep != nil, hover: nm.hovering, banner: nm.banner, working: info.working)
         NotchView(info: info, geo: geo, mode: mode, actions: actions, panelShift: nm.panelShift,
                   onTarget: { onMode(mode, $0) })

@@ -168,7 +168,13 @@ struct Panel: View {
                 openExternal("https://obsidian.md")
             }
         }
+        if m.s.state == "error", !m.s.reason.isEmpty {
+            banner(m.s.reason, symbol: "exclamationmark.triangle.fill", tint: .red) { SettingsController.shared.show() }
+        }
         if m.s.pending > 0 { held }
+        if let n = m.s.notice, !n.isEmpty {
+            banner(n, symbol: "key.fill", tint: .orange) { openKeychainAccess() }
+        }
     }
 
     // Opens Ask in the notch (the floating panel when the notch is off).

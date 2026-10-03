@@ -201,10 +201,20 @@ final class Model: ObservableObject {
     }
 
     /// New trophy: the hero plays `success` and the stage line names it for ~6s. No modal.
+    /// "New" = unlocked but never celebrated by THIS app. The hourly ingest usually records
+    /// an unlock first, so the engine's one-shot `newly` list is almost always empty here;
+    /// the app keeps its own seen-set instead (seeded silently on first launch).
     private func celebrate(_ r: Achievements) {
-        let fresh = (r.newly ?? []).filter { !celebrated.contains($0) }
+        let key = "plasmie.seenTrophies"
+        let unlocked = r.trophyList.filter { $0.unlocked == true }.map(\.id)
+        guard let seenList = UserDefaults.standard.stringArray(forKey: key) else {
+            UserDefaults.standard.set(unlocked, forKey: key)     // first launch: no backlog parade
+            return
+        }
+        let fresh = unlocked.filter { !seenList.contains($0) && !celebrated.contains($0) }
         guard let id = fresh.first else { return }
         celebrated.formUnion(fresh)
+        UserDefaults.standard.set(Array(Set(seenList).union(fresh)), forKey: key)
         celebrating = r.trophyList.first { $0.id == id }?.title ?? "Trophy"
         let mine = celebrating
         DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in

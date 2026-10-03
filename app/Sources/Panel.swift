@@ -111,6 +111,14 @@ struct Panel: View {
     // needs attention → Ask → actions → logs and audit-type lines last.
     // The menu (notch off) shows only what's needed so it fits any screen; everything else
     // is one click away in the Plasmie window, whose sidebar is the full column.
+    /// "0.9.0 (42)" from the bundle (set from ./VERSION at build time).
+    static let version: String = {
+        let i = Bundle.main.infoDictionary ?? [:]
+        let v = i["CFBundleShortVersionString"] as? String ?? "?"
+        let b = i["CFBundleVersion"] as? String ?? ""
+        return b.isEmpty || b == v ? v : "\(v) (\(b))"
+    }()
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             hero
@@ -123,6 +131,9 @@ struct Panel: View {
             Divider().padding(.horizontal, 12)
             ActionRow(title: "Quit Plasmie", symbol: "power", key: "q", compact: true) { NSApp.terminate(nil) }
                 .padding(.horizontal, 6).padding(.vertical, 3)
+            Text("Plasmie \(Self.version)").font(.klMeta).foregroundStyle(.tertiary)
+                .padding(.horizontal, 12).padding(.bottom, 8)
+                .textSelection(.enabled)
         }
         .frame(width: 320)
         // ⌘R: refresh has no row (status auto-refreshes every 60s) but keeps its shortcut;

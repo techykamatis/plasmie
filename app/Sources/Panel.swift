@@ -245,6 +245,8 @@ struct Panel: View {
                       detail: "Rebuild catalog & flag dead links · changes nothing") { m.reindexCheck() }
             ActionRow(title: "Copy diagnostics", symbol: "stethoscope",
                       detail: "A report to send when something's wrong · no notes or secrets") { copyDiagnostics() }
+            ActionRow(title: "Reset Plasmie…", symbol: "arrow.counterclockwise",
+                      detail: "Remove jobs, settings and logs · your notes stay") { ResetPlasmie.confirmAndRun(vault: m.s.vault) }
             ActionRow(title: "Show the tour", symbol: "sparkles", detail: "Where Plasmie lives and what it can do") {
                 NotchController.shared.startTour()
             }

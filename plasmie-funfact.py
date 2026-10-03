@@ -3,6 +3,7 @@
 
   plasmie-funfact.py          -> today's fact as JSON (stable for the day)
   plasmie-funfact.py --next   -> a different fact (the "Another" button)
+  --quote                -> skip Plasmie's voice; show the vault's words verbatim
 
 Facts quote the vault's own words (a note's one-line `description`, or a bullet from a
 past daily digest), so nothing is invented. Three kinds:
@@ -22,6 +23,7 @@ from pathlib import Path
 import paths
 
 STATE = Path(paths.LOOP_DIR) / ".funfacts.json"
+PHRASE_TIMEOUT = 12      # seconds; the card falls back to the quote rather than wait
 SEEN_MAX = 60
 KICKER = {"gotcha": "Watch out", "decision": "You decided", "pattern": "A pattern you spotted",
           "convention": "House rule", "concept": "Did you know?", "reference": "Handy to know"}
@@ -130,7 +132,57 @@ def pick(cands, today, seen, rng, nostalgia_first=True):
     return None
 
 
-def fact(vault, today=None, state=None, advance=False):
+# --- Plasmie's voice: an on-device rephrase that may not change the facts -------------------
+_SPECIFIC = re.compile(r"[A-Za-z0-9]*\d[A-Za-z0-9._/-]*|[A-Za-z0-9]+(?:[_./-][A-Za-z0-9]+)+")
+
+PROMPT = """You are Plasmie, a small friendly blob who keeps the user's work memories.
+Retell the fact below to the user in fresh, warm, plain words, like a friend reminding them.
+Rules:
+- One or two short sentences, under 30 words. No emoji, no hashtags, no quotation marks.
+- Rewrite it in your own words; do not copy the sentence with "You" stuck on the front.
+- Keep every name, number, version and identifier exactly as written.
+- Add nothing that is not in the fact: no new reasons, numbers, people, advice, jokes, puns or commentary.
+- Don't say when it happened (the card already shows that) and don't say "the note" or "the vault".
+
+Example fact: Helm release names must be DNS-1123 (no underscores).
+Plasmie says: Careful with Helm release names: they have to be DNS-1123, so underscores are a no-go.
+
+Example fact: Deployed v1.0.0-pilot-28 to production after the Redis ACL fix.
+Plasmie says: Remember this? v1.0.0-pilot-28 made it to production once the Redis ACL was fixed.
+
+Fact: {text}
+Plasmie says:"""
+
+
+def faithful(phrased, source):
+    """The rephrase may reword, never respecify: every number / identifier must be in the source."""
+    if not phrased or len(phrased) > 260:
+        return False
+    src = source.lower()
+    return all(tok.lower().strip("._/-") in src for tok in _SPECIFIC.findall(phrased))
+
+
+def _generate(prompt):
+    try:
+        import fm
+    except ImportError:
+        return None
+    return fm.generate(prompt, timeout=PHRASE_TIMEOUT, max_tokens=90, guard=False)
+
+
+def _voice(chosen, cache):
+    """(text, cache) — Plasmie's phrasing if it is faithful, else the quote. Cached per fact id."""
+    if chosen["id"] in cache:
+        return cache[chosen["id"]], cache
+    kind = {"on-this-day": "memory from this day", "milestone": "milestone"}.get(chosen["kind"], "useful thing you learned")
+    out = _generate(PROMPT.format(kind=kind, kicker=chosen["kicker"], text=chosen["quote"]))
+    out = (out or "").strip().strip('"').strip()
+    text = out if faithful(out, chosen["quote"] + " " + chosen.get("title", "")) else chosen["quote"]
+    cache = {**cache, chosen["id"]: text}
+    return text, dict(list(cache.items())[-SEEN_MAX:])
+
+
+def fact(vault, today=None, state=None, advance=False, phrase=False):
     today = today or dt.date.today()
     state = dict(state or {})
     seen = list(state.get("seen", []))
@@ -139,10 +191,14 @@ def fact(vault, today=None, state=None, advance=False):
     rng = random.Random(f"{today.isoformat()}:{len(seen) if advance else 0}")
     chosen = pick(candidates(vault, today), today, set(seen), rng,
                   nostalgia_first=not advance or len(seen) % 2 == 0)
+    cache = dict(state.get("phrased", {}))
     if chosen:
         chosen = {k: v for k, v in chosen.items() if k != "fresh"}
+        chosen["quote"] = chosen["text"]
+        if phrase:
+            chosen["text"], cache = _voice(chosen, cache)
         seen = (seen + [chosen["id"]])[-SEEN_MAX:]
-    return chosen, {"today": today.isoformat(), "current": chosen, "seen": seen}
+    return chosen, {"today": today.isoformat(), "current": chosen, "seen": seen, "phrased": cache}
 
 
 def main():
@@ -150,7 +206,8 @@ def main():
         state = json.loads(STATE.read_text())
     except (OSError, ValueError):
         state = {}
-    chosen, new_state = fact(paths.vault(), state=state, advance="--next" in sys.argv)
+    chosen, new_state = fact(paths.vault(), state=state, advance="--next" in sys.argv,
+                             phrase="--quote" not in sys.argv)
     if new_state != state:
         tmp = STATE.with_suffix(".tmp")
         tmp.write_text(json.dumps(new_state, indent=1))

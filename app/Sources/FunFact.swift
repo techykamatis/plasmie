@@ -5,7 +5,8 @@ struct FunFact: Codable, Equatable {
     var id: String?
     var kind: String?
     var kicker: String?
-    var text: String?
+    var text: String?          // Plasmie's phrasing (or the quote when phrasing wasn't faithful)
+    var quote: String?         // the vault's own words
     var title: String?
     var path: String?
     var date: String?
@@ -69,6 +70,7 @@ struct FunFactCardBody: View {
                 .transition(.opacity)
             }
             .buttonStyle(.plain)
+            .help(fact.quote.map { $0 == fact.text ? "Open the note in Obsidian" : "In your notes: \($0)" } ?? "Open the note in Obsidian")
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(fact.kicker ?? "Fun fact"): \(fact.text ?? ""). Opens the note in Obsidian.")
 

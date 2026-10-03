@@ -83,3 +83,39 @@ def test_month_math_skips_impossible_days():
 def test_empty_vault_returns_nothing(tmp_path):
     f, _ = F.fact(_vault(tmp_path), today=D(2026, 10, 3))
     assert f is None
+
+
+# --- Plasmie phrases the fact (on-device), but can't change it --------------------------
+
+def test_faithful_accepts_a_rephrase_with_the_same_specifics():
+    src = "Deployed v1.0.0-pilot-28 to production after the Redis ACL fix."
+    assert F.faithful("Remember shipping v1.0.0-pilot-28 to production once the Redis ACL was fixed?", src)
+
+
+def test_faithful_rejects_invented_numbers_or_identifiers():
+    src = "Tokens must be generated using 256 bits of randomness."
+    assert not F.faithful("Use 512 bits of randomness for tokens!", src)
+    assert not F.faithful("Tokens need 256 bits, via secrets.token_hex.", src)
+    assert not F.faithful("", src)
+
+
+def test_phrased_fact_keeps_the_quote_and_is_cached(tmp_path, monkeypatch):
+    v = _vault(tmp_path)
+    _note(v, "rds", "gotcha", "2026-07-03", "RDS storage only grows.")
+    calls = []
+    monkeypatch.setattr(F, "_generate", lambda p: calls.append(p) or "Heads up: RDS storage can only grow, never shrink!")
+    f, st = F.fact(v, today=D(2026, 10, 3), phrase=True)
+    assert f["text"] == "Heads up: RDS storage can only grow, never shrink!" and f["quote"] == "RDS storage only grows."
+    again, _ = F._voice(f, st["phrased"])                        # same fact id: no second model call
+    assert len(calls) == 1 and again == f["text"]
+
+
+def test_unfaithful_or_missing_phrasing_falls_back_to_the_quote(tmp_path, monkeypatch):
+    v = _vault(tmp_path)
+    _note(v, "tok", "gotcha", "2026-07-03", "Tokens must be generated using 256 bits of randomness.")
+    monkeypatch.setattr(F, "_generate", lambda p: "Always use 512 bits!")
+    f, _ = F.fact(v, today=D(2026, 10, 3), phrase=True)
+    assert f["text"] == f["quote"]
+    monkeypatch.setattr(F, "_generate", lambda p: None)
+    f, _ = F.fact(v, today=D(2026, 10, 3), state={}, phrase=True)
+    assert f["text"] == f["quote"]

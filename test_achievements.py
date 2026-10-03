@@ -100,3 +100,13 @@ def test_every_trophy_is_within_the_first_year_and_unique():
     assert len(ids) == len(set(ids)) and len(ids) >= 30
     assert all(t[5] <= 365 for t in A.TROPHIES if t[4] == "age")
     assert {t[2] for t in A.TROPHIES} == {"bronze", "silver", "gold"}
+
+
+def test_pattern_spotter_counts_only_plasmie_noticed_patterns(tmp_path):
+    v = _vault(tmp_path, ingest_days=["2026-07-02"])
+    (v / "wiki" / "mine.md").write_text("---\ntype: pattern\nsource: \"claude · 2026-08-01\"\ntimestamp: 2026-08-01T00:00:00Z\n---\n")
+    r, _ = A.evaluate(v, today=D(2026, 10, 3))
+    assert not _by_id(r)["pattern-spotter"]["unlocked"]
+    (v / "wiki" / "plasmie.md").write_text("---\ntype: pattern\nsource: \"Plasmie noticed · 4 days\"\ntimestamp: 2026-10-04T00:00:00Z\n---\n")
+    r, _ = A.evaluate(v, today=D(2026, 10, 4))
+    assert _by_id(r)["pattern-spotter"]["unlocked"] and _by_id(r)["pattern-spotter"]["date"] == "2026-10-04"

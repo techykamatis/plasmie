@@ -65,6 +65,8 @@ TROPHIES = [
     ("well-kept", "Well Kept", "silver", "50 tidy-ups of old raw files.", "prunes", 50, "wand.and.stars"),
     ("comeback", "Comeback Kid", "bronze", "Back after three or more quiet days.", "comebacks", 1, "arrow.uturn.backward.circle"),
     ("well-connected", "Well Connected", "silver", "The wiki averages 2+ links per note.", "links", 2, "link"),
+    ("pattern-spotter", "Pattern Spotter", "silver", "Plasmie noticed a pattern and you kept it.", "noticed", 1, "binoculars.fill"),
+    ("pattern-collector", "Pattern Collector", "gold", "10 patterns Plasmie noticed made it into your wiki.", "noticed", 10, "binoculars"),
     ("clean-bill", "Clean Bill", "silver", "No dead links and every recent note has a source.", "clean", 1, "checkmark.seal.fill"),
 ]
 
@@ -108,6 +110,17 @@ def _note_dates(vault):
         m = re.search(r"^timestamp:\s*(\d{4}-\d\d-\d\d)", f.read_text(errors="replace")[:600], re.M)
         dates.append(dt.date.fromisoformat(m.group(1)) if m else dt.date.fromtimestamp(f.stat().st_mtime))
     return sorted(dates)
+
+
+def _noticed_dates(vault):
+    """Pattern notes Plasmie drafted and you approved (their source says so)."""
+    out = []
+    for f in (Path(vault) / paths.WIKI).glob("*.md"):
+        head = f.read_text(errors="replace")[:800]
+        if re.search(r"^source:.*Plasmie noticed", head, re.M):
+            m = re.search(r"^timestamp:\s*(\d{4}-\d\d-\d\d)", head, re.M)
+            out.append(dt.date.fromisoformat(m.group(1)) if m else dt.date.today())
+    return sorted(out)
 
 
 def _ask_dates(vault):
@@ -184,7 +197,7 @@ def metrics(vault, today, born):
     for name, dates in (("ingests", ingests), ("promotes", sorted(set(promotes))), ("prunes", prunes),
                         ("notes", _note_dates(vault)), ("asks", _ask_dates(vault)),
                         ("gaps", _gap_dates(vault)), ("digests", _digest_dates(vault)),
-                        ("comebacks", _comebacks(ingests))):
+                        ("comebacks", _comebacks(ingests)), ("noticed", _noticed_dates(vault))):
         out[name] = nth(dates)
     streak = _best_streak(ingests)
     out["streak"] = (max(streak) if streak else 0, lambda n: streak.get(n))

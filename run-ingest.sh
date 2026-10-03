@@ -62,6 +62,8 @@ status "Ingested · ${summary:-done}"
 
 # trophies + evolution: cheap, read-only on the vault; notifies only on NEW unlocks
 "$SELF/.venv/bin/python3" "$SELF/plasmie-achievements.py" --notify >/dev/null 2>>"$LOG" || true
+# weekly (self-gated): draft recurring patterns for review — nothing reaches the wiki unapproved
+"$SELF/.venv/bin/python3" "$SELF/plasmie-patterns.py" >>"$LOG" 2>&1 || true
 
 # one summary line → rolling feed. Written AFTER indexing so a qmd failure lands
 # on the feed line too — `tail feed.log` is the one place failures get noticed.

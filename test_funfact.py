@@ -119,3 +119,11 @@ def test_unfaithful_or_missing_phrasing_falls_back_to_the_quote(tmp_path, monkey
     monkeypatch.setattr(F, "_generate", lambda p: None)
     f, _ = F.fact(v, today=D(2026, 10, 3), state={}, phrase=True)
     assert f["text"] == f["quote"]
+
+
+def test_patterns_plasmie_noticed_get_their_own_kicker(tmp_path):
+    v = _vault(tmp_path)
+    (v / "wiki" / "p.md").write_text('---\ntype: pattern\ntitle: "P"\ndescription: "Green main before tagging."\n'
+                                     'source: "Plasmie noticed · 4 days"\ntimestamp: 2026-06-01T00:00:00Z\n---\n')
+    f, _ = F.fact(v, today=D(2026, 10, 3))
+    assert f["kicker"] == "A pattern Plasmie noticed"

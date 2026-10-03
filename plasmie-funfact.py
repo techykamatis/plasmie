@@ -49,6 +49,7 @@ def _notes(vault):
             continue
         notes.append({"path": f"{paths.WIKI}/{f.name}", "title": fm.get("title", f.stem),
                       "text": re.sub(r"`([^`]*)`", r"\1", fm["description"]), "type": fm.get("type", "note"),
+                      "noticed": "Plasmie noticed" in fm.get("source", ""),
                       "date": dt.date.fromisoformat(m.group(1))})
     return notes
 
@@ -107,7 +108,8 @@ def candidates(vault, today):
     asked = _asked(vault)
     for n in notes:                                        # useful: knowledge you may have forgotten
         if n["type"] in RESURFACE_TYPES and (today - n["date"]).days >= 14:
-            out.append({"id": f"re:{n['path']}", "kind": "resurface", "kicker": KICKER[n["type"]],
+            kicker = "A pattern Plasmie noticed" if n["noticed"] else KICKER[n["type"]]
+            out.append({"id": f"re:{n['path']}", "kind": "resurface", "kicker": kicker,
                         "text": n["text"], "title": n["title"], "path": n["path"], "date": n["date"].isoformat(),
                         "fresh": n["path"] not in asked})
     if notes:

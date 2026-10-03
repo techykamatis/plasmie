@@ -26,5 +26,14 @@ The owner asked whether Plasmie could be a notch app. This Mac's built-in displa
   expanded 460×210, celebration 360×70; no-notch fallback pill 96×24.
 - Hover collapses 0.4 s after the pointer leaves; re-entering cancels it.
 
+## Revisions (owner feedback, same day)
+- Resting sits **beside** the notch on the left only (one 46 pt ear; the shape and panel
+  shift left), so the right side of the menu bar stays free.
+- **No status dot**: a green dot next to the notch reads as macOS's camera indicator, and
+  Plasmie's own shape/pose already is the status (raised hand = review, puddle = failing,
+  hourglass = busy, napping = quiet).
+- Opening tucks into the exact hardware notch, then pours **down** (height leads) and
+  spreads **out** (width follows); closing narrows, then rises back into the notch.
+
 ## Open question
 Whether the notch replaces the menu-bar icon is decided after the owner tries it.

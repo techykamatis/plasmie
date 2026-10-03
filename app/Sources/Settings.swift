@@ -57,23 +57,56 @@ enum ConfigStore {
 
 // MARK: - settings / first-run connector wizard
 
+/// Shared between the window delegate and the view, so closing the window (red
+/// button, Esc, ⌘W, Close) can ask the view whether there is anything unsaved.
+final class SettingsState {
+    var isDirty: () -> Bool = { false }
+    var save: () -> Void = {}
+}
+
 /// Shows the settings window. `firstRun` gives it a welcome header + "Finish"
 /// button; the menu opens it in plain edit mode.
-final class SettingsController {
+final class SettingsController: NSObject, NSWindowDelegate {
     static let shared = SettingsController()
     private var win: NSWindow?
+    private let state = SettingsState()
+
     func show(firstRun: Bool = false) {
         if let w = win { NSApp.activate(ignoringOtherApps: true); w.makeKeyAndOrderFront(nil); return }
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 680),
-                         styleMask: [.titled, .closable], backing: .buffered, defer: false)
+                         styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         w.title = firstRun ? "Set up connectors" : "Plasmie Settings"
-        w.center(); w.isReleasedWhenClosed = false; w.level = .floating
-        w.contentView = NSHostingView(rootView: SettingsView(firstRun: firstRun) { [weak self] in
-            self?.win?.orderOut(nil); self?.win = nil
-        })
+        w.center(); w.isReleasedWhenClosed = false
+        w.contentMinSize = NSSize(width: 520, height: 560)
+        w.delegate = self
+        w.contentView = NSHostingView(rootView: SettingsView(
+            firstRun: firstRun, state: state,
+            onDone: { [weak self] in self?.win?.close() },
+            onRequestClose: { [weak self] in self?.win?.performClose(nil) }))
         win = w
         NSApp.activate(ignoringOtherApps: true)
         w.makeKeyAndOrderFront(nil)
+    }
+
+    /// Unsaved edits get a Save / Discard / Cancel choice instead of vanishing.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard state.isDirty() else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Save your changes?"
+        alert.informativeText = "You have unsaved changes to the vault folder, connector fields or tokens."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Discard")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: state.save(); return true
+        case .alertThirdButtonReturn: return true
+        default: return false
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        win?.delegate = nil
+        win = nil
     }
 }
 
@@ -82,12 +115,19 @@ final class SettingsController {
 /// field keeps the existing value; you only ever type a *new* one.
 struct SettingsView: View {
     let firstRun: Bool
+    let state: SettingsState
     let onDone: () -> Void
+    let onRequestClose: () -> Void
 
     @StateObject private var conn = ConnectorsModel()
-    @State private var tab = 0
 
     private var loop: String { "\(NSHomeDirectory())/.plasmie" }
+
+    /// The non-secret fields as `load()` last read them — the dirty baseline.
+    private struct Fields: Equatable {
+        var vaultDir = "", jiraBase = "", jiraEmail = "", githubOrgs = "", gitRoots = ""
+    }
+    @State private var baseline = Fields()
 
     // non-secret (prefilled)
     @State private var vaultDir = ""
@@ -103,27 +143,32 @@ struct SettingsView: View {
     @State private var outlookLog = ""
     @State private var connecting = false
 
+    private var current: Fields {
+        Fields(vaultDir: vaultDir, jiraBase: jiraBase, jiraEmail: jiraEmail, githubOrgs: githubOrgs, gitRoots: gitRoots)
+    }
+    private var dirty: Bool { current != baseline || !slackToken.isEmpty || !jiraToken.isEmpty }
+
     var body: some View {
         VStack(spacing: 0) {
             titleBar
-            Picker("", selection: $tab) {
-                Text("Connectors").tag(0)
-                Text("Vault").tag(1)
-            }
-            .pickerStyle(.segmented).labelsHidden()
-            .padding(.horizontal, 20).padding(.bottom, 12)
             Divider()
             ScrollView {
-                Group {
-                    if tab == 0 { connectorsPage } else { vaultPage }
+                VStack(alignment: .leading, spacing: 28) {
+                    connectorsPage
+                    vaultPage
                 }
                 .padding(20)
             }
             Divider()
             footer
         }
-        .frame(width: 560, height: 680)
-        .onAppear { load(); conn.refresh() }
+        .frame(minWidth: 520, minHeight: 560)
+        .background(shortcuts)
+        .onAppear {
+            load(); conn.refresh()
+            state.isDirty = { dirty }
+            state.save = { save() }
+        }
     }
 
     // MARK: header / footer
@@ -132,14 +177,12 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 Image(nsImage: kLogo)
-                Text(firstRun ? "Set up your connectors" : "Settings")
-                    .font(.system(size: 16, weight: .semibold))
+                Text(firstRun ? "Set up your connectors" : "Settings").font(.klTitle)
                 Spacer()
             }
             if firstRun {
                 Text("Choose what Plasmie pulls into your vault. Everything here is optional and can be changed later from the menu.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .klNote()
             }
         }
         .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 12)
@@ -147,23 +190,40 @@ struct SettingsView: View {
 
     private var footer: some View {
         HStack {
-            if saved { Text("Saved ✓").font(.caption).foregroundStyle(.green) }
+            if dirty {
+                Text("Unsaved changes").font(.klMeta).foregroundStyle(.orange)
+            } else if saved {
+                Text("Saved ✓").font(.klMeta).foregroundStyle(.green)
+            }
             Spacer()
+            if !firstRun { Button("Close") { onRequestClose() } }
             Button(firstRun ? "Finish" : "Save") { save(); if firstRun { onDone() } }
                 .keyboardShortcut(.defaultAction)
-            if !firstRun { Button("Close") { onDone() } }
+                .disabled(!firstRun && !dirty)
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
     }
 
-    // MARK: connectors page
+    /// Invisible buttons that carry the window shortcuts: ⌘S, and Esc / ⌘W both
+    /// through the same dirty check as the Close button.
+    private var shortcuts: some View {
+        ZStack {
+            Button("Save") { if dirty { save() } }.keyboardShortcut("s", modifiers: .command)
+            Button("Close") { onRequestClose() }.keyboardShortcut("w", modifiers: .command)
+            Button("Cancel") { onRequestClose() }.keyboardShortcut(.cancelAction)
+        }
+        .opacity(0).allowsHitTesting(false).accessibilityHidden(true)
+    }
+
+    // MARK: connectors section
 
     private var connectorsPage: some View {
         VStack(alignment: .leading, spacing: 12) {
+            Text("Connectors").font(.klHeading)
             ConnectorsSummary(conn: conn)
             ForEach(Connector.all) { c in card(for: c) }
-            Text("On/Off switches apply immediately; token changes on Save. Both take effect from the next hourly ingest. Use Test to check a connector right now.")
-                .font(.system(size: 10.5)).foregroundStyle(.secondary)
+            Text("On/Off switches apply immediately; token and field changes apply on Save. Both take effect from the next hourly ingest. Use Test to check a connector right now.")
+                .klNote()
         }
     }
 
@@ -182,8 +242,7 @@ struct SettingsView: View {
                     TextField("fabrikam", text: $githubOrgs).textFieldStyle(.roundedBorder)
                 }
                 Text("Signed in with the `gh` CLI. An org you are not a member of fails every run — Test names it.")
-                    .font(.system(size: 10.5)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .klNote()
             }
         case "git":
             ConnectorCard(c: c, m: conn, onDisconnect: nil) {
@@ -191,8 +250,7 @@ struct SettingsView: View {
                     TextField("~/code", text: $gitRoots).textFieldStyle(.roundedBorder)
                 }
                 Text("Only commits authored by you, with a real explanation in the message — one-liners and mechanical chores are filtered out.")
-                    .font(.system(size: 10.5)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .klNote()
             }
         case "confluence":
             ConnectorCard(c: c, m: conn, onDisconnect: { disconnect(["JIRA_API_TOKEN": "", "CONFLUENCE_API_TOKEN": ""]) }) {
@@ -213,7 +271,7 @@ struct SettingsView: View {
                     Spacer()
                 }
                 if !outlookLog.isEmpty {
-                    Text(outlookLog).font(.system(size: 11, design: .monospaced))
+                    Text(outlookLog).font(.klMono)
                         .foregroundStyle(.secondary).textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -223,17 +281,16 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: vault page
+    // MARK: vault section
 
     private var vaultPage: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            group("Vault") {
-                labeled("Vault folder") { TextField("~/knowledge", text: $vaultDir).textFieldStyle(.roundedBorder) }
-                Text("Keep the vault on local disk. Background jobs cannot read from iCloud/OneDrive folders.")
-                    .font(.system(size: 10.5)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            group("Where things live") {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Vault").font(.klHeading)
+            labeled("Vault folder") { TextField("~/knowledge", text: $vaultDir).textFieldStyle(.roundedBorder) }
+            Text("Keep the vault on local disk. Background jobs cannot read from iCloud/OneDrive folders.")
+                .klNote()
+            Text("Where things live").font(.klLabel).foregroundStyle(.secondary).padding(.top, 4)
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
                 pathRow("Vault", conn.status.vault.isEmpty ? vaultDir : conn.status.vault)
                 pathRow("Loop", loop)
                 pathRow("Secrets", "\(NSHomeDirectory())/.claude/.env")
@@ -241,15 +298,21 @@ struct SettingsView: View {
         }
     }
 
-    @ViewBuilder private func pathRow(_ label: String, _ path: String) -> some View {
-        HStack(spacing: 6) {
-            Text(label).font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 54, alignment: .leading)
-            Text(path).font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
+    private func pathRow(_ label: String, _ path: String) -> some View {
+        GridRow {
+            Text(label).font(.klMeta).foregroundStyle(.secondary)
+            Text(path).font(.klMono).textSelection(.enabled)
                 .lineLimit(1).truncationMode(.middle)
-            Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
             Button {
-                openExternal((path as NSString).deletingLastPathComponent)
-            } label: { Image(systemName: "folder") }.buttonStyle(.borderless)
+                var isDir: ObjCBool = false
+                let target = FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
+                    ? path : (path as NSString).deletingLastPathComponent
+                openExternal(target)
+            } label: { Image(systemName: "folder") }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Show \(label) in Finder")
+                .help("Show \(label) in Finder")
         }
     }
 
@@ -257,13 +320,13 @@ struct SettingsView: View {
 
     @ViewBuilder private func group<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased()).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+            Text(title).font(.klHeading)
             content()
         }
     }
     @ViewBuilder private func labeled<C: View>(_ label: String, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.system(size: 11)).foregroundStyle(.secondary)
+            Text(label).font(.klMeta).foregroundStyle(.secondary)
             content()
         }
     }
@@ -276,6 +339,7 @@ struct SettingsView: View {
         jiraEmail = env["JIRA_EMAIL"] ?? ""
         githubOrgs = env["PLASMIE_GITHUB_ORGS"] ?? "fabrikam"
         gitRoots = env["PLASMIE_GIT_ROOTS"] ?? "~/code"
+        baseline = current
     }
 
     private func save() {

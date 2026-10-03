@@ -23,6 +23,8 @@ import re
 import sys
 from pathlib import Path
 
+import paths
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
@@ -140,7 +142,7 @@ def accepted(vault, row):
 
 
 def main():
-    vault = Path("~/knowledge").expanduser()
+    vault = Path(paths.vault())
     rows = collect(vault)
     merges = [r for r in rows if r["action"] == "merge" and r["score"] is not None]
     for r in merges:

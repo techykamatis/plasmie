@@ -128,7 +128,7 @@ def resolve_gaps(vault, write=True, threshold=None):
         except Exception:
             still_open.append(ln)
             continue
-        if hits and hits[0][0] >= thr:
+        if hits and hits[0][0] > thr:   # == floor is ask.py's gap boundary: need a margin
             score, note = hits[0]
             newly_closed.append(f"- {date.today().isoformat()} · closed ({score:.2f}) "
                                 f'"{m.group(1)}" — answered by {note["path"]}')
@@ -199,6 +199,11 @@ def prune_raw(vault, write=True, days=paths.RAW_RETENTION_DAYS):
 def remember(vault, line, write=True):
     """Append a dated line to the loop-memory log, creating it on first write."""
     mem = Path(vault) / MEMORY
+    if write and mem.exists():
+        last = next((ln for ln in reversed(mem.read_text(errors="replace").splitlines())
+                     if ln.startswith("- ")), "")
+        if last.split(" — ", 1)[-1] == line:     # same text as the previous entry: no new info
+            return ""
     entry = f"- {datetime.now().strftime('%Y-%m-%d %H:%M')} — {line}\n"
     if write:
         if not mem.exists():
@@ -208,6 +213,21 @@ def remember(vault, line, write=True):
         with mem.open("a") as fh:
             fh.write(entry)
     return entry
+
+
+LOG_CAP = 2_000_000   # bytes; dated logs rotate by name, these never do
+
+
+def cap_logs(d, cap=LOG_CAP):
+    """Trim launchd stdout/stderr logs (mlx-server.log, gen.err, …) to their newest
+    half once they pass `cap` — they are append-only and nothing else rotates them."""
+    for f in [*Path(d).glob("*.log"), *Path(d).glob("*.err")]:
+        try:
+            if f.stat().st_size > cap:
+                tail = f.read_bytes()[-(cap // 2):]
+                f.write_bytes(tail[tail.find(b"\n") + 1:])   # start on a whole line
+        except OSError:
+            pass
 
 
 def _audit(msg):
@@ -228,6 +248,7 @@ def _audit(msg):
         for old in d.glob("audit-*.log"):     # same 90d retention as summarize
             if (stamp - datetime.fromtimestamp(old.stat().st_mtime)).days > 90:
                 old.unlink()
+        cap_logs(d)
     except OSError:
         pass                                   # never let bookkeeping break the pass
 
@@ -562,7 +583,8 @@ def retire_stale(vault, write=True, days=RETIRE_AFTER_DAYS):
     return retired
 
 
-def run(vault="~/knowledge", write=True):
+def run(vault=None, write=True):
+    vault = vault or paths.vault()
     vault = str(Path(vault).expanduser())
     tagged = normalize_tags(vault, write=write)        # tags carry structure, so folders need not
     maps = reindex.mocs(vault, write=write)
@@ -659,6 +681,6 @@ if __name__ == "__main__":
         selfcheck()
     elif "--dry" in args:
         rest = [a for a in args if a != "--dry"]
-        run(rest[0] if rest else "~/knowledge", write=False)
+        run(rest[0] if rest else None, write=False)
     else:
-        run(args[0] if args else "~/knowledge")
+        run(args[0] if args else None)

@@ -91,6 +91,8 @@ def fetch_all(cql):
 
 
 def main():
+    if not paths.source_enabled("confluence"):   # the app's Off switch covers backfills too
+        sys.exit("confluence is switched off (PLASMIE_DISABLED_SOURCES) — switch it on to backfill")
     argv = sys.argv[1:]
     cql, rest, i = 'type=page and contributor = currentUser() order by lastmodified desc', [], 0
     while i < len(argv):
@@ -98,7 +100,7 @@ def main():
             cql = argv[i + 1]; i += 2
         else:
             rest.append(argv[i]); i += 1
-    vault = Path(rest[0] if rest else os.environ.get("PLASMIE_VAULT") or "~/knowledge").expanduser()
+    vault = Path(rest[0] if rest else os.environ.get("PLASMIE_VAULT") or paths.vault()).expanduser()
     outdir = vault / paths.RAW_CONFLUENCE
 
     print("fetching all pages…")

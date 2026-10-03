@@ -291,3 +291,62 @@ def test_structural_tags_never_enter_via_token_match():
 def test_sentence_like_candidate_is_rejected():
     _, new = KI.map_to_vocab(["how we handle failover in production"], PROMOTED, ALL_TAGS)
     assert new == []
+
+
+# --- 2026-10-03 audit regressions ---
+
+def _gap_vault(tmp_path):
+    (tmp_path / paths.GAPS).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / paths.GAPS).write_text(
+        '# Coverage gaps\n\n- 2026-07-02 · (0.00) "how do I bake sourdough bread?" — closest: (none)\n')
+    return tmp_path
+
+
+class _FakeAsk:
+    COVERAGE_MIN = 0.35
+
+    def __init__(self, score):
+        self.score = score
+
+    def qmd_hits(self, q, vault, k=1, collection=None):
+        return [(self.score, {"path": "wiki/unrelated.md"})]
+
+
+def test_gap_at_exact_floor_is_not_closed(tmp_path, monkeypatch):
+    """A hit scoring exactly COVERAGE_MIN is the ambiguous boundary ask.py calls a gap."""
+    v = _gap_vault(tmp_path)
+    monkeypatch.setattr(KI, "_load_ask", lambda: _FakeAsk(0.35))
+    assert KI.resolve_gaps(v, write=True) == []
+
+
+def test_gap_clearly_above_floor_is_closed(tmp_path, monkeypatch):
+    v = _gap_vault(tmp_path)
+    monkeypatch.setattr(KI, "_load_ask", lambda: _FakeAsk(0.36))
+    assert len(KI.resolve_gaps(v, write=False)) == 1
+
+
+def test_remember_skips_entry_identical_to_previous(tmp_path):
+    (tmp_path / "meta").mkdir()
+    KI.remember(tmp_path, "6 duplicate stub pair(s) awaiting review — 352 wiki notes")
+    KI.remember(tmp_path, "6 duplicate stub pair(s) awaiting review — 352 wiki notes")
+    KI.remember(tmp_path, "something else")
+    KI.remember(tmp_path, "6 duplicate stub pair(s) awaiting review — 352 wiki notes")
+    body = (tmp_path / paths.IMPROVE_LOG).read_text()
+    assert body.count("6 duplicate stub pair(s)") == 2
+    assert body.count("something else") == 1
+
+
+def test_vault_default_follows_paths_vault(monkeypatch):
+    monkeypatch.setenv("PLASMIE_VAULT", "/tmp/plasmie-test-vault")
+    assert paths.vault() == "/tmp/plasmie-test-vault"
+
+
+def test_cap_logs_trims_only_oversized_undated_logs(tmp_path):
+    """mlx-server.log reached 3.5 MB: launchd's stdout logs have no rotation."""
+    big = tmp_path / "mlx-server.log"
+    big.write_bytes(b"old\n" * 1000 + b"NEWEST\n")
+    small = tmp_path / "promote.log"
+    small.write_bytes(b"keep\n")
+    KI.cap_logs(tmp_path, cap=1000)
+    assert big.stat().st_size <= 1000 and big.read_bytes().endswith(b"NEWEST\n")
+    assert small.read_bytes() == b"keep\n"

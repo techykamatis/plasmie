@@ -102,10 +102,12 @@ def my_comments(full, num, is_pr, user):
 
 
 def main():
+    if not paths.source_enabled("github"):   # the app's Off switch covers backfills too
+        sys.exit("github is switched off (PLASMIE_DISABLED_SOURCES) — switch it on to backfill")
     argv = sys.argv[1:]
     if "--selftest" in argv:
         return selftest()
-    vault = Path(argv[0] if argv else os.environ.get("PLASMIE_VAULT") or "~/knowledge").expanduser()
+    vault = Path(argv[0] if argv else os.environ.get("PLASMIE_VAULT") or paths.vault()).expanduser()
     orgs = [o.strip() for o in os.environ.get("PLASMIE_GITHUB_ORGS", "fabrikam,Contoso").split(",") if o.strip()]
 
     who = gh("user", paginate=False)

@@ -191,7 +191,7 @@ if __name__ == "__main__":
         write = "--write" in args
         rest = [a for a in args if a != "--write"]
         draft = Path(rest[0]).expanduser()
-        vault = rest[1] if len(rest) > 1 else "~/knowledge"
+        vault = rest[1] if len(rest) > 1 else paths.vault()
         corpus, idf = build_corpus(vault)
         result = enrich(draft.read_text(errors="replace"), corpus, idf)
         if write:

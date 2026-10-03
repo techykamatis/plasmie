@@ -58,7 +58,8 @@ def _find_qmd():
 QMD = _find_qmd()
 QMD_TIMEOUT = 60
 # raw per-source dirs a temporal recap reads (+ the legacy combined journal)
-RECAP_DIRS = [paths.RAW_SLACK, paths.RAW_CLAUDE, paths.RAW_OUTLOOK, paths.RAW_JOURNAL]
+RECAP_DIRS = [paths.RAW_SLACK, paths.RAW_CLAUDE, paths.RAW_OUTLOOK, paths.RAW_GITHUB, paths.RAW_GIT,
+              paths.RAW_JOURNAL]
 # Coverage: qmd's top score below this means nothing in the vault really answers
 # the question — answer tentatively and log a gap. ponytail: tune against eval.py.
 COVERAGE_MIN = 0.35
@@ -293,8 +294,9 @@ def recap_journal(question, vault, window, on_chunk, done, unavailable):
     return answer, hits
 
 
-def ask(question, vault="~/knowledge", on_chunk=None):
+def ask(question, vault=None, on_chunk=None):
     """Retrieve, then stream an answer. on_chunk(text) receives answer tokens live."""
+    vault = vault or paths.vault()
     on_chunk = on_chunk or (lambda _t: None)
     unavailable = "(local model unavailable — showing the most relevant notes below)"
 
@@ -432,7 +434,7 @@ if __name__ == "__main__":
         print('usage: ask.py "your question" [VAULT]', file=sys.stderr)
         sys.exit(2)
     q = args[0]
-    vault = args[1] if len(args) > 1 else "~/knowledge"
+    vault = args[1] if len(args) > 1 else paths.vault()
     # Stream answer tokens straight to stdout as they arrive.
     answer, hits = ask(q, vault, on_chunk=lambda t: (sys.stdout.write(t), sys.stdout.flush()))
     if not answer.endswith("\n"):

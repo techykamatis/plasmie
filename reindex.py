@@ -9,7 +9,7 @@ Because index.md is fully generated, there's no manual curation to preserve — 
 new note appears in the catalog next run, no "Unfiled" holding pen needed.
 
 Usage:
-  reindex.py [VAULT]            # rewrite index.md (default ~/knowledge)
+  reindex.py [VAULT]            # rewrite index.md (default: paths.vault())
   reindex.py --check [VAULT]    # report only, write nothing
   reindex.py --selfcheck        # run the built-in test
 """
@@ -20,13 +20,15 @@ from pathlib import Path
 
 import paths
 
+PROVENANCE_FROM = "2026-09-17"   # notes stamped on/after this must cite a source (commit 7570696)
+
 
 def read_text(path, tries=4, delay=0.5):
     """Read a vault file, retrying transient OSErrors.
 
-    The vault is OneDrive-mirrored; when the loop rewrites a hot file OneDrive
-    briefly swaps the inode to upload it, so a read landing mid-sync gets
-    EPERM/"Operation not permitted". Retry rides it out.
+    Written when the vault was OneDrive-mirrored (a read mid-upload got EPERM).
+    The mirror is gone, but a read can still race the hourly ingest rewriting
+    the same file, so the retry stays.
     """
     for i in range(tries):
         try:
@@ -118,8 +120,43 @@ def mocs(vault, write=True, minimum=MOC_MIN):
     return keep
 
 
+_FENCE = re.compile(r"(?ms)^(```|~~~).*?^\1[^\n]*$|`[^`\n]*`")
+_WIKILINK = re.compile(r"\[\[([^\]\n]+)\]\]")
+_SOURCE_LINE = re.compile(r"(?im)^\W*source:")
+
+
+def lint(vault):
+    """(dead_wikilinks, missing_provenance) over wiki/ — the --check contract.
+
+    Dead: [[target]] whose basename (case-insensitive, #anchor and |alias stripped)
+    matches no vault .md. Code fences/inline code are ignored. Provenance: non-moc
+    wiki notes stamped >= PROVENANCE_FROM with neither a `source:`/`sources:`
+    frontmatter field nor a `Source:` line.
+    """
+    vault = Path(vault).expanduser()
+    stems = {p.stem.lower() for p in vault.rglob("*.md")}
+    dead, noprov = [], []
+    for p in sorted((vault / paths.WIKI).rglob("*.md")):
+        rel = p.relative_to(vault).as_posix()
+        text = read_text(p)
+        for raw in _WIKILINK.findall(_FENCE.sub("", text)):
+            t = raw.split("|")[0].split("#")[0].strip()
+            if t and Path(t).name.lower().removesuffix(".md") not in stems:
+                dead.append((rel, t))
+        if p.name == "index.md" or paths.MOCS in p.as_posix():
+            continue
+        fm = frontmatter(text)
+        if fm.get("timestamp", "")[:10] >= PROVENANCE_FROM and not (
+                "source" in fm or re.search(r"(?m)^sources:", text.split("\n---", 1)[0])
+                or _SOURCE_LINE.search(text)):
+            noprov.append(rel)
+    return dead, noprov
+
+
 def catalog(vault, write=True, maps=None):
     vault = Path(vault).expanduser()
+    if maps is None:   # standalone callers (CLI, promote-apply) still list the maps
+        maps = mocs(vault, write=False)
     sections, total, known = [], 0, set()
     all_md = list(vault.rglob("*.md"))
     known = {p.name for p in all_md}          # basenames, for dead-link resolution
@@ -155,7 +192,7 @@ def catalog(vault, write=True, maps=None):
     head = [
         "# Knowledge vault",
         "",
-        f"_Auto-generated catalog · {total} wiki notes across {len(sections)} categories._",
+        f"_Auto-generated catalog · {total} wiki notes \u00b7 {len(maps or {})} maps._",
         "",
         "`raw/` holds immutable sources (Slack, Claude sessions, Confluence, Outlook) — "
         "the loop appends, never edits. `wiki/` holds curated notes. `log.md` is the "
@@ -180,7 +217,7 @@ def catalog(vault, write=True, maps=None):
     if write:
         (vault / paths.INDEX).write_text(text)
 
-    print(f"catalog: {total} wiki notes, {len(sections)} categories")
+    print(f"catalog: {total} wiki notes \u00b7 {len(maps or {})} maps")
     if dead:
         print(f"DEAD LINKS ({len(dead)}) — fix by hand:")
         for src, tgt in dead[:20]:
@@ -188,6 +225,22 @@ def catalog(vault, write=True, maps=None):
     if not write:
         print("(--check: nothing written)")
     return total, sections, dead
+
+
+def check(vault):
+    """--check: catalog dry-run plus lint. Returns the process exit code (1 = findings)."""
+    vault = Path(vault).expanduser()
+    catalog(vault, write=False, maps=mocs(vault, write=False))
+    dead, noprov = lint(vault)
+    if dead:
+        print(f"DEAD WIKILINKS ({len(dead)}):")
+        for src, tgt in dead[:50]:
+            print(f"  {src} -> [[{tgt}]]")
+    if noprov:
+        print(f"NO PROVENANCE ({len(noprov)}) — stamped >= {PROVENANCE_FROM}, no source:")
+        for rel in noprov[:50]:
+            print(f"  {rel}")
+    return 1 if (dead or noprov) else 0
 
 
 def selfcheck():
@@ -219,6 +272,6 @@ if __name__ == "__main__":
         selfcheck()
     elif "--check" in args:
         rest = [a for a in args if a != "--check"]
-        catalog(rest[0] if rest else "~/knowledge", write=False)
+        sys.exit(check(rest[0] if rest else paths.vault()))
     else:
-        catalog(args[0] if args else "~/knowledge", write=True)
+        catalog(args[0] if args else paths.vault(), write=True)

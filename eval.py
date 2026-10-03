@@ -22,7 +22,9 @@ import sys
 import time
 from statistics import mean
 
-VAULT = "~/knowledge"
+import paths
+
+VAULT = paths.vault()
 QMD = os.environ.get("PLASMIE_QMD") or shutil.which("qmd") or "qmd"
 
 

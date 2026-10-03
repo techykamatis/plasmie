@@ -365,12 +365,12 @@ if __name__ == "__main__":
         selfcheck()
     elif "--auto" in args:
         rest = [a for a in args if a != "--auto"]
-        draft = rest[0] if rest else str(Path("~/knowledge").expanduser() / paths.DRAFTS / f"{date.today()}.md")
-        vault = rest[1] if len(rest) > 1 else "~/knowledge"
+        draft = rest[0] if rest else str(Path(paths.vault()) / paths.DRAFTS / f"{date.today()}.md")
+        vault = rest[1] if len(rest) > 1 else paths.vault()
         auto(draft, vault)
     else:
         apply = "--apply" in args
         rest = [a for a in args if a != "--apply"]
-        draft = rest[0] if rest else str(Path("~/knowledge").expanduser() / paths.DRAFTS / f"{date.today()}.md")
-        vault = rest[1] if len(rest) > 1 else "~/knowledge"
+        draft = rest[0] if rest else str(Path(paths.vault()) / paths.DRAFTS / f"{date.today()}.md")
+        vault = rest[1] if len(rest) > 1 else paths.vault()
         run(draft, vault, apply)

@@ -92,6 +92,24 @@ section { padding-block: clamp(48px, 8vw, 88px) 0; display: grid; gap: 18px; }
 .names { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 14px; }
 .names div { border-top: 2px solid var(--rule-strong); padding-top: 12px; display: grid; gap: 4px; }
 .names b { font: 800 1.6rem/1 var(--display); }
+.stages { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: 12px; }
+.stagecard { background: var(--surface); border: 1px solid var(--rule); border-radius: 18px; padding: 10px 12px 14px; display: grid; gap: 2px; text-align: center; min-width: 0; }
+.stagecard svg { width: 100%; height: 120px; overflow: visible; }
+.stagecard b { font: 800 1.1rem/1.1 var(--display); }
+.stagecard small { color: var(--ink-3); font-size: .82rem; }
+.stagecard.now { border: 2px solid var(--blush); }
+.stagecard .badge { justify-self: center; font: 700 .7rem/1 var(--text); letter-spacing: .08em; text-transform: uppercase; color: var(--surface); background: var(--blush); border-radius: 999px; padding: 4px 8px; margin-top: 4px; }
+.shelf-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+.shelf-head b { font: 800 1.5rem/1 var(--display); }
+.shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 10px; }
+.trophy { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 4px 12px; align-items: center; background: var(--surface); border: 1px solid var(--rule); border-radius: 14px; padding: 10px 12px; }
+.trophy .medal { grid-row: span 2; width: 46px; height: 46px; }
+.trophy b { font: 700 1rem/1.15 var(--display); color: var(--ink); }
+.trophy p { font-size: .84rem; line-height: 1.35; }
+.trophy .meta { grid-column: 2; font: 500 .74rem/1.2 var(--text); color: var(--ink-3); }
+.trophy.locked { opacity: .62; }
+.trophy .bar { grid-column: 2; height: 4px; border-radius: 4px; background: var(--rule); overflow: hidden; }
+.trophy .bar i { display: block; height: 100%; background: var(--blush); }
 footer { margin-top: 72px; padding-top: 18px; border-top: 1px solid var(--rule); font-size: .86rem; color: var(--ink-3); }
 footer code { font: 500 .82rem var(--mono); }
 
@@ -153,6 +171,21 @@ footer code { font: 500 .82rem var(--mono); }
     </div>
   </section>
 
+  <section aria-labelledby="h-evo">
+    <p class="eyebrow">Evolution</p>
+    <h2 id="h-evo">Plasmie grows with you</h2>
+    <p>Plasmie evolves as your memory grows. Each stage needs both time together and notes in the wiki, so it can't be rushed by waiting alone. Every stage adds one accessory.</p>
+    <div class="stages" id="stages"></div>
+  </section>
+
+  <section aria-labelledby="h-trophies">
+    <p class="eyebrow">Rewards</p>
+    <h2 id="h-trophies">Trophies for the first year</h2>
+    <div class="shelf-head" id="shelf-head"></div>
+    <p>Every trophy is earned from records the loop already keeps: log.md, the wiki, your questions, digests and the coverage-gap list. Milestones you hit before trophies existed keep their real date.</p>
+    <div class="shelf" id="shelf"></div>
+  </section>
+
   <section aria-labelledby="h-name">
     <p class="eyebrow">Name</p>
     <h2 id="h-name">Why Plasmie</h2>
@@ -168,6 +201,9 @@ footer code { font: 500 .82rem var(--mono); }
 
 <script>
 const DATA = /*SHAPES_JSON*/;
+const REPORT = /*REPORT_JSON*/;
+const STAGES_DEF = /*STAGES_JSON*/;
+const TIER = { bronze: "#C98A5B", silver: "#A7B1C2", gold: "#F2B83B" };
 const STATES = [
   ["idle", "Resting", "Between jobs", "Breathing quietly. Everything is flowing and nothing needs you."],
   ["ingest", "Catching", "Hourly at :07", "Opens wide to catch new activity: one coloured dot per source (Slack, GitHub, git…)."],
@@ -247,6 +283,37 @@ function drawFace(L, st, b, t) {
   }
 }
 
+/* Evolution accessories sit on the crown of whatever shape Plasmie is in. */
+function drawAccessory(L, acc, b) {
+  if (!acc || L.mode === "template") return;
+  const g = el("g", { class: "acc" }, L.face), cx = b.x + b.w / 2, top = b.y, ink = "var(--face)";
+  const S = { stroke: ink, "stroke-width": 1.8, "stroke-linejoin": "round", "stroke-linecap": "round" };
+  if (acc === "eggshell") {
+    el("path", { d: `M${cx - 17},${top + 7} Q${cx - 15},${top - 12} ${cx},${top - 13} Q${cx + 15},${top - 12} ${cx + 17},${top + 7} L${cx + 12},${top + 2} L${cx + 7},${top + 8} L${cx + 2},${top + 2} L${cx - 3},${top + 8} L${cx - 8},${top + 2} L${cx - 13},${top + 8}Z`, fill: "#FFF7EC", ...S }, g);
+  } else if (acc === "leaf") {
+    el("path", { d: `M${cx},${top + 3} Q${cx - 1},${top - 6} ${cx + 2},${top - 11}`, fill: "none", ...S }, g);
+    el("ellipse", { cx: cx - 5, cy: top - 12, rx: 7, ry: 3.6, transform: `rotate(-28 ${cx - 5} ${top - 12})`, fill: "#6CC18E", ...S }, g);
+    el("ellipse", { cx: cx + 8, cy: top - 14, rx: 7, ry: 3.6, transform: `rotate(24 ${cx + 8} ${top - 14})`, fill: "#6CC18E", ...S }, g);
+  } else if (acc === "glasses") {
+    const ey = b.y + Math.min(b.h * 0.42, b.h - 14), gap = Math.min(b.w * 0.17, 13);
+    for (const s of [-1, 1]) el("circle", { cx: cx + s * gap, cy: ey, r: 7.6, fill: "#ffffff", "fill-opacity": .22, ...S, "stroke-width": 2 }, g);
+    el("path", { d: `M${cx - gap + 7.6},${ey} Q${cx},${ey - 3} ${cx + gap - 7.6},${ey}`, fill: "none", ...S }, g);
+  } else if (acc === "mortarboard") {
+    el("path", { d: `M${cx - 12},${top - 3} V${top + 5} Q${cx},${top + 9} ${cx + 12},${top + 5} V${top - 3}Z`, fill: ink, ...S }, g);
+    el("path", { d: `M${cx - 25},${top - 6} L${cx},${top - 15} L${cx + 25},${top - 6} L${cx},${top + 3}Z`, fill: ink, ...S }, g);
+    el("path", { d: `M${cx},${top - 6} Q${cx + 14},${top - 4} ${cx + 19},${top + 1} V${top + 11}`, fill: "none", stroke: "var(--spark)", "stroke-width": 1.8, "stroke-linecap": "round" }, g);
+    el("circle", { cx: cx + 19, cy: top + 12, r: 2.4, fill: "var(--spark)" }, g);
+  } else if (acc === "wizard-hat") {
+    el("path", { d: `M${cx - 18},${top + 3} Q${cx - 4},${top - 18} ${cx + 9},${top - 34} Q${cx + 6},${top - 16} ${cx + 18},${top + 3}Z`, fill: ink, ...S }, g);
+    el("ellipse", { cx, cy: top + 3, rx: 24, ry: 4.5, fill: ink, ...S }, g);
+    for (const [x, y, r] of [[cx - 4, top - 8, 2.6], [cx + 5, top - 18, 2], [cx + 3, top - 3, 1.6]])
+      el("path", { d: `M${x},${y - r} L${x + r * .35},${y - r * .35} L${x + r},${y} L${x + r * .35},${y + r * .35} L${x},${y + r} L${x - r * .35},${y + r * .35} L${x - r},${y} L${x - r * .35},${y - r * .35}Z`, fill: "var(--spark)" }, g);
+  } else if (acc === "crown") {
+    el("path", { d: `M${cx - 17},${top + 3} L${cx - 18},${top - 11} L${cx - 9},${top - 3} L${cx},${top - 15} L${cx + 9},${top - 3} L${cx + 18},${top - 11} L${cx + 17},${top + 3}Z`, fill: "var(--spark)", ...S }, g);
+    for (const x of [cx - 9, cx, cx + 9]) el("circle", { cx: x, cy: top - 1, r: 1.8, fill: "var(--blush)" }, g);
+  }
+}
+
 function drawProps(L, st, b, T) {
   L.prop.replaceChildren();
   const f = DATA.faces[st], cx = b.x + b.w / 2;
@@ -318,6 +385,7 @@ function shape(L, t) {
     L.hi.setAttribute("fill", "var(--body-hi)");
   }
   drawFace(L, st, L.box, t);
+  drawAccessory(L, L.acc, L.box);
   if (L.mode === "template") L.face.querySelectorAll("*").forEach(n => { n.setAttribute("fill", n.getAttribute("fill") === "none" ? "none" : "var(--knock)"); if (n.getAttribute("stroke")) n.setAttribute("stroke", "var(--knock)"); });
 }
 
@@ -332,6 +400,7 @@ function morph(L, to, ms = 320) {
 
 /* build */
 const stage = makePlasmie(el("svg", { "aria-hidden": "true" }, document.getElementById("stage")), "color");
+stage.acc = REPORT.stage.accessory;
 const caption = document.getElementById("caption"), chipsEl = document.getElementById("chips");
 let auto = true, idx = 0;
 function show(i, fromUser) {
@@ -371,6 +440,33 @@ for (const id of ["bar-light", "bar-dark"]) {
 document.getElementById("swatches").innerHTML = SWATCHES.map(([n, v, hex, role]) =>
   `<div class="swatch"><i style="background:var(${v})"></i><div><b>${n}</b><code>${hex}</code><small>${role}</small></div></div>`).join("");
 document.getElementById("dots").innerHTML = DOTS.map(([n, c]) => `<span class="dot"><i style="background:${c}"></i>${n}</span>`).join("");
+
+const stagesEl = document.getElementById("stages");
+for (const s of STAGES_DEF) {
+  const now = s.id === REPORT.stage.id;
+  const card = document.createElement("article"); card.className = "stagecard" + (now ? " now" : "");
+  const svg = el("svg", { role: "img", "aria-label": `Plasmie as ${s.name}` }, card);
+  const req = s.days === 0 ? "From day one" : `${s.days} days · ${s.notes.toLocaleString()} notes`;
+  card.insertAdjacentHTML("beforeend", `<b>${s.name}</b><small>${req}</small>${now ? '<span class="badge">Plasmie now</span>' : ""}`);
+  stagesEl.appendChild(card);
+  const L = makePlasmie(svg, "color"); L.state = "idle"; L.acc = s.accessory; L.pts = DATA.shapes.idle.map(q => q.slice());
+  sprites.push(L);
+}
+const nx = REPORT.stage.next;
+document.getElementById("shelf-head").innerHTML = `<b>${REPORT.unlockedCount} of ${REPORT.total}</b><span>unlocked · Plasmie is ${REPORT.ageDays} days old` +
+  (nx ? ` · ${nx.name} in ${nx.days} days and ${nx.notes} notes` : "") + `</span>`;
+const fmt = d => new Date(d + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+const medal = (tier, locked) => `<svg class="medal" viewBox="0 0 46 46" aria-hidden="true">
+  <path d="M14 2 L20 18 L23 14 L26 18 L32 2Z" fill="${locked ? "var(--rule-strong)" : "var(--blush)"}"/>
+  <circle cx="23" cy="27" r="16" fill="${locked ? "var(--rule)" : TIER[tier]}" stroke="var(--face)" stroke-width="1.6"/>
+  <circle cx="23" cy="27" r="11" fill="none" stroke="${locked ? "var(--rule-strong)" : "#fff"}" stroke-opacity=".55" stroke-width="1.4"/>
+  <path d="M23 20 l2.2 4.6 5 .7 -3.6 3.5 .9 5 -4.5 -2.4 -4.5 2.4 .9 -5 -3.6 -3.5 5 -.7z" fill="${locked ? "var(--rule-strong)" : "#fff"}" fill-opacity=".9"/></svg>`;
+document.getElementById("shelf").innerHTML = REPORT.trophies.map(t => `
+  <div class="trophy${t.unlocked ? "" : " locked"}">${medal(t.tier, !t.unlocked)}
+    <b>${t.name}</b><p>${t.description}</p>
+    ${t.unlocked ? `<span class="meta">${t.tier[0].toUpperCase() + t.tier.slice(1)} · ${fmt(t.date)}</span>`
+      : `<span class="bar" aria-label="${Math.round(t.progress * 100)} percent"><i style="width:${Math.round(t.progress * 100)}%"></i></span>`}
+  </div>`).join("");
 
 show(0, false);
 let last = 0;

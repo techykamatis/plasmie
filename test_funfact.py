@@ -18,9 +18,16 @@ _spec.loader.exec_module(F)
 D = dt.date
 
 
-def _note(v, name, typ, date, desc):
+def _note(v, name, typ, date, desc, title=None, tags="", body="body"):
     (v / "wiki" / f"{name}.md").write_text(
-        f'---\ntype: {typ}\ntitle: "{name.title()}"\ndescription: "{desc}"\ntimestamp: {date}T00:00:00Z\n---\nbody\n')
+        f'---\ntype: {typ}\ntitle: "{title or name.title()}"\ndescription: "{desc}"\n'
+        f'tags: [{tags}]\ntimestamp: {date}T00:00:00Z\n---\n{body}\n')
+
+
+def _orbit(v, n=4):
+    """A project hub: >=3 notes whose filenames start with `orbit-` (the vault's own convention)."""
+    for i in range(n):
+        _note(v, f"orbit-thing-{i}", "note", "2026-05-01", f"Orbit thing number {i} works.", title=f"Orbit thing {i}", tags="orbit")
 
 
 def _vault(tmp_path):
@@ -41,10 +48,11 @@ def test_on_this_day_wins_and_quotes_the_description(tmp_path):
 def test_digest_lines_are_cleaned_and_dated(tmp_path):
     v = _vault(tmp_path)
     (v / "meta" / "digests" / "2026-09-03.md").write_text(
-        "---\ntype: note\n---\n# Digest\n*   Deployed `v1.0.0-pilot-28` to production after the Redis ACL fix (`1068dd3b`).\n*   short\n")
+        "---\ntype: note\n---\n# Digest\n*   **Redis ACL fix:** Deployed `v1.0.0-pilot-28` to production after the Redis ACL fix (`1068dd3b`).\n*   short\n")
     f, _ = F.fact(v, today=D(2026, 10, 3))
     assert f["kicker"] == "A month ago today"
-    assert f["text"] == "Deployed v1.0.0-pilot-28 to production after the Redis ACL fix."
+    assert f["quote"] == "Deployed v1.0.0-pilot-28 to production after the Redis ACL fix."
+    assert f["text"] == "Redis ACL fix · " + f["quote"]          # bare verb up front: the subject leads
 
 
 def test_resurface_prefers_notes_never_asked_about(tmp_path):
@@ -112,13 +120,13 @@ def test_phrased_fact_keeps_the_quote_and_is_cached(tmp_path, monkeypatch):
 
 def test_unfaithful_or_missing_phrasing_falls_back_to_the_quote(tmp_path, monkeypatch):
     v = _vault(tmp_path)
-    _note(v, "tok", "gotcha", "2026-07-03", "Tokens must be generated using 256 bits of randomness.")
+    _note(v, "tok", "gotcha", "2026-07-03", "Tokens must be generated using 256 bits of randomness.", title="Tokens")
     monkeypatch.setattr(F, "_generate", lambda p: "Always use 512 bits!")
     f, _ = F.fact(v, today=D(2026, 10, 3), phrase=True)
     assert f["text"] == f["quote"]
     monkeypatch.setattr(F, "_generate", lambda p: None)
     f, _ = F.fact(v, today=D(2026, 10, 3), state={}, phrase=True)
-    assert f["text"] == f["quote"]
+    assert f["text"] == f["quote"]               # the quote already names its subject ("Tok")
 
 
 def test_patterns_plasmie_noticed_get_their_own_kicker(tmp_path):
@@ -127,3 +135,122 @@ def test_patterns_plasmie_noticed_get_their_own_kicker(tmp_path):
                                      'source: "Plasmie noticed · 4 days"\ntimestamp: 2026-06-01T00:00:00Z\n---\n')
     f, _ = F.fact(v, today=D(2026, 10, 3))
     assert f["kicker"] == "A pattern Plasmie noticed"
+
+
+# --- context: every fact names its subject --------------------------------------------
+
+def test_note_fact_carries_project_and_title_context(tmp_path):
+    v = _vault(tmp_path)
+    _orbit(v)
+    _note(v, "orbit-leave-balance", "gotcha", "2026-07-03", "Totals are recomputed nightly.",
+          title="Leave balance calculation", tags="orbit, leave", body="# Leave\n\nBalances come from the accrual job.")
+    c = next(c for c in F.candidates(v, D(2026, 10, 3)) if c["id"] == "otd:wiki/orbit-leave-balance.md")
+    assert c["context"] == "Orbit · Leave balance calculation" and c["project"] == "Orbit"
+    assert "accrual job" in c["body"] and not c["body"].startswith("#")
+
+
+def test_note_without_a_project_uses_its_title_as_context(tmp_path):
+    v = _vault(tmp_path)
+    _note(v, "rds", "gotcha", "2026-07-03", "Storage only grows.", title="RDS storage")
+    f, _ = F.fact(v, today=D(2026, 10, 3))
+    assert f["context"] == "RDS storage" and f["project"] == ""
+
+
+def test_context_less_digest_bullet_is_dropped(tmp_path):
+    v = _vault(tmp_path)
+    (v / "meta" / "digests" / "2026-09-03.md").write_text(
+        "# Digest\n*   Rendering time was dramatically reduced via dedicated resource allocation and queue optimization.\n")
+    assert F.candidates(v, D(2026, 10, 3)) == []
+
+
+def test_digest_label_with_an_identifier_becomes_the_context(tmp_path):
+    v = _vault(tmp_path)
+    (v / "meta" / "digests" / "2026-09-03.md").write_text(
+        "# Digest\n*   **Video Rendering (`self-hosted-hyperframes`):** Rendering time fell from 32.2s to 5.7s via queue optimization.\n"
+        "*   **Blocker:** Something about the thing is blocked right now for no reason at all.\n")
+    cs = F.candidates(v, D(2026, 10, 3))
+    assert len(cs) == 1                                   # the generic "Blocker:" label names nothing
+    assert cs[0]["context"] == "Video Rendering (self-hosted-hyperframes)"
+    assert cs[0]["text"].startswith("Rendering time fell from 32.2s to 5.7s")
+
+
+def test_digest_bullet_borrows_the_context_of_a_close_wiki_note(tmp_path):
+    v = _vault(tmp_path)
+    _orbit(v)
+    _note(v, "orbit-leave-accrual", "note", "2026-05-02",
+          "Leave accrual job recalculates employee leave balances every night at midnight",
+          title="Leave accrual job", tags="orbit")
+    (v / "meta" / "digests" / "2026-09-03.md").write_text(
+        "# Digest\n*   Employee leave balances were recalculated by the nightly accrual job at midnight.\n")
+    cs = [c for c in F.candidates(v, D(2026, 10, 3)) if c["id"].startswith("otd-digest")]
+    assert [c["context"] for c in cs] == ["Orbit · Leave accrual job"]
+
+
+def test_digest_bullet_borrows_a_sibling_bullets_subject(tmp_path):
+    v = _vault(tmp_path)
+    for i in range(3):
+        _note(v, f"frappe-x{i}", "note", "2026-05-01", f"Frappe thing {i}.", title=f"Frappe thing {i}")
+    (v / "meta" / "digests" / "2026-09-03.md").write_text(
+        "# Digest\n*   **Frappe Workflow Status:** Approval states now follow the leave request lifecycle correctly.\n"
+        "*   Leave request lifecycle approval states were verified against the staging approval queue.\n")
+    ctxs = [c["context"] for c in F.candidates(v, D(2026, 10, 3)) if c["id"].startswith("otd-digest")]
+    assert ctxs == ["Frappe Workflow Status", "Frappe Workflow Status"]
+
+
+# --- clarity filter ------------------------------------------------------------------
+
+def test_clarity_rejects_bare_verbs_and_unresolved_pronouns():
+    ctx = ["orbit", "leave"]
+    for bad in ("Identified a race in the queue worker.", "Successfully shipped it.", "Confirmed the fix holds.",
+                "It was fixed after the rollback.", "This was caused by a stale lock.", "The team decided to wait."):
+        assert not F.clear_text(bad, ctx), bad
+    assert F.clear_text("In Orbit, leave balances are recomputed nightly.", ctx)
+    assert not F.clear_text("Totals are recomputed nightly.", ctx)             # subject missing entirely
+
+
+def test_quote_mode_prefixes_the_subject_only_when_the_quote_lacks_it(tmp_path):
+    v = _vault(tmp_path)
+    _orbit(v)
+    _note(v, "orbit-leave-balance", "gotcha", "2026-07-03", "Totals are recomputed nightly.",
+          title="Leave balance calculation", tags="orbit")
+    f, _ = F.fact(v, today=D(2026, 10, 3))
+    assert f["text"] == "Orbit · Totals are recomputed nightly." and f["quote"] == "Totals are recomputed nightly."
+
+
+def test_prompt_gets_context_block_and_guard_checks_context_too(tmp_path, monkeypatch):
+    v = _vault(tmp_path)
+    _orbit(v)
+    _note(v, "orbit-leave-balance", "gotcha", "2026-07-03", "Totals are recomputed nightly.",
+          title="Leave balance v2 calculation", tags="orbit", body="Balances come from the accrual job.")
+    prompts = []
+    monkeypatch.setattr(F, "_generate", lambda p: prompts.append(p) or "For Orbit leave balance v2 calculation, balances are recomputed nightly.")
+    f, _ = F.fact(v, today=D(2026, 10, 3), phrase=True)
+    assert "Context:" in prompts[0] and "Leave balance v2 calculation" in prompts[0] and "accrual job" in prompts[0]
+    assert f["text"].startswith("For Orbit leave balance v2")        # "v2" is only in the context: allowed
+
+
+def test_unclear_phrasing_falls_back_to_the_subject_prefixed_quote(tmp_path, monkeypatch):
+    v = _vault(tmp_path)
+    _orbit(v)
+    _note(v, "orbit-leave-balance", "gotcha", "2026-07-03", "Totals are recomputed nightly.",
+          title="Leave balance calculation", tags="orbit")
+    monkeypatch.setattr(F, "_generate", lambda p: "Confirmed that totals are recomputed nightly.")
+    f, _ = F.fact(v, today=D(2026, 10, 3), phrase=True)
+    assert f["text"] == "Orbit · Totals are recomputed nightly."
+
+
+def test_old_context_less_phrasings_are_not_reused(tmp_path, monkeypatch):
+    v = _vault(tmp_path)
+    _note(v, "rds", "gotcha", "2026-07-03", "RDS storage only grows.")
+    old = {"today": "2026-10-03", "current": {"id": "otd:wiki/rds.md", "text": "old"}, "seen": [],
+           "phrased": {"otd:wiki/rds.md": "old phrasing"}}
+    monkeypatch.setattr(F, "_generate", lambda p: "Heads up: RDS storage can only grow.")
+    f, _ = F.fact(v, today=D(2026, 10, 3), state=old, phrase=True)
+    assert f["text"] == "Heads up: RDS storage can only grow." and "context" in f
+
+
+def test_a_bare_identifier_in_the_text_is_not_a_subject(tmp_path):
+    v = _vault(tmp_path)
+    (v / "meta" / "digests" / "2026-09-03.md").write_text(
+        "# Digest\n*   `docker:release` confirmed success, with the production image built and pushed.\n")
+    assert F.candidates(v, D(2026, 10, 3)) == []

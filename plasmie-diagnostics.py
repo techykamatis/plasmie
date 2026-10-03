@@ -33,6 +33,21 @@ def clean(s: str) -> str:
     return redact(s, emails=True).replace(HOME, "~")
 
 
+_ASSIGN = re.compile(r"\b([A-Z][A-Z0-9_]{2,})=\S+")
+_QUOTED = re.compile(r"(['\"])[^'\"]{20,}\1")
+
+
+def clean_stderr(s: str) -> str | None:
+    """launchd.log is raw stderr: a shell error echoes the offending line of a sourced
+    env file (secrets), a traceback can quote content. Drop env-file echoes, hide every
+    KEY=value, mask long quoted strings, cap the length. None = drop the line."""
+    if ".env" in s or "export " in s:
+        return None
+    s = _ASSIGN.sub(r"\1=«hidden»", clean(s))
+    s = _QUOTED.sub("«quoted text hidden»", s)
+    return s[:200]
+
+
 def run(cmd: list[str], timeout: int = 60) -> str:
     try:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
@@ -109,12 +124,13 @@ def config_keys() -> list[str]:
     return rows
 
 
-def tail(path: Path, n: int) -> list[str]:
+def tail(path: Path, n: int, scrub=clean) -> list[str]:
     try:
         lines = path.read_text(errors="replace").splitlines()
     except OSError:
         return [f"({path.name} missing)"]
-    return [clean(line) for line in lines[-n:]]
+    kept = [c for c in (scrub(line) for line in lines) if c is not None]
+    return kept[-n:]
 
 
 def audit_tail(n: int = 15) -> list[str]:
@@ -131,7 +147,7 @@ def report() -> str:
         ("Config", config_keys()),
         ("Recent ingests (feed.log)", tail(Path(paths.DATA_DIR) / "feed.log", TAIL["feed.log"])),
         ("Recent jobs (audit log)", audit_tail()),
-        ("launchd.log", tail(Path(paths.LOG_DIR) / "launchd.log", TAIL["launchd.log"])),
+        ("launchd.log (errors, masked)", tail(Path(paths.LOG_DIR) / "launchd.log", TAIL["launchd.log"], clean_stderr)),
     ]
     out = [f"Plasmie diagnostics · {datetime.now():%Y-%m-%d %H:%M}",
            "No notes, messages or secrets are included.", ""]

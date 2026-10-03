@@ -149,7 +149,7 @@ enum PlasmiePaths {
     static let home = "\(NSHomeDirectory())/Library/Application Support/Plasmie"
     static let logs = "\(NSHomeDirectory())/Library/Logs/Plasmie"
     static let config = "\(home)/config.env"
-    /// The bundled engine. Dev override: `defaults write com.plasmie.legacy plasmie.engine <checkout>`.
+    /// The bundled engine. Dev override: `defaults write com.plasmie.app plasmie.engine <checkout>`.
     static var engine: String {
         if let o = UserDefaults.standard.string(forKey: "plasmie.engine"), !o.isEmpty {
             return (o as NSString).expandingTildeInPath

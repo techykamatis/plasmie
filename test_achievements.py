@@ -9,6 +9,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 _spec = importlib.util.spec_from_file_location("plasmie_achievements", HERE / "plasmie-achievements.py")
@@ -102,19 +104,20 @@ def test_every_trophy_is_within_the_first_year_and_unique():
     assert {t[2] for t in A.TROPHIES} == {"bronze", "silver", "gold"}
 
 
-def test_pattern_spotter_counts_only_plasmie_noticed_patterns(tmp_path):
+def test_pattern_spotter_counts_only_patterns_plasmie_noticed(tmp_path):
     v = _vault(tmp_path, ingest_days=["2026-07-02"])
     (v / "wiki" / "mine.md").write_text("---\ntype: pattern\nsource: \"claude · 2026-08-01\"\ntimestamp: 2026-08-01T00:00:00Z\n---\n")
     r, _ = A.evaluate(v, today=D(2026, 10, 3))
     assert not _by_id(r)["pattern-spotter"]["unlocked"]
-    (v / "wiki" / "plasmie.md").write_text("---\ntype: pattern\nsource: \"Plasmie noticed · 4 days\"\ntimestamp: 2026-10-04T00:00:00Z\n---\n")
+    (v / "wiki" / "noticed.md").write_text("---\ntype: pattern\nsource: \"Plasmie noticed · 4 days\"\ntimestamp: 2026-10-04T00:00:00Z\n---\n")
     r, _ = A.evaluate(v, today=D(2026, 10, 4))
     assert _by_id(r)["pattern-spotter"]["unlocked"] and _by_id(r)["pattern-spotter"]["date"] == "2026-10-04"
 
 
-def test_patterns_noticed_before_the_rename_still_count(tmp_path):
+@pytest.mark.parametrize("name", ["Plasmie", "Plasmie"])
+def test_patterns_noticed_before_the_rename_still_count(tmp_path, name):
     v = _vault(tmp_path, ingest_days=["2026-07-02"])
-    (v / "wiki" / "old.md").write_text("---\ntype: pattern\nsource: \"Plasmie noticed · 3 days\"\ntimestamp: 2026-10-03T00:00:00Z\n---\n")
+    (v / "wiki" / "old.md").write_text(f"---\ntype: pattern\nsource: \"{name} noticed · 3 days\"\ntimestamp: 2026-10-03T00:00:00Z\n---\n")
     r, _ = A.evaluate(v, today=D(2026, 10, 4))
     assert _by_id(r)["pattern-spotter"]["unlocked"]
 

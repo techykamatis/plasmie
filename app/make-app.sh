@@ -125,7 +125,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <plist version="1.0"><dict>
   <key>CFBundleName</key><string>Plasmie</string>
   <key>CFBundleDisplayName</key><string>Plasmie</string>
-  <key>CFBundleIdentifier</key><string>com.plasmie.legacy</string>
+  <key>CFBundleIdentifier</key><string>com.plasmie.app</string>
   <key>CFBundleVersion</key><string>${BUILD_NO}</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundlePackageType</key><string>APPL</string>

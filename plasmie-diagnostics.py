@@ -26,7 +26,7 @@ from scrub import redact  # noqa: E402
 
 HOME = str(Path.home())
 TAIL = {"feed.log": 10, "launchd.log": 25}           # metadata lines, newest last
-JOB_PREFIXES = ("com.plasmie.knowledge", "com.plasmie.mlx", "com.plasmie.")
+JOB_PREFIXES = ("com.plasmie.knowledge", "com.plasmie.mlx", "com.plasmie.", "com.plasmie.")   # older labels too
 
 
 def clean(s: str) -> str:
@@ -71,7 +71,7 @@ def app_version() -> str:
 def system() -> list[str]:
     chip = run(["sysctl", "-n", "machdep.cpu.brand_string"], 5).strip() or platform.machine()
     free = shutil.disk_usage(HOME).free // 2**30
-    return [f"Plasmie      {app_version()}",
+    return [f"Plasmie    {app_version()}",
             f"macOS      {platform.mac_ver()[0]} · {chip}",
             f"Python     {platform.python_version()}",
             f"Disk free  {free} GB"]

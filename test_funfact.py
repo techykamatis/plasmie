@@ -9,6 +9,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 _spec = importlib.util.spec_from_file_location("plasmie_funfact", HERE / "plasmie-funfact.py")
@@ -129,10 +131,11 @@ def test_unfaithful_or_missing_phrasing_falls_back_to_the_quote(tmp_path, monkey
     assert f["text"] == "Throwback from your notes on Tokens: " + f["quote"]    # never a bare quote
 
 
-def test_patterns_plasmie_noticed_get_their_own_kicker(tmp_path):
+@pytest.mark.parametrize("name", ["Plasmie", "Plasmie", "Plasmie"])   # earlier names still count
+def test_patterns_plasmie_noticed_get_their_own_kicker(tmp_path, name):
     v = _vault(tmp_path)
     (v / "wiki" / "p.md").write_text('---\ntype: pattern\ntitle: "P"\ndescription: "Green main before tagging."\n'
-                                     'source: "Plasmie noticed · 4 days"\ntimestamp: 2026-06-01T00:00:00Z\n---\n')
+                                     f'source: "{name} noticed · 4 days"\ntimestamp: 2026-06-01T00:00:00Z\n---\n')
     f, _ = F.fact(v, today=D(2026, 10, 3))
     assert f["kicker"] == "A pattern Plasmie noticed"
 

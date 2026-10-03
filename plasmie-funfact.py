@@ -85,7 +85,7 @@ def _notes(vault):
         notes.append({"path": f"{paths.WIKI}/{f.name}", "title": fm.get("title", f.stem), "tags": tags,
                       "body": _body(raw), "text": re.sub(r"`([^`]*)`", r"\1", fm["description"]),
                       "type": fm.get("type", "note"),
-                      "noticed": any(n in fm.get("source", "") for n in ("Plasmie noticed", "Plasmie noticed")),
+                      "noticed": any(n in fm.get("source", "") for n in ("Plasmie noticed", "Plasmie noticed", "Plasmie noticed")),
                       "date": dt.date.fromisoformat(m.group(1))})
     return notes
 

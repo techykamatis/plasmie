@@ -7,6 +7,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let overlay = OverlayController.shared
     private var hotKey: HotKey?
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Data migrations (versioned, idempotent): an upgrade over an older install brings the
+        // data along before anything reads it. Cheap when there's nothing to do.
+        if backendReady() {
+            DispatchQueue.global(qos: .utility).async {
+                _ = runCapture(PlasmiePaths.python, [PlasmiePaths.script("plasmie-migrate.py")], timeout: 600)
+            }
+        }
         NotchController.shared.start(model: .shared)   // here, not on the menu-bar label: that is hidden while the notch is on
         ICloudSync.shared.start()                       // off unless turned on in the Plasmie window
         hotKey = HotKey { [weak self] in self?.overlay.toggle() }

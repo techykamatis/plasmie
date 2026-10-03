@@ -55,8 +55,7 @@ else ok "all prerequisites present"; fi
 say "2/8 · Vault location"
 # Keep the vault on the local disk. A cloud folder (OneDrive/iCloud) lives under
 # ~/Library/CloudStorage, which macOS blocks background helpers from reading —
-# it would silently break the loop. Guard against picking one here; OneDrive
-# sync is offered separately below as a safe one-way copy.
+# it would silently break the loop. Guard against picking one here.
 while :; do
   VAULT="$(ask "Where should your notes live? (a normal folder on this Mac — not a cloud folder)" "$HOME/knowledge")"
   VAULT="${VAULT/#\~/$HOME}"
@@ -65,23 +64,12 @@ while :; do
       warn "That's a cloud-synced folder. The background helpers can't read there, so the loop would break." ;;
     *) break ;;
   esac
-  warn "Please pick a regular folder on your Mac. (You can sync a copy to OneDrive in the next step.)"
+  warn "Please pick a regular folder on your Mac."
 done
-printf 'VAULT_DIR="%s"\n' "$VAULT" > "$SELF/config.env"   # quoted: safe for paths with spaces
+# upsert, never overwrite: config.env also holds the app's connector On/Off switches
+{ grep -v '^VAULT_DIR=' "$SELF/config.env" 2>/dev/null || true; printf 'VAULT_DIR="%s"\n' "$VAULT"; } > "$SELF/config.env.tmp" \
+  && mv "$SELF/config.env.tmp" "$SELF/config.env"   # quoted: safe for paths with spaces
 ok "vault → $VAULT  (saved to config.env)"
-
-# 2b) optional OneDrive sync — local stays the original; OneDrive gets a copy ---
-OD="$(ls -d "$HOME/Library/CloudStorage/OneDrive"* 2>/dev/null | head -1)"
-if [ -n "$OD" ] && yes "Also keep a synced copy in OneDrive, so you can read your notes on other devices?"; then
-  MDEST="$(ask "Which OneDrive folder for the copy?" "$OD/AI Labs/knowledge")"
-  MDEST="${MDEST/#\~/$HOME}"
-  printf 'MIRROR_DEST="%s"\n' "$MDEST" >> "$SELF/config.env"
-  ok "OneDrive copy → $MDEST  (updated every hour)"
-  warn "If your notes don't show up in OneDrive within an hour, macOS needs one grant:"
-  warn "  System Settings ▸ Privacy & Security ▸ Full Disk Access ▸ add /bin/bash and turn it on."
-else
-  [ -z "$OD" ] && warn "OneDrive not found — skipping cloud sync (your notes still work fine locally)."
-fi
 
 # 3) scaffold vault -----------------------------------------------------------
 say "3/8 · Scaffold vault"
@@ -102,11 +90,11 @@ fi
 # 5) python env + MLX ---------------------------------------------------------
 say "5/8 · Python environment (MLX)"
 [ -d "$SELF/.venv" ] && ok ".venv exists" || { "$PY312" -m venv "$SELF/.venv"; ok "created .venv"; }
-if "$VENV_PY" -c "import mlx_vlm, mlx_embeddings" 2>/dev/null; then ok "mlx-vlm + mlx-embeddings installed"
-else warn "installing mlx-vlm + mlx-embeddings (pulls mlx + mlx-lm)…"; "$SELF/.venv/bin/pip" -q install mlx-vlm mlx-embeddings && ok "installed" || warn "install failed — local model won't serve"; fi
+if "$VENV_PY" -c "import mlx_vlm" 2>/dev/null; then ok "mlx-vlm installed"
+else warn "installing mlx-vlm (pulls mlx + mlx-lm)…"; "$SELF/.venv/bin/pip" -q install mlx-vlm && ok "installed" || warn "install failed — local model won't serve"; fi
 
 # 6) local models -------------------------------------------------------------
-say "6/8 · Local models (generation + search)"
+say "6/8 · Local models (generation) + retrieval"
 # 6a · generation model — mlx Gemma (used by summarize/promote and the ask answer)
 MODEL="$SELF/models/gemma-4-e4b"
 if [ -f "$MODEL/config.json" ]; then
@@ -120,30 +108,23 @@ else
   warn "skipped — promote/summarize skip until the model is present (see models/README.md)"
 fi
 
-# 6b · search model — EmbeddingGemma in-process via MLX (ungated, no server).
-# The ask feature's semantic search uses this; without it ask.py falls back to
-# weaker keyword matching and can't tell when the vault doesn't cover a question.
-EMBED_MODEL="mlx-community/embeddinggemma-300m-bf16"
-if "$VENV_PY" -c "from mlx_embeddings.utils import load; load('$EMBED_MODEL')" 2>/dev/null; then
-  ok "search model (embeddinggemma) present"
-elif yes "Download the search model now? (~600 MB, no account needed)"; then
-  warn "downloading embeddinggemma…"
-  "$VENV_PY" -c "from mlx_embeddings.utils import load; load('$EMBED_MODEL')" \
-    && ok "search model ready" || warn "download interrupted — re-run install.sh to resume"
-else
-  warn "skipped — ask falls back to keyword search until the model is downloaded"
-fi
+# 6b · retrieval — qmd (Node) indexes the vault and serves search to ask.py + the
+# MCP. It fetches its own embedding model; nothing to download here.
+command -v qmd >/dev/null && ok "qmd present" \
+  || warn "qmd not found — retrieval needs it: npm install -g @tobilu/qmd (Node 22+)"
 
 # 7) background loops — detect already-installed agents -----------------------
 say "7/8 · Background loops (launchd)"
 DOMAIN="gui/$(id -u)"; loaded=0
-for l in com.plasmie.dev-ingest com.plasmie.dev-summarize com.plasmie.dev-promote com.plasmie.mlx-server; do
-  launchctl print "$DOMAIN/$l" >/dev/null 2>&1 && loaded=$((loaded + 1))
+total=0   # launchd/*.plist IS the manifest — never a hand-kept list
+for t in "$SELF"/launchd/*.plist; do
+  total=$((total + 1))
+  launchctl print "$DOMAIN/$(basename "$t" .plist)" >/dev/null 2>&1 && loaded=$((loaded + 1))
 done
-if [ "$loaded" -ge 4 ]; then
-  ok "agents already installed ($loaded/4 loaded)"
+if [ "$loaded" -ge "$total" ]; then
+  ok "agents already installed ($loaded/$total loaded)"
   yes "Refresh them (re-point to this install)?" && { "$SELF/launchd/install.sh" && ok "refreshed"; }
-elif yes "Install the ingest + summarize + promote agents${loaded:+ ($loaded/4 currently loaded)}?"; then
+elif yes "Install the background agents ($loaded/$total currently loaded)?"; then
   "$SELF/launchd/install.sh" && ok "agents installed"
 else warn "skipped — run launchd/install.sh later"; fi
 
@@ -160,8 +141,6 @@ say "You're all set"
 echo "  Ask anything:  press ⌃⌥⌘K, type a question about your notes."
 echo "  Menu bar:      look for the brain icon at the top of your screen."
 echo "  Your notes:    $VAULT  (open it in Obsidian: File ▸ Open folder as vault)"
-grep -q '^MIRROR_DEST=' "$SELF/config.env" 2>/dev/null && \
-  echo "  OneDrive sync: a copy is mirrored hourly for your other devices."
 echo
 echo "  Slack ingest is optional — add a token to ~/.claude/.env any time to turn it on."
 echo "  Run this wizard again whenever you like; it only does what's still needed."

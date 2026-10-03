@@ -19,8 +19,11 @@ VENV="$LOOP/.venv"
 PY="$VENV/bin/python3"
 MODEL_DIR="$LOOP/models/gemma-4-e4b"
 
-# make node/npm/qmd reachable even under the app's bare GUI PATH
-for d in "$HOME"/.nvm/versions/node/*/bin /opt/homebrew/bin /usr/local/bin; do
+# make node/npm/qmd reachable even under the app's bare GUI PATH. Each dir is
+# PREPENDED, so the last one wins: nvm goes last. qmd's better-sqlite3 is a native
+# module built for one Node ABI; homebrew node (v26) loading an nvm-built (v22)
+# install dies with ERR_DLOPEN_FAILED.
+for d in /usr/local/bin /opt/homebrew/bin "$HOME"/.nvm/versions/node/*/bin; do
   [ -d "$d" ] && PATH="$d:$PATH"
 done
 export PATH

@@ -27,7 +27,7 @@ for m in "$LOOP"/*.py "$LOOP"/*.sh "$LOOP"/launchd "$LOOP"/vault-template; do
   cp -R "$m" "$BACKEND/"
 done
 shopt -u nullglob
-rm -f "$BACKEND/test_pipeline.py" "$BACKEND/install.sh"   # dev-only / brew-based
+rm -f "$BACKEND"/test_*.py "$BACKEND/install.sh"   # dev-only / brew-based
 say "bundled backend ($(ls "$BACKEND" | wc -l | tr -d ' ') items)"
 
 # standalone Python 3.12 (bare; mlx-vlm is pip-installed on first run). Cached

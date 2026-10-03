@@ -30,7 +30,9 @@ plasmie_secrets() {
   [ -n "${PLASMIE_KEYCHAIN:-}" ] && [ ! -f "$PLASMIE_KEYCHAIN" ] && return 0
   for k in $PLASMIE_SECRETS; do
     [ -n "${!k:-}" ] && continue
-    v="$(/usr/bin/security find-generic-password -s Plasmie -a "$k" -w ${PLASMIE_KEYCHAIN:+"$PLASMIE_KEYCHAIN"} 2>/dev/null)" || continue
+    # perl's alarm = a 10 s cap (macOS has no `timeout`): a keychain prompt nobody can
+    # answer must never hang a background job
+    v="$(/usr/bin/perl -e 'alarm 10; exec @ARGV' /usr/bin/security find-generic-password -s Plasmie -a "$k" -w ${PLASMIE_KEYCHAIN:+"$PLASMIE_KEYCHAIN"} 2>/dev/null)" || continue
     [ -n "$v" ] && export "$k=$v"
   done
   return 0

@@ -19,12 +19,6 @@ work is from 2026-10-03. Product truth lives in `/PRODUCT.md`, the visual system
 | [0009](0009-achievements.md) | Evolutions and trophies earned from existing records | Accepted |
 | [0010](0010-quality-gates.md) | Quality gates the pipeline enforces on itself | Accepted |
 | [0011](0011-app-structure.md) | App files by surface, shared tokens, rename to Plasmie | Accepted |
-| [0021](0021-secrets-in-keychain.md) | Credentials in the login Keychain, via /usr/bin/security only | Accepted |
-| [0022](0022-opt-in-connectors.md) | Connectors are opt-in; nothing about the owner is a default | Accepted |
-
-## Design
-| # | Decision | Status |
-|---|---|---|
 | [0012](0012-brand-plasmie-shape-shifter.md) | Plasmie, a soft blob whose shape is the status | Accepted |
 | [0013](0013-geometry-sdf-48-anchors.md) | SDF primitives sampled to 48 anchors, one generator | Accepted |
 | [0014](0014-palette-and-face.md) | Brain pink with a berry face; no literal brain cue | Accepted |
@@ -34,8 +28,14 @@ work is from 2026-10-03. Product truth lives in `/PRODUCT.md`, the visual system
 | [0018](0018-motion-language.md) | Glide and pop, with fun physics | Accepted |
 | [0019](0019-notch-prototype.md) | Plasmie in the notch | Experimental |
 | [0020](0020-rename-plasmie.md) | Rename: Plasmie (app and mascot) | Accepted |
+| [0021](0021-secrets-in-keychain.md) | Credentials in the login Keychain, via /usr/bin/security only | Accepted |
 | [0022](0022-install-layout-and-vault-safety.md) | Install like a Mac app; the vault is never put at risk | Accepted |
 | [0023](0023-icloud-mirror.md) | iCloud sync: a one-way mirror the app runs | Accepted |
+| [0024](0024-opt-in-connectors.md) | Connectors are opt-in; nothing about the owner is a default | Accepted |
+
+## Design
+| # | Decision | Status |
+|---|---|---|
 
 ## Adding a record
 Copy the shape of any file above, take the next number, and add a row here. Supersede

@@ -1,4 +1,4 @@
-# 0022 · Connectors are opt-in; nothing about the owner is a default
+# 0024 · Connectors are opt-in; nothing about the owner is a default
 
 - **Status:** Accepted · 2026-10-04
 - **Area:** Product, privacy

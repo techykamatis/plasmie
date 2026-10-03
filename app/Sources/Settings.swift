@@ -43,7 +43,10 @@ enum ConfigStore {
         for (k, v) in kv {
             lines.removeAll { matches($0, k) }        // drop any existing definition
             if !v.isEmpty {
-                lines.append((exportPrefix ? "export " : "") + k + "=" + (quoted ? "\"\(v)\"" : v))
+                // Single quotes: bash sources this file, so "$(...)" or a backtick typed into
+                // a field must stay text. An apostrophe is written as '\'' (shell-standard).
+                let safe = "'" + v.replacingOccurrences(of: "'", with: "'\\''").replacingOccurrences(of: "\n", with: " ") + "'"
+                lines.append((exportPrefix ? "export " : "") + k + "=" + (quoted ? safe : v))
             }
         }
         var out = lines.joined(separator: "\n").trimmingCharacters(in: .newlines)

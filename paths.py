@@ -51,6 +51,8 @@ def read_config(path=CONFIG):
                 v = v.strip()
                 if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
                     v = v[1:-1]
+                    if raw.strip().split("=", 1)[1].strip().startswith("'"):
+                        v = v.replace("'\\''", "'")          # shell-escaped apostrophe
                 out[k.strip()] = v
     except OSError:
         pass

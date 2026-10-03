@@ -26,5 +26,6 @@ physics but in a fun way". This **replaces** the earlier "no bounce/elastic" rul
   dampingFraction: 0.58)`; `jelly` = `interpolatingSpring(stiffness: 180, damping: 9)`.
 - Body morphs interpolate in polar form around the centroid, so very different shapes
   (star ↔ hourglass) never fold through themselves; no intermediate keyframe needed.
-- The notch opens by tucking into the exact hardware notch (~90 ms, invisible) and then
-  popping out; it closes by gliding back into the notch before the resting ears return.
+- The notch island is one shape on one spring, hung from the top edge: it pops down and
+  out of the black notch (spring 0.36/0.72) and glides back (0.3 s). Corner radii are a
+  function of the shape's current height, so they always fit mid-animation.

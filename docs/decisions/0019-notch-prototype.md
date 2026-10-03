@@ -32,8 +32,15 @@ The owner asked whether Plasmie could be a notch app. This Mac's built-in displa
 - **No status dot**: a green dot next to the notch reads as macOS's camera indicator, and
   Plasmie's own shape/pose already is the status (raised hand = review, puddle = failing,
   hourglass = busy, napping = quiet).
-- Opening tucks into the exact hardware notch, then pours **down** (height leads) and
-  spreads **out** (width follows); closing narrows, then rises back into the notch.
+- ~~Opening tucks into the exact hardware notch, then pours down (height leads) and
+  spreads out (width follows).~~ Superseded after screen recordings showed it glitching:
+  the tuck was a separate `.notch` mode whose content vanished and whose radii snapped
+  small while the shape was still large (a square-cornered black slab on every close), and
+  the timer-chained phases flickered under fast hover. Now: **one fixed-size panel** (the
+  union of all mode rects, so the window never resizes mid-animation), **geometric hover**
+  (pointer polled at 30 Hz against the target rect; click-through outside it), and **one
+  spring** on the shape from its resting size, which already includes the notch, so it
+  still grows out of the black notch. Radii derive from the drawn rect.
 
 ## Open question
 Whether the notch replaces the menu-bar icon is decided after the owner tries it.

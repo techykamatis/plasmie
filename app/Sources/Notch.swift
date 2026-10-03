@@ -36,20 +36,17 @@ struct NotchGeometry: Equatable {
     }
 }
 
-enum NotchMode: Equatable { case notch, resting, working, expanded, celebrating }
+enum NotchMode: Equatable, CaseIterable { case resting, working, expanded, celebrating }
 
 extension NotchMode {
-    /// `tucked` = the brief moment the shape sits exactly on the hardware notch, so every
-    /// open starts from the notch (black on black, invisible) and every close returns to it.
-    static func resolve(tucked: Bool, hover: Bool, banner: Bool, working: Bool) -> NotchMode {
-        tucked ? .notch : hover ? .expanded : banner ? .celebrating : working ? .working : .resting
+    static func resolve(hover: Bool, banner: Bool, working: Bool) -> NotchMode {
+        hover ? .expanded : banner ? .celebrating : working ? .working : .resting
     }
     func size(_ g: NotchGeometry) -> CGSize {
         // flush with the hardware notch, ONE ear on the left for the character: the right side
         // of the menu bar stays free, and no dot that could pass for the camera indicator
         let rest = CGSize(width: g.notchW + (g.hasNotch ? Self.ear : 0), height: g.notchH + (g.hasNotch ? 0 : 2))
         switch self {
-        case .notch:       return CGSize(width: g.notchW, height: g.notchH)
         case .resting:     return rest
         case .working:     return CGSize(width: g.notchW + 2 * Self.ear + 140, height: rest.height)
         case .expanded:    return CGSize(width: 460, height: 210)
@@ -59,20 +56,20 @@ extension NotchMode {
     static let ear: CGFloat = 46
     /// Horizontal offset of the shape's centre from the notch's centre (resting leans left).
     func shift(_ g: NotchGeometry) -> CGFloat { self == .resting && g.hasNotch ? -Self.ear / 2 : 0 }
-    var topRadius: CGFloat { self == .notch ? 6 : self == .resting || self == .working ? 9 : 12 }
-    var bottomRadius: CGFloat { self == .notch ? 9 : self == .expanded ? 22 : self == .celebrating ? 18 : 12 }
+    /// Content inset for the shoulders; matches what NotchShape draws at each mode's size.
+    var topRadius: CGFloat { NotchShape.shoulder(self == .resting || self == .working ? 32 : 210) }
 }
 
 /// Concave "shoulders" at the top corners (like the real notch), rounded bottom corners.
+/// Radii come from the rect being drawn, not the mode, so mid-animation corners always fit
+/// the current size (mode-driven radii snapped small while the shape was still big: a
+/// square-cornered black slab on every close).
 struct NotchShape: Shape {
-    var top: CGFloat
-    var bottom: CGFloat
-    var animatableData: AnimatablePair<CGFloat, CGFloat> {
-        get { AnimatablePair(top, bottom) }
-        set { top = newValue.first; bottom = newValue.second }
-    }
+    static func shoulder(_ h: CGFloat) -> CGFloat { min(12, 9 + max(0, h - 32) / 12) }
+    static func corner(_ h: CGFloat) -> CGFloat { min(22, max(12, 6 + h / 10)) }
     func path(in r: CGRect) -> Path {
-        let t = min(top, r.height / 2), b = min(bottom, r.height / 2, (r.width - 2 * t) / 2)
+        let t = min(Self.shoulder(r.height), r.height / 2)
+        let b = min(Self.corner(r.height), r.height / 2, (r.width - 2 * t) / 2)
         var p = Path()
         p.move(to: CGPoint(x: r.minX, y: r.minY))
         p.addLine(to: CGPoint(x: r.maxX, y: r.minY))
@@ -137,67 +134,43 @@ struct NotchView: View {
     var actions = NotchActions()
     var panelShift: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    // Width and height animate separately so the island pours DOWN out of the notch first,
-    // then spreads OUT; closing narrows first, then rises back up into the notch.
-    @State private var w: CGFloat = 0
-    @State private var h: CGFloat = 0
 
     private var size: CGSize { mode.size(geo) }
-    // Opening pops out of the notch (fast, a small bounce on halt); closing glides back in
-    // (fast-to-slow). Content follows the shape: it grows from the notch a beat later on the
-    // way out, and leaves first on the way in, so the island reads as coming out of the notch.
+    // One spring on the whole shape, hung from the top edge: it grows down and out of the
+    // (black) notch and halts with a small bounce; closing glides back up, fast-to-slow.
+    // Content arrives a beat after the shape and leaves with it, scaling toward the notch.
     private var opening: Bool { mode == .expanded || mode == .celebrating }
     private var anim: Animation {
         if reduceMotion { return .easeInOut(duration: 0.15) }
-        return opening ? .spring(response: 0.38, dampingFraction: 0.66)
-                       : .timingCurve(0.16, 1, 0.3, 1, duration: 0.34)
+        return opening ? .spring(response: 0.36, dampingFraction: 0.72)
+                       : .timingCurve(0.16, 1, 0.3, 1, duration: 0.3)
     }
     private var fromNotch: AnyTransition {
         reduceMotion ? .opacity : .asymmetric(
-            insertion: .opacity.combined(with: .scale(scale: 0.4, anchor: .top))
-                .animation(.spring(response: 0.38, dampingFraction: 0.7).delay(0.07)),
-            removal: .opacity.combined(with: .scale(scale: 0.6, anchor: .top))
-                .animation(.easeIn(duration: 0.1)))
+            insertion: .opacity.combined(with: .scale(scale: 0.85, anchor: .top))
+                .animation(.easeOut(duration: 0.2).delay(0.08)),
+            removal: .opacity.combined(with: .scale(scale: 0.85, anchor: .top))
+                .animation(.easeIn(duration: 0.14)))
     }
 
     var body: some View {
         ZStack(alignment: .top) {
             switch mode {
-            case .notch:       Color.clear                     // exactly the hardware notch: nothing to show
             case .resting:     resting.transition(.opacity)
             case .working:     working.transition(.opacity)
             case .expanded:    expanded.transition(fromNotch)
             case .celebrating: banner.transition(fromNotch)
             }
         }
-        .frame(width: w > 0 ? w : size.width, height: h > 0 ? h : size.height, alignment: .top)
-        .background(NotchShape(top: mode.topRadius, bottom: mode.bottomRadius).fill(Color.black))
-        .clipShape(NotchShape(top: mode.topRadius, bottom: mode.bottomRadius))
+        .frame(width: size.width, height: size.height, alignment: .top)
+        .background(NotchShape().fill(Color.black))
+        .clipShape(NotchShape())
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Plasmie, \(info.statusWord)")
         .offset(x: mode.shift(geo) - panelShift)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(anim, value: mode)
         .ignoresSafeArea()
-        .onAppear { w = size.width; h = size.height }
-        .onChange(of: mode) { _ in grow(to: size) }
-        .onChange(of: geo) { _ in w = size.width; h = size.height }
-    }
-
-    /// Opening: height leads (down from the notch top), width follows a beat later (out).
-    /// Closing: width leads (in), then height (back up). Reduce Motion: both at once, briefly.
-    private func grow(to t: CGSize) {
-        guard !reduceMotion else {
-            withAnimation(.easeInOut(duration: 0.15)) { w = t.width; h = t.height }; return
-        }
-        let growing = t.height > h || t.width > w
-        if growing {
-            withAnimation(.spring(response: 0.34, dampingFraction: 0.68)) { h = t.height }
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.64).delay(0.06)) { w = t.width }
-        } else {
-            withAnimation(.timingCurve(0.16, 1, 0.3, 1, duration: 0.28)) { w = t.width }
-            withAnimation(.timingCurve(0.16, 1, 0.3, 1, duration: 0.3).delay(0.05)) { h = t.height }
-        }
     }
 
     private var ear: CGFloat { (size.width - geo.notchW) / 2 - mode.topRadius }
@@ -328,44 +301,20 @@ final class NotchModel: ObservableObject {
     @Published var hovering = false
     @Published var banner = false
     @Published var bannerText: String? = nil
-    @Published var tucked = false                 // shape sits exactly on the hardware notch
     @Published var panelShift: CGFloat = 0        // panel centre minus notch centre (pt)
     private var collapse: DispatchWorkItem?
     private var bannerEnd: DispatchWorkItem?
-    private var phase: DispatchWorkItem?
 
-    static let tuckIn = 0.09                      // resting ears fold into the notch
-    static let tuckOut = 0.22                     // island has glided back into the notch
-
-    /// Run `change` starting from the bare notch: fold into the notch (invisible, black on
-    /// black), then apply the change so the island grows *out of* the notch. Closing is the
-    /// mirror: shrink into the notch first, then let the resting ears come back.
-    private func throughNotch(opening: Bool, _ change: @escaping () -> Void) {
-        phase?.cancel()
-        if opening {
-            tucked = true
-            let w = DispatchWorkItem { [weak self] in self?.tucked = false; change() }
-            phase = w
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.tuckIn, execute: w)
-        } else {
-            tucked = true; change()
-            let w = DispatchWorkItem { [weak self] in self?.tucked = false }
-            phase = w
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.tuckOut, execute: w)
-        }
-    }
-
-    /// Mouse is over the visible shape. Leaving collapses ~0.4 s later (re-entering cancels).
+    /// Called on every pointer poll (30 Hz), so it must be idempotent: act only on changes.
+    /// Entering opens; leaving collapses ~0.4 s later; re-entering cancels the collapse.
     func pointer(inside: Bool) {
-        collapse?.cancel()
         if inside {
-            if !hovering { throughNotch(opening: true) { [weak self] in self?.hovering = true } }
+            collapse?.cancel(); collapse = nil
+            if !hovering { hovering = true }
             return
         }
-        guard hovering else { return }
-        let w = DispatchWorkItem { [weak self] in
-            self?.throughNotch(opening: false) { self?.hovering = false }
-        }
+        guard hovering, collapse == nil else { return }
+        let w = DispatchWorkItem { [weak self] in self?.collapse = nil; self?.hovering = false }
         collapse = w
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: w)
     }
@@ -373,10 +322,8 @@ final class NotchModel: ObservableObject {
     func celebrate(_ name: String) {
         bannerText = name
         bannerEnd?.cancel()
-        throughNotch(opening: true) { [weak self] in self?.banner = true }
-        let w = DispatchWorkItem { [weak self] in
-            self?.throughNotch(opening: false) { self?.banner = false }
-        }
+        banner = true
+        let w = DispatchWorkItem { [weak self] in self?.banner = false }
         bannerEnd = w
         DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: w)
     }
@@ -387,16 +334,16 @@ private struct NotchRoot: View {
     @ObservedObject var nm: NotchModel
     let geo: NotchGeometry
     let actions: NotchActions
-    let onSize: (CGSize, CGFloat) -> Void
+    let onMode: (NotchMode, CGFloat) -> Void
 
     var body: some View {
         let info = NotchInfo(hero: m.heroPlasmie, pipeline: m.plasmie, status: m.s.state, reason: m.s.reason,
                              stageName: m.stage?.name, accessory: m.stage?.accessory, fact: m.funFact,
                              activity: m.s.activity, celebrating: nm.bannerText)
-        let mode = NotchMode.resolve(tucked: nm.tucked, hover: nm.hovering, banner: nm.banner, working: info.working)
+        let mode = NotchMode.resolve(hover: nm.hovering, banner: nm.banner, working: info.working)
         NotchView(info: info, geo: geo, mode: mode, actions: actions, panelShift: nm.panelShift)
-            .onChange(of: mode) { onSize($0.size(geo), $0.shift(geo)) }
-            .onAppear { onSize(mode.size(geo), mode.shift(geo)) }
+            .onChange(of: mode) { onMode($0, $0.shift(geo)) }
+            .onAppear { onMode(mode, mode.shift(geo)) }
     }
 }
 
@@ -410,44 +357,32 @@ private final class NotchPanel: NSPanel {
 /// Hover is tested against the visible shape (the window can briefly be larger while it
 /// shrinks), and the first click on a button works without activating the app.
 private final class NotchHostingView<Root: View>: NSHostingView<Root> {
-    var shape: () -> CGSize = { .zero }
-    var shapeOffset: () -> CGFloat = { 0 }    // shape centre − panel centre (pt)
-    var pointer: (Bool) -> Void = { _ in }
-
     required init(rootView: Root) { super.init(rootView: rootView) }
     @objc required dynamic init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     override var safeAreaInsets: NSEdgeInsets { NSEdgeInsets() }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: .zero,
-            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
-    }
-    private func test(_ e: NSEvent) {
-        let p = convert(e.locationInWindow, from: nil), s = shape()
-        let fromTop = isFlipped ? p.y : bounds.height - p.y
-        pointer(abs(p.x - (bounds.midX + shapeOffset())) <= s.width / 2 && fromTop >= 0 && fromTop <= s.height)
-    }
-    override func mouseEntered(with e: NSEvent) { test(e) }
-    override func mouseMoved(with e: NSEvent) { test(e) }
-    override func mouseExited(with e: NSEvent) { pointer(false) }
 }
 
+/// One fixed-size, transparent panel that never resizes: every shape change happens inside
+/// SwiftUI. Resizing the window mid-animation caused a black, square-cornered flash (window
+/// grown before content was drawn) and hover flicker (tracking areas rebuilt on every resize
+/// fired false exits). Hover is geometric instead: the pointer is polled and tested against
+/// the shape's TARGET rect, and the panel ignores the mouse whenever the pointer is outside it,
+/// so the transparent parts never block the menu bar.
 final class NotchController {
     static let shared = NotchController()
 
     private weak var model: Model?
     private var panel: NotchPanel?
-    private var shapeSize = NotchMode.resting.size(.measured)
-    private var shapeShift: CGFloat = 0           // shape centre − notch centre
-    private var resizeToken = 0
     private let nm = NotchModel()
     private var geo = NotchGeometry.fallback
     private var observers: [NSObjectProtocol] = []
     private var cancellable: AnyCancellable?
+    private var poll: Timer?
+    private var demo: Timer?
+    /// The rect hover is tested against (screen coords): the current mode's target shape.
+    private var hitRect: NSRect = .zero
 
     /// Call once with the app's Model (idempotent). The "plasmie.notch" default drives show/hide.
     func start(model: Model) {
@@ -466,6 +401,8 @@ final class NotchController {
     }
 
     func stop() {
+        poll?.invalidate(); poll = nil
+        demo?.invalidate(); demo = nil
         panel?.orderOut(nil)
         panel?.contentView = nil
         panel = nil
@@ -481,15 +418,13 @@ final class NotchController {
         let found = NotchGeometry.find()
         guard found.screen != nil else { return }
         geo = found.geo
-        shapeSize = NotchMode.resting.size(geo)
-        shapeShift = NotchMode.resting.shift(geo)
-        let p = NotchPanel(contentRect: NSRect(origin: .zero, size: shapeSize),
-                           styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        let frame = panelFrame()
+        let p = NotchPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         p.level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 1)   // over the menu bar, under alerts
         p.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]     // no fullScreenAuxiliary: hides over full screen
         p.isOpaque = false; p.backgroundColor = .clear; p.hasShadow = false
         p.hidesOnDeactivate = false; p.isReleasedWhenClosed = false
-        p.acceptsMouseMovedEvents = true
+        p.ignoresMouseEvents = true                                                // until the pointer is over the shape
         let actions = NotchActions(
             ask: { OverlayController.shared.toggle() },
             ingest: { [weak model] in model?.kick("com.plasmie.dev-ingest", "Ingest") },
@@ -497,50 +432,60 @@ final class NotchController {
             openFact: { [weak model] in
                 if let model, let path = model.funFact?.path, !path.isEmpty { openInObsidian("\(model.s.vault)/\(path)") }
             })
-        let host = NotchHostingView(rootView: NotchRoot(m: model, nm: nm, geo: geo, actions: actions) { [weak self] in self?.resize($0, $1) })
+        let host = NotchHostingView(rootView: NotchRoot(m: model, nm: nm, geo: geo, actions: actions) { [weak self] in
+            self?.target($0, $1)
+        })
         host.sizingOptions = []
-        host.shape = { [weak self] in self?.shapeSize ?? .zero }
-        host.shapeOffset = { [weak self] in (self?.shapeShift ?? 0) - (self?.nm.panelShift ?? 0) }
-        host.pointer = { [weak self] in self?.nm.pointer(inside: $0) }
         p.contentView = host
         panel = p
-        place(p, rect(shapeSize, shapeShift))
+        p.setFrame(frame, display: true)
         p.orderFrontRegardless()
+        target(NotchMode.resting, NotchMode.resting.shift(geo))
+        startPointer()
     }
 
     private func reposition() {
         guard let p = panel else { return }
         geo = NotchGeometry.find().geo
-        place(p, rect(shapeSize, shapeShift))
+        p.setFrame(panelFrame(), display: true)
     }
 
-    /// The shape's rect in screen coordinates: hung from the top edge, centred on the notch
-    /// plus its shift (resting leans left so only one ear covers the menu bar).
+    /// The union of every state's rect, fixed for the life of the panel.
+    private func panelFrame() -> NSRect {
+        let u = NotchMode.allCases.map { rect($0.size(geo), $0.shift(geo)) }.reduce(NSRect.null) { $0.union($1) }
+        if let s = NotchGeometry.find().screen { nm.panelShift = u.midX - s.frame.midX }
+        return u.integral
+    }
+
+    /// A state's rect in screen coordinates: hung from the top edge, centred on the notch plus
+    /// its shift (resting leans left so only one ear covers the menu bar).
     private func rect(_ size: CGSize, _ shift: CGFloat) -> NSRect {
         guard let s = NotchGeometry.find().screen else { return .zero }
         return NSRect(x: s.frame.midX - size.width / 2 + shift, y: s.frame.maxY - size.height,
                       width: size.width, height: size.height)
     }
 
-    private func place(_ p: NSPanel, _ r: NSRect) {
-        guard r != .zero, let s = NotchGeometry.find().screen else { return }
-        p.setFrame(r, display: true)
-        nm.panelShift = r.midX - s.frame.midX          // the view offsets the shape by the difference
+    /// The view reports each new mode; hover is tested against its rect.
+    private func target(_ mode: NotchMode, _ shift: CGFloat) {
+        hitRect = rect(mode.size(geo), shift)
     }
 
-    /// Grow the window at once (SwiftUI animates the shape inside it); shrink it after the
-    /// spring settles so a collapsed notch only takes events where it is drawn.
-    private func resize(_ size: CGSize, _ shift: CGFloat) {
-        guard let p = panel else { return }
-        shapeSize = size; shapeShift = shift
-        resizeToken += 1
-        let token = resizeToken
-        let target = rect(size, shift)
-        let union = p.frame.union(target)
-        if union != p.frame { place(p, union) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self, token == self.resizeToken, let p = self.panel else { return }
-            self.place(p, target)
+    private func startPointer() {
+        if ProcessInfo.processInfo.environment["PLASMIE_NOTCH_DEMO"] == "1" {    // verification only
+            var open = false
+            demo = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { [weak self] _ in
+                open.toggle(); self?.nm.pointer(inside: open)
+            }
+            return
         }
+        poll = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.tick() }
+        poll?.tolerance = 0.01
+    }
+
+    private func tick() {
+        guard let p = panel else { return }
+        let inside = hitRect.insetBy(dx: -1, dy: -1).contains(NSEvent.mouseLocation)
+        if p.ignoresMouseEvents == inside { p.ignoresMouseEvents = !inside }   // click-through outside the shape
+        nm.pointer(inside: inside)
     }
 }

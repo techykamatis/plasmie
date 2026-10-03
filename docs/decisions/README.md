@@ -1,7 +1,7 @@
 # Decisions
 
-Short records of the design and architecture decisions behind Plasmie (formerly Knowledge
-Loop, briefly Plasmie). One file per decision: context, decision, alternatives, consequences. Newest
+Short records of the design and architecture decisions behind Plasmie (formerly Plasmie,
+Plasmie before that, briefly Plasmie). One file per decision: context, decision, alternatives, consequences. Newest
 work is from 2026-10-04. Product truth lives in `/PRODUCT.md`, the visual system in
 `/DESIGN.md`; these records explain **why**.
 
@@ -27,13 +27,14 @@ work is from 2026-10-04. Product truth lives in `/PRODUCT.md`, the visual system
 | [0017](0017-evolution-accessories.md) | Evolution shown as accessories | Accepted |
 | [0018](0018-motion-language.md) | Glide and pop, with fun physics | Accepted |
 | [0019](0019-notch-prototype.md) | Plasmie in the notch | Experimental |
-| [0020](0020-rename-plasmie.md) | Rename: Plasmie (app and mascot) | Accepted |
+| [0020](0020-rename-plasmie.md) | Rename: Plasmie (app and mascot) | Superseded by 0027 |
 | [0021](0021-secrets-in-keychain.md) | Credentials in the login Keychain, via /usr/bin/security only | Accepted |
 | [0022](0022-install-layout-and-vault-safety.md) | Install like a Mac app; the vault is never put at risk | Accepted |
 | [0023](0023-icloud-mirror.md) | iCloud sync: a one-way mirror the app runs | Accepted |
 | [0024](0024-opt-in-connectors.md) | Connectors are opt-in; nothing about the owner is a default | Accepted |
 | [0025](0025-apple-fm-only.md) | Apple FM only, via a native helper; map-reduce for long input | Accepted |
 | [0026](0026-background-jobs-smappservice.md) | Background jobs belong to the app (SMAppService) | Accepted |
+| [0027](0027-rename-plasmie.md) | Rename: Plasmie (app and mascot); lossless migration | Accepted |
 
 ## Design
 | # | Decision | Status |

@@ -76,6 +76,8 @@ Background jobs belong to the app (ADR 0026): `Plasmie.app/Contents/Library/Laun
 
 `launchd/install.sh` also boots out agents the repo no longer ships (the retired `com.plasmie.mlx-server`).
 
+**Upgrading from Plasmie** (the app's name until 2026-10-04, ADR 0027): quit Plasmie, install Plasmie, move Plasmie.app to the Bin, open Plasmie. At launch it renames `~/Library/Application Support/Plasmie` and `~/Library/Logs/Plasmie` to `…/Plasmie` (only when the Plasmie folder doesn't exist yet; never merges), copies the `plasmie.*` preferences from the old bundle id once, and `plasmie-migrate.py` step 4 boots out the `com.plasmie.*` jobs; the app registers `com.plasmie.*` only once none is loaded. Open at login has to be switched on again. A dev checkout's `.venv` symlink still points at `…/Plasmie/venv`: re-point it at `…/Plasmie/venv`.
+
 ---
 
 ## Connectors

@@ -1,6 +1,6 @@
 # 0026 · Background jobs belong to the app (SMAppService)
 
-- **Status:** Accepted · 2026-10-04
+- **Status:** Accepted · 2026-10-04 · job labels and bundle renamed by 0027 (`com.plasmie.*`, `Plasmie.app`)
 - **Area:** Architecture, distribution
 
 ## Decision

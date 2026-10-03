@@ -42,6 +42,10 @@ In the Plasmie window, each source has an On/Off switch: Slack, GitHub, local gi
 - Your notes: the folder you chose. Keep it on your Mac (to read it on your phone, use the iCloud mirror instead).
 - Plasmie's own data: `~/Library/Application Support/Plasmie`; logs: `~/Library/Logs/Plasmie`.
 
+## Coming from Plasmie
+
+Plasmie used to be called Plasmie. Quit Plasmie, install Plasmie as above, move Plasmie from Applications to the Bin, then open Plasmie: it brings your notes, data and settings along by itself. Two things to redo in the Plasmie window: turn **Open at login** back on if you used it, and enter any connector sign-ins again (they were saved under the old name).
+
 ## Uninstall
 
 Plasmie window > Maintain > **Reset Plasmie…** removes Plasmie's background jobs, settings, sign-ins and logs, then quits. **Your notes are never touched.** Then drag Plasmie from Applications to the Bin. Delete your notes folder only if you want the notes gone.

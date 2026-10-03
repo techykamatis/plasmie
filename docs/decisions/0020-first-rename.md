@@ -1,6 +1,6 @@
 # 0020 · Rename: Plasmie (app and mascot)
 
-- **Status:** Accepted · 2026-10-03 · supersedes the name in 0011 and 0012
+- **Status:** Superseded by 0027 (Plasmie) · 2026-10-03 · supersedes the name in 0011 and 0012
 - **Area:** Design, architecture
 
 ## Decision

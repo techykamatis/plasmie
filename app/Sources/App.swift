@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKey: HotKey?
     func applicationDidFinishLaunching(_ notification: Notification) {
         NotchController.shared.start(model: .shared)   // here, not on the menu-bar label: that is hidden while the notch is on
+        ICloudSync.shared.start()                       // off unless turned on in the Plasmie window
         hotKey = HotKey { [weak self] in self?.overlay.toggle() }
         // `open -a "Plasmie" --args --settings` opens straight to the
         // connectors page. Only honoured on a cold start — macOS does not deliver

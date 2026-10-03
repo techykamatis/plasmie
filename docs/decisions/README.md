@@ -32,6 +32,8 @@ work is from 2026-10-03. Product truth lives in `/PRODUCT.md`, the visual system
 | [0018](0018-motion-language.md) | Glide and pop, with fun physics | Accepted |
 | [0019](0019-notch-prototype.md) | Plasmie in the notch | Experimental |
 | [0020](0020-rename-plasmie.md) | Rename: Plasmie (app and mascot) | Accepted |
+| [0022](0022-install-layout-and-vault-safety.md) | Install like a Mac app; the vault is never put at risk | Accepted |
+| [0023](0023-icloud-mirror.md) | iCloud sync: a one-way mirror the app runs | Accepted |
 
 ## Adding a record
 Copy the shape of any file above, take the next number, and add a row here. Supersede

@@ -94,6 +94,8 @@ struct ActionRow: View {
 struct Panel: View {
     @ObservedObject var m: Model
     var inWindow = false                 // inside the Plasmie window: no Settings row (it's beside it)
+    @ObservedObject private var icloud = ICloudSync.shared
+    @AppStorage(ICloudSync.key) private var icloudOn = false
     private enum Confirm { case approve, dismiss }
     @State private var confirm: Confirm?
     @AppStorage(NotchPrefs.key) private var notchOn = true
@@ -217,6 +219,14 @@ struct Panel: View {
                 ActionRow(title: "Today's raw log", symbol: "book.closed") { openInObsidian(m.s.journal) }
             }
             ActionRow(title: "Trophies", symbol: "trophy", key: "t") { TrophiesController.shared.show(m) }
+
+            groupLabel("Sync").padding(.top, 4)
+            ActionRow(title: "iCloud sync", symbol: icloudOn ? "icloud.fill" : "icloud",
+                      detail: icloudOn ? icloud.line : "Off · mirror your vault to iCloud Drive for Obsidian on iPhone",
+                      running: icloud.syncing) { icloud.set(!icloudOn) }
+            if icloudOn {
+                ActionRow(title: "Sync now", symbol: "arrow.triangle.2.circlepath.icloud", compact: true) { icloud.sync() }
+            }
 
             groupLabel("Maintain").padding(.top, 4)
             ActionRow(title: "Reindex check", symbol: "magnifyingglass",

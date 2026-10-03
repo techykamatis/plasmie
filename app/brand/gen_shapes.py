@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Plasmie's shapes: one source of truth for the brand page (JSON) and the app (Swift).
 
-Every state is 12 anchor points on a 100x100 canvas, clockwise from 12 o'clock.
-Renderers draw a closed Catmull-Rom curve through them, so ANY two states morph
-by interpolating anchors — that is the whole "takes any shape" mechanism.
+Each state is built from clean primitives (circles, ellipses, rounded boxes,
+capsules) joined with a smooth union, then sampled at N points by casting rays
+from the shape's centre. Dense, evenly placed samples are what keep the outline
+crisp: a Catmull-Rom curve through only a few hand-placed anchors wobbles.
+
+Every state has the same N anchors on a 100x100 canvas, clockwise from 12
+o'clock, so any two states morph by interpolating anchors.
 
   python3 app/brand/gen_shapes.py      # writes plasmie-shapes.json + ../Sources/PlasmieShapes.swift
 """
@@ -11,64 +15,107 @@ import json
 import math
 from pathlib import Path
 
-N = 12
+N = 48
 HERE = Path(__file__).resolve().parent
 
 
-def radial(cx, cy, r_of):
-    """12 anchors at 30° steps; r_of(i, angle) -> (rx, ry) radii for that anchor."""
+# --- signed distance primitives (negative inside) ---------------------------
+def circle(cx, cy, r):
+    return lambda x, y: math.hypot(x - cx, y - cy) - r
+
+
+def ellipse(cx, cy, rx, ry):
+    # scaled-circle approximation; exact on the boundary, which is all we sample
+    return lambda x, y: (math.hypot((x - cx) / rx, (y - cy) / ry) - 1) * min(rx, ry)
+
+
+def rbox(cx, cy, hw, hh, r):
+    def d(x, y):
+        qx, qy = abs(x - cx) - hw + r, abs(y - cy) - hh + r
+        return math.hypot(max(qx, 0), max(qy, 0)) + min(max(qx, qy), 0) - r
+    return d
+
+
+def capsule(ax, ay, bx, by, r):
+    def d(x, y):
+        px, py, vx, vy = x - ax, y - ay, bx - ax, by - ay
+        h = max(0.0, min(1.0, (px * vx + py * vy) / (vx * vx + vy * vy)))
+        return math.hypot(px - vx * h, py - vy * h) - r
+    return d
+
+
+def smooth_union(k, *fs):
+    def d(x, y):
+        out = fs[0](x, y)
+        for f in fs[1:]:
+            b = f(x, y)
+            h = max(k - abs(out - b), 0) / k
+            out = min(out, b) - h * h * k / 4
+        return out
+    return d
+
+
+def smooth_cut(k, base, hole):
+    def d(x, y):
+        a, b = base(x, y), -hole(x, y)
+        h = max(k - abs(a - b), 0) / k
+        return max(a, b) + h * h * k / 4
+    return d
+
+
+def polar_star(cx, cy, r, amp, points):
+    def d(x, y):
+        t = math.atan2(y - cy, x - cx) + math.pi / 2
+        return math.hypot(x - cx, y - cy) - r * (1 + amp * math.cos(points * t))
+    return d
+
+
+# --- sampling ---------------------------------------------------------------
+def sample(sdf, cx, cy, reach=70.0):
+    """N boundary points: for each ray from (cx, cy), bisect where the SDF crosses 0."""
     pts = []
     for i in range(N):
-        a = math.radians(-90 + 30 * i)
-        rx, ry = r_of(i, a)
-        pts.append((round(cx + rx * math.cos(a), 2), round(cy + ry * math.sin(a), 2)))
+        a = math.radians(-90 + 360 * i / N)
+        dx, dy = math.cos(a), math.sin(a)
+        lo, hi = 0.0, reach
+        for _ in range(40):
+            mid = (lo + hi) / 2
+            if sdf(cx + dx * mid, cy + dy * mid) < 0:
+                lo = mid
+            else:
+                hi = mid
+        pts.append((round(cx + dx * lo, 2), round(cy + dy * lo, 2)))
     return pts
 
 
-def superellipse(cx, cy, a, b, n):
-    def r(i, t):
-        c, s = abs(math.cos(t)), abs(math.sin(t))
-        k = (c ** n / a ** n + s ** n / b ** n) ** (-1 / n) if (c or s) else a
-        return k, k
-    return radial(cx, cy, r)
+MOCHI = ellipse(50, 56, 36, 32)
 
-
-def with_(pts, **moves):
-    """Nudge named anchors: with_(pts, p3=(dx, dy))."""
-    out = list(pts)
-    for k, (dx, dy) in moves.items():
-        i = int(k[1:])
-        out[i] = (round(out[i][0] + dx, 2), round(out[i][1] + dy, 2))
-    return out
-
-
-IDLE = radial(50, 56, lambda i, a: (34, 31 if math.sin(a) < 0 else 29))
 SHAPES = {
-    # resting mochi: a touch wider than tall, flatter underneath
-    "idle": IDLE,
-    # catching: mouth opens upward into a bowl (top anchor dips, shoulders rise wide)
-    "ingest": with_(radial(50, 58, lambda i, a: (40, 30)),
-                    p0=(0, 16), p1=(4, -6), p11=(-4, -6), p2=(4, -4), p10=(-4, -4)),
-    # kneading: squat dumpling with pleated top
-    "summarize": radial(50, 62, lambda i, a: (40, 22 + (4 if (i % 2 == 0 and math.sin(a) < 0) else 0))),
-    # filing: a soft little box
-    "promote": superellipse(50, 56, 32, 30, 5),
-    # thinking: lightbulb — round crown, a short neck and base at the bottom
-    "ask": [(50, 14), (71, 20), (84, 37), (81, 57), (64, 72), (60, 86), (50, 91),
-            (40, 86), (36, 72), (19, 57), (16, 37), (29, 20)],
-    # held: raises a hand (upper-right anchor reaches out)
-    "held": with_(IDLE, p1=(10, -16), p2=(8, -6)),
-    # failing: melting puddle with drips
-    "error": radial(50, 64, lambda i, a: (42, (18 if math.sin(a) < 0 else (26 if i % 2 == 0 else 14)))),
-    # busy (machine hot, jobs deferred): hourglass waist
-    "busy": [(50, 18), (74, 20), (62, 44), (56, 55), (62, 66), (74, 90), (50, 92),
-             (26, 90), (38, 66), (44, 55), (38, 44), (26, 20)],
-    # quiet (no new data): flat sleeping mochi
-    "quiet": radial(50, 70, lambda i, a: (42, 15)),
-    # off: small curled ball
-    "off": radial(50, 62, lambda i, a: (22, 21)),
-    # success: soft star pop
-    "success": radial(50, 54, lambda i, a: ((37, 37) if i % 2 == 0 else (27, 27))),
+    # resting mochi
+    "idle": sample(MOCHI, 50, 56),
+    # catching: a round body with a deep, clean mouth scooped from the top
+    "ingest": sample(smooth_cut(5, ellipse(50, 58, 38, 33), circle(50, 25, 17)), 50, 64),
+    # kneading: a squat dumpling with three soft pleats on top
+    "summarize": sample(smooth_union(7, ellipse(50, 68, 41, 19),
+                                     circle(34, 54, 9), circle(50, 49, 10), circle(66, 54, 9)), 50, 64),
+    # filing: a rounded box
+    "promote": sample(rbox(50, 56, 32, 29, 10), 50, 56),
+    # thinking: a lightbulb — round crown on a short neck with a base
+    "ask": sample(smooth_union(5, circle(50, 42, 30), rbox(50, 79, 11, 10, 3)), 50, 52),
+    # held: the mochi raises a hand
+    "held": sample(smooth_union(8, MOCHI, capsule(70, 40, 79, 27, 8), circle(81, 22, 10.5)), 56, 52),
+    # failing: a melting puddle with two drips
+    "error": sample(smooth_union(9, ellipse(50, 66, 42, 17),
+                                 capsule(36, 72, 36, 81, 6), capsule(63, 74, 63, 86, 6.5)), 50, 66),
+    # busy: an hourglass with a soft waist
+    "busy": sample(smooth_union(14, ellipse(50, 32, 24, 12), ellipse(50, 80, 24, 12),
+                                capsule(50, 32, 50, 80, 9)), 50, 56),
+    # quiet: a flat sleeping mochi
+    "quiet": sample(ellipse(50, 72, 42, 15), 50, 72),
+    # off: a small curled ball
+    "off": sample(circle(50, 64, 21), 50, 64),
+    # success: a soft five-point star
+    "success": sample(polar_star(50, 54, 33, 0.2, 5), 50, 54),
 }
 
 # Face per state: eye style, mouth style, extra prop. Renderers own the drawing.
@@ -79,7 +126,7 @@ FACES = {
     "promote":   {"eyes": "wink",   "mouth": "smile", "prop": "card"},
     "ask":       {"eyes": "up",     "mouth": "small", "prop": "spark"},
     "held":      {"eyes": "dot",    "mouth": "o",     "prop": "bang"},
-    "error":     {"eyes": "worried","mouth": "wobble","prop": "sweat"},
+    "error":     {"eyes": "worried", "mouth": "wobble", "prop": "sweat"},
     "busy":      {"eyes": "flat",   "mouth": "flat",  "prop": "sand"},
     "quiet":     {"eyes": "closed", "mouth": "none",  "prop": "zzz"},
     "off":       {"eyes": "closed", "mouth": "none",  "prop": None},
@@ -90,8 +137,9 @@ if __name__ == "__main__":
     assert all(len(p) == N for p in SHAPES.values()) and set(SHAPES) == set(FACES)
     (HERE / "plasmie-shapes.json").write_text(json.dumps({"anchors": N, "shapes": SHAPES, "faces": FACES}, indent=1))
     lines = ["// GENERATED by app/brand/gen_shapes.py — edit that, not this.",
-             "// Plasmie's states as 12 anchors on a 100x100 canvas (clockwise from 12 o'clock).",
+             f"// Plasmie's states as {N} anchors on a 100x100 canvas (clockwise from 12 o'clock).",
              "import CoreGraphics", "", "enum PlasmieShapes {",
+             f"    static let count = {N}",
              "    static let anchors: [String: [CGPoint]] = ["]
     for k, pts in SHAPES.items():
         body = ", ".join(f"CGPoint(x: {x}, y: {y})" for x, y in pts)

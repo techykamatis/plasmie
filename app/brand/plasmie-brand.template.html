@@ -1,7 +1,7 @@
 <title>Plasmie</title>
 <!--
 THESIS: A blob that takes any shape: Plasmie's silhouette IS the pipeline status. Refuses the static mascot-plus-mood-grid sheet.
-OWN-WORLD: Lavender blob, deep-indigo ink face, blush cheeks, on a lavender-tinted ground; rounded Baloo 2 display, Hanken Grotesk text; source dots as the only multicolour.
+OWN-WORLD: Brain-pink blob, deep-berry ink face, rose blush, on a pink-tinted ground; rounded Baloo 2 display, Hanken Grotesk text; source dots as the only multicolour.
 STORY: Meet Plasmie, watch it change shape, learn each state and when it appears, see it in the menu bar, take the palette and type.
 FIRST VIEWPORT: Name and one-line thesis left, a large live Plasmie right that morphs through states; state chips under the name drive the morph.
 FORM: Category standard (soft blob) played straight, given its mechanism by the owner: shape-shifting. Seed key 83b79357.
@@ -13,23 +13,23 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <style>
 /* Layout: an asymmetric hero (name left, live Plasmie right), then a sprite grid, a menu-bar strip, palette and type — one column of sections on a tinted ground. */
 :root {
-  --ground: #F3F0FD; --surface: #FBFAFF; --ink: #241B4D; --ink-2: #4B4380; --ink-3: #6E67A0;
-  --rule: #DCD6F5; --rule-strong: #BDB4EC; --accent: #241B4D; --accent-soft: #E6E0FB;
-  --body: #9C8CF2; --body-hi: #B8ADF7; --face: #241B4D; --blush: #F7A6C8; --off: #B9B5CC;
+  --ground: #FDF1F4; --surface: #FFF9FA; --ink: #3A1430; --ink-2: #6A3A5A; --ink-3: #8E6080;
+  --rule: #F3D6DF; --rule-strong: #E8B4C4; --accent: #3A1430; --accent-soft: #FBE1E9;
+  --body: #F49AB2; --body-hi: #FBC9D6; --face: #3A1430; --blush: #E8668A; --off: #C9B9C0;
   --sweat: #6EC5F0; --spark: #FFC94A;
-  --menubar: #ECEAF3; --menubar-ink: #1D1A26;
+  --menubar: #F1ECEE; --menubar-ink: #1F1A1D;
   --display: "Baloo 2", "Arial Rounded MT Bold", ui-rounded, system-ui, sans-serif;
   --text: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --ground: #15112A; --surface: #1D183A; --ink: #EDEAFF; --ink-2: #C4BEF0; --ink-3: #9C95CF;
-  --rule: #2E2760; --rule-strong: #463D85; --accent: #EDEAFF; --accent-soft: #2B2458;
-  --body: #A99BFF; --body-hi: #C7BEFF; --off: #8A86A3; --menubar: #2A2733; --menubar-ink: #F2F0F7; color-scheme: dark } }
+  --ground: #1E1218; --surface: #2A1922; --ink: #FBE9EF; --ink-2: #E7C3D0; --ink-3: #C095A8;
+  --rule: #43273A; --rule-strong: #63384F; --accent: #FBE9EF; --accent-soft: #3D2232;
+  --body: #F7A8BE; --body-hi: #FCD3DE; --off: #8E7F86; --menubar: #2A2733; --menubar-ink: #F2F0F7; color-scheme: dark } }
 :root[data-theme="dark"] {
-  --ground: #15112A; --surface: #1D183A; --ink: #EDEAFF; --ink-2: #C4BEF0; --ink-3: #9C95CF;
-  --rule: #2E2760; --rule-strong: #463D85; --accent: #EDEAFF; --accent-soft: #2B2458;
-  --body: #A99BFF; --body-hi: #C7BEFF; --off: #8A86A3; --menubar: #2A2733; --menubar-ink: #F2F0F7; color-scheme: dark }
+  --ground: #1E1218; --surface: #2A1922; --ink: #FBE9EF; --ink-2: #E7C3D0; --ink-3: #C095A8;
+  --rule: #43273A; --rule-strong: #63384F; --accent: #FBE9EF; --accent-soft: #3D2232;
+  --body: #F7A8BE; --body-hi: #FCD3DE; --off: #8E7F86; --menubar: #2A2733; --menubar-ink: #F2F0F7; color-scheme: dark }
 
 * { box-sizing: border-box; }
 body { background: var(--ground); color: var(--ink); font: 400 16px/1.55 var(--text); }
@@ -53,7 +53,7 @@ section { padding-block: clamp(48px, 8vw, 88px) 0; display: grid; gap: 18px; }
   font: 600 .88rem/1 var(--text); padding: 9px 13px; border-radius: 999px; cursor: pointer; transition: background .15s, border-color .15s; }
 .chip:hover { border-color: var(--ink-3); }
 .chip[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
-.chip:focus-visible, .theme button:focus-visible { outline: 3px solid var(--body); outline-offset: 2px; }
+.chip:focus-visible, .theme button:focus-visible { outline: 3px solid var(--blush); outline-offset: 2px; }
 
 /* sprite grid */
 .sprites { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 168px), 1fr)); gap: 14px; }
@@ -122,7 +122,7 @@ footer code { font: 500 .82rem var(--mono); }
   <section aria-labelledby="h-states">
     <p class="eyebrow">Status sprites</p>
     <h2 id="h-states">Every state is a shape</h2>
-    <p>Plasmie never needs a status label to be understood. Its silhouette carries the state, its face carries the mood, and one small prop says what it's holding. All eleven come from the same twelve points, so any state melts into any other.</p>
+    <p>Plasmie never needs a status label to be understood. Its silhouette carries the state, its face carries the mood, and one small prop says what it's holding. All eleven are drawn through the same 48 points, so any state melts into any other.</p>
     <div class="sprites" id="sprites"></div>
   </section>
 
@@ -138,7 +138,7 @@ footer code { font: 500 .82rem var(--mono); }
 
   <section aria-labelledby="h-colour">
     <p class="eyebrow">Colour</p>
-    <h2 id="h-colour">Lavender body, indigo face</h2>
+    <h2 id="h-colour">Brain-pink body, berry face</h2>
     <p>One body colour, one ink. The only multicolour moment is the source dots Plasmie catches while ingesting, one colour per connector.</p>
     <div class="swatches" id="swatches"></div>
     <div class="dots" id="dots"></div>
@@ -163,7 +163,7 @@ footer code { font: 500 .82rem var(--mono); }
     </div>
   </section>
 
-  <footer>Plasmie's eleven shapes are generated by <code>app/brand/gen_shapes.py</code>. The menu-bar app and this page draw from the same twelve anchors, so the brand and the product can't drift apart.</footer>
+  <footer>Plasmie's eleven shapes are generated by <code>app/brand/gen_shapes.py</code>. The menu-bar app and this page draw from the same 48 anchors, so the brand and the product can’t drift apart.</footer>
 </main>
 
 <script>
@@ -181,8 +181,8 @@ const STATES = [
   ["off", "Curled up", "Everything switched off", "All connectors are off. Nothing is captured."],
   ["success", "Ta-da", "A job just finished", "A quick sparkle, then back to resting."],
 ];
-const DOTS = [["Slack", "#E8578A"], ["GitHub", "#3A3F58"], ["Local git", "#F07A3E"], ["Confluence", "#3D7BE0"], ["Claude Code", "#D97757"], ["AgentCLI", "#2BB3A0"], ["Outlook", "#5B8DEF"]];
-const SWATCHES = [["Body", "--body", "#9C8CF2", "Plasmie itself"], ["Highlight", "--body-hi", "#B8ADF7", "Belly and morph sheen"], ["Ink", "--face", "#241B4D", "Eyes, mouth, text"], ["Blush", "--blush", "#F7A6C8", "Cheeks when happy"], ["Spark", "--spark", "#FFC94A", "Success only"], ["Sweat", "--sweat", "#6EC5F0", "Worry only"]];
+const DOTS = [["Slack", "#7A3A82"], ["GitHub", "#3A3F58"], ["Local git", "#F07A3E"], ["Confluence", "#3D7BE0"], ["Claude Code", "#D97757"], ["AgentCLI", "#2BB3A0"], ["Outlook", "#5B8DEF"]];
+const SWATCHES = [["Body", "--body", "#F49AB2", "Plasmie itself, brain pink"], ["Highlight", "--body-hi", "#FBC9D6", "Belly sheen"], ["Ink", "--face", "#3A1430", "Eyes, mouth, text"], ["Blush", "--blush", "#E8668A", "Cheeks when happy"], ["Spark", "--spark", "#FFC94A", "Success only"], ["Sweat", "--sweat", "#6EC5F0", "Worry only"]];
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const NS = "http://www.w3.org/2000/svg";
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -204,16 +204,17 @@ function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); f
 /* One Plasmie renderer. mode "color" or "template" (single ink, face knocked out). */
 function makePlasmie(svg, mode) {
   svg.setAttribute("viewBox", "-6 -14 112 120");
-  const g = el("g", {}, svg);
-  const body = el("path", {}, g), hi = el("path", { opacity: .55 }, g);
+  const g = el("g", {}, svg), id = "clip" + Math.random().toString(36).slice(2, 8);
+  const clip = el("path", {}, el("clipPath", { id }, el("defs", {}, svg)));
+  const body = el("path", {}, g), hi = el("ellipse", { opacity: .6, "clip-path": `url(#${id})` }, g);
   const face = el("g", {}, g), prop = el("g", {}, g);
-  return { svg, mode, g, body, hi, face, prop, pts: DATA.shapes.idle.map(q => q.slice()), state: "idle" };
+  return { svg, mode, g, body, hi, clip, face, prop, pts: DATA.shapes.idle.map(q => q.slice()), state: "idle" };
 }
 
 function drawFace(L, st, b, t) {
   const f = DATA.faces[st], ink = L.mode === "template" ? "#000" : "var(--face)";
   const knock = L.mode === "template";
-  L.face.replaceChildren(); L.prop.replaceChildren();
+  L.face.replaceChildren();
   const cx = b.x + b.w / 2, ey = b.y + Math.min(b.h * 0.42, b.h - 14), gap = Math.min(b.w * 0.17, 13), r = 4.6;
   const col = knock ? "#fff" : ink;
   const eye = (x) => {
@@ -242,62 +243,85 @@ function drawFace(L, st, b, t) {
     case "flat": el("path", { d: `M${cx - 4},${my} H${cx + 4}`, ...m }, L.face); break;
     case "wobble": el("path", { d: `M${cx - 6},${my + 1} q2,-3 4,0 t4,0 t4,0`, ...m }, L.face); break;
   }
-  if (knock) return;                     // template glyphs stay silhouette + face only
-  const T = reduce ? 0.35 : t;
+}
+
+function drawProps(L, st, b, T) {
+  L.prop.replaceChildren();
+  const f = DATA.faces[st], cx = b.x + b.w / 2;
   switch (f.prop) {
     case "dots": DOTS.slice(0, 3).forEach(([, c], i) => {
-      const k = (T * 0.7 + i / 3) % 1, x = cx + (i - 1) * 9 * (1 - k), y = b.y - 22 + k * 30;
+      const k = (T * 1.0 + i / 3) % 1, x = cx + (i - 1) * 9 * (1 - k), y = b.y - 22 + k * 30;
       el("circle", { cx: x, cy: y, r: 4, fill: c, opacity: Math.min(1, (1 - k) * 2.2) }, L.prop); }); break;
-    case "card": { const k = (T * 0.45) % 1, y = b.y - 26 + easeOut(Math.min(1, k * 1.6)) * 22;
+    case "card": { const k = (T * 0.8) % 1, y = b.y - 26 + easeOut(Math.min(1, k * 1.6)) * 22;
       el("rect", { x: cx - 9, y, width: 18, height: 13, rx: 2.5, fill: "var(--surface)", stroke: "var(--face)", "stroke-width": 2, opacity: k > .85 ? (1 - k) / .15 : 1 }, L.prop);
       el("path", { d: `M${cx - 5},${y + 5} H${cx + 5} M${cx - 5},${y + 9} H${cx + 2}`, stroke: "var(--face)", "stroke-width": 1.6, "stroke-linecap": "round" }, L.prop); break; }
-    case "spark": { const s = 1 + 0.25 * Math.sin(T * 6), x = cx + b.w * 0.36, y = b.y - 6;
+    case "spark": { const s = 1 + 0.25 * Math.sin(T * 7.5), x = cx + b.w * 0.36, y = b.y - 6;
       el("path", { d: `M${x},${y - 7 * s} L${x + 2 * s},${y - 2 * s} L${x + 7 * s},${y} L${x + 2 * s},${y + 2 * s} L${x},${y + 7 * s} L${x - 2 * s},${y + 2 * s} L${x - 7 * s},${y} L${x - 2 * s},${y - 2 * s}Z`, fill: "var(--spark)", stroke: "var(--face)", "stroke-width": 1.2 }, L.prop); break; }
     case "bang": { const y = b.y - 14 + 2.5 * Math.sin(T * 4), x = b.x + b.w + 2;
       el("circle", { cx: x, cy: y, r: 8.5, fill: "var(--spark)", stroke: "var(--face)", "stroke-width": 2 }, L.prop);
       el("path", { d: `M${x},${y - 4.5} V${y + 1}`, stroke: "var(--face)", "stroke-width": 2.6, "stroke-linecap": "round" }, L.prop);
       el("circle", { cx: x, cy: y + 4.4, r: 1.4, fill: "var(--face)" }, L.prop); break; }
-    case "sweat": { const k = (T * 0.6) % 1, x = b.x + b.w * 0.86, y = b.y + 2 + k * 14;
+    case "sweat": { const k = (T * 0.85) % 1, x = b.x + b.w * 0.86, y = b.y + 2 + k * 14;
       el("path", { d: `M${x},${y - 6} Q${x + 4.5},${y + 1} ${x},${y + 3.5} Q${x - 4.5},${y + 1} ${x},${y - 6}Z`, fill: "var(--sweat)", opacity: 1 - k * 0.6 }, L.prop); break; }
-    case "sand": for (let i = 0; i < 3; i++) { const k = (T * 0.8 + i / 3) % 1;
+    case "sand": for (let i = 0; i < 3; i++) { const k = (T * 1.2 + i / 3) % 1;
       el("circle", { cx: cx, cy: 44 + k * 20, r: 1.8, fill: "var(--spark)" }, L.prop); } break;
     case "zzz": for (let i = 0; i < 3; i++) { const k = (T * 0.35 + i / 3) % 1;
       const z = el("text", { x: cx + 18 + k * 16, y: b.y - 4 - k * 22, "font-family": "Baloo 2, sans-serif", "font-weight": 800, "font-size": 9 + k * 6, fill: "var(--ink-3)", opacity: Math.sin(k * Math.PI) }, L.prop); z.textContent = "z"; } break;
     case "sparkles": [[-1, -0.2], [1, -0.4], [0.7, 0.9]].forEach(([sx, sy], i) => {
-      const k = (T * 0.9 + i * 0.33) % 1, s = Math.sin(k * Math.PI) * 5 + 1, x = cx + sx * (b.w / 2 + 6), y = b.y + b.h / 2 + sy * (b.h / 2 + 6);
+      const k = (T * 1.1 + i * 0.33) % 1, s = Math.sin(k * Math.PI) * 5 + 1, x = cx + sx * (b.w / 2 + 6), y = b.y + b.h / 2 + sy * (b.h / 2 + 6);
       el("path", { d: `M${x},${y - s} L${x + s * .35},${y - s * .35} L${x + s},${y} L${x + s * .35},${y + s * .35} L${x},${y + s} L${x - s * .35},${y + s * .35} L${x - s},${y} L${x - s * .35},${y - s * .35}Z`, fill: "var(--spark)" }, L.prop); }); break;
   }
 }
 
-function frame(L, t) {
-  const st = L.state; let p = L.pts;
-  if (!reduce) {                                       // per-state life on top of the shape
-    const c = bbox(p), cx = c.x + c.w / 2, cy = c.y + c.h / 2;
-    let sx = 1 + 0.018 * Math.sin(t * 2.6), sy = 1 - 0.018 * Math.sin(t * 2.6), dx = 0;
-    if (st === "summarize") { sx = 1 + 0.06 * Math.sin(t * 3); sy = 1 - 0.06 * Math.sin(t * 3); }
-    if (st === "error") dx = 1.6 * Math.sin(t * 9);
-    if (st === "success") { const h = Math.max(0, Math.sin(t * 4)); sy *= 1 + 0.04 * h; }
-    p = p.map(([x, y]) => [cx + (x - cx) * sx + dx, cy + (y - cy) * sy]);
+/* Shape work (outline, sheen, face) happens only when the shape changed. Per-frame
+   life (breathe, knead, wobble, hop, morph squash) is one transform on the group,
+   and props are the only nodes rebuilt per frame. */
+function life(L, t) {
+  const st = L.state, b = L.box, cx = b.x + b.w / 2, cy = b.y + b.h;
+  const w = Math.sin(t * 2.6);
+  let sx = 1 + 0.018 * w, sy = 1 - 0.018 * w, dx = 0;
+  if (st === "summarize") { const k = Math.sin(t * 5.2); sx = 1 + 0.07 * k; sy = 1 - 0.07 * k; }
+  if (st === "error") dx = 1.4 * Math.sin(t * 14);
+  if (st === "success") sy *= 1 + 0.05 * Math.max(0, Math.sin(t * 6.5));
+  if (L.squash) {                                      // anticipation: a quick dip as it commits
+    const k = (performance.now() - L.squash) / 140;
+    if (k >= 1) L.squash = 0; else { const s = Math.sin(k * Math.PI) * 0.06; sx *= 1 + s; sy *= 1 - s; }
   }
+  L.g.setAttribute("transform", `translate(${(cx + dx).toFixed(2)} ${cy.toFixed(2)}) scale(${sx.toFixed(4)} ${sy.toFixed(4)}) translate(${-cx} ${-cy})`);
+}
+
+function frame(L, t) {
+  if (L.dirty !== false) { shape(L, t); L.dirty = false; }
+  if (L.mode === "template") return;
+  if (!reduce) life(L, t);
+  drawProps(L, L.state, L.box, reduce ? 0.35 : t);
+}
+
+function shape(L, t) {
+  const st = L.state, p = L.pts;
+  L.box = bbox(p);
   const d = curve(p);
-  if (L.mode === "template") { L.body.setAttribute("d", d); L.body.setAttribute("fill", "currentColor"); L.hi.setAttribute("d", ""); }
+  if (L.mode === "template") { L.body.setAttribute("d", d); L.body.setAttribute("fill", "currentColor"); L.hi.setAttribute("rx", 0); }
   else {
     L.body.setAttribute("d", d);
     L.body.setAttribute("fill", st === "off" ? "var(--off)" : "var(--body)");
-    L.body.setAttribute("stroke", "var(--face)"); L.body.setAttribute("stroke-width", "2.4");
-    const b = bbox(p); // belly sheen: a smaller copy of the same outline, low and soft
-    L.hi.setAttribute("d", curve(p.map(([x, y]) => [b.x + b.w / 2 + (x - b.x - b.w / 2) * .55, b.y + b.h * .62 + (y - b.y - b.h / 2) * .38])));
+    L.body.setAttribute("stroke", "var(--face)"); L.body.setAttribute("stroke-width", "2.2"); L.body.setAttribute("stroke-linejoin", "round");
+    const b = L.box; L.clip.setAttribute("d", d);
+    L.hi.setAttribute("cx", b.x + b.w / 2); L.hi.setAttribute("cy", b.y + b.h * 0.74);
+    L.hi.setAttribute("rx", b.w * 0.3); L.hi.setAttribute("ry", b.h * 0.17);
     L.hi.setAttribute("fill", "var(--body-hi)");
   }
-  drawFace(L, st, bbox(p), t);
+  drawFace(L, st, L.box, t);
   if (L.mode === "template") L.face.querySelectorAll("*").forEach(n => { n.setAttribute("fill", n.getAttribute("fill") === "none" ? "none" : "var(--knock)"); if (n.getAttribute("stroke")) n.setAttribute("stroke", "var(--knock)"); });
 }
 
-function morph(L, to, ms = 650) {
+const easeOutExpo = k => (k >= 1 ? 1 : 1 - Math.pow(2, -10 * k));
+function morph(L, to, ms = 320) {
   const from = L.pts.map(q => q.slice()), target = DATA.shapes[to], t0 = performance.now();
-  L.state = to;
+  L.state = to; L.dirty = true;
   if (reduce) { L.pts = target.map(q => q.slice()); return; }
-  L.tween = now => { const k = Math.min(1, (now - t0) / ms); L.pts = lerp(from, target, easeOut(k)); if (k >= 1) L.tween = null; };
+  L.squash = t0;
+  L.tween = now => { const k = Math.min(1, (now - t0) / ms); L.pts = lerp(from, target, easeOutExpo(k)); L.dirty = true; if (k >= 1) L.tween = null; };
 }
 
 /* build */
@@ -346,11 +370,16 @@ show(0, false);
 let last = 0;
 function loop(now) {
   const t = now / 1000;
-  if (auto && now - last > 2600) { last = now; show((idx + 1) % STATES.length, false); }
+  if (auto && now - last > 2000) { last = now; show((idx + 1) % STATES.length, false); }
   if (stage.tween) stage.tween(now);
-  frame(stage, t); sprites.forEach(L => frame(L, t)); bars.forEach(L => frame(L, 0));
+  frame(stage, t); sprites.forEach(L => { if (L.visible !== false) frame(L, t); });
   if (!reduce) requestAnimationFrame(loop);
 }
-if (reduce) { frame(stage, 0); sprites.forEach(L => frame(L, 0)); bars.forEach(L => frame(L, 0)); }
+bars.forEach(L => frame(L, 0));                        // static glyphs: draw once
+if ("IntersectionObserver" in window) {
+  const io = new IntersectionObserver(es => es.forEach(e => { e.target.__plasmie.visible = e.isIntersecting; }), { rootMargin: "80px" });
+  sprites.forEach(L => { L.svg.__plasmie = L; io.observe(L.svg); });
+}
+if (reduce) { frame(stage, 0); sprites.forEach(L => frame(L, 0)); }
 else requestAnimationFrame(loop);
 </script>

@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 SELF = Path(__file__).resolve().parent
-LOGS = SELF / "logs"
+LOGS = Path(os.path.expanduser(os.environ.get("PLASMIE_LOGS") or "~/Library/Logs/Plasmie"))
 
 # Reasons the SDK reports, mapped to something a human can act on. Mirrors
 # apple_fm_sdk.SystemLanguageModelUnavailableReason. Verified against the real

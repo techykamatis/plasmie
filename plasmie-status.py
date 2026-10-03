@@ -9,14 +9,15 @@ import subprocess
 import sys
 
 H = os.path.expanduser("~")
-LOOP = f"{H}/.plasmie"
-sys.path.insert(0, LOOP)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
+
+LOOP = paths.DATA_DIR
 
 
 def _vault():
     try:
-        for line in open(f"{LOOP}/config.env"):
+        for line in open(paths.CONFIG):
             if line.strip().startswith("VAULT_DIR"):
                 return os.path.expanduser(line.split("=", 1)[1].strip().strip('"').strip("'"))
     except OSError:
@@ -155,5 +156,7 @@ print(json.dumps({
     "activity": activity,
     "journal": journal,
     "vault": VAULT,
-    "loop": LOOP,
+    "loop": LOOP,                      # data folder (feed.log, state)
+    "engine": paths.ENGINE_DIR,
+    "logs": paths.LOG_DIR,
 }))

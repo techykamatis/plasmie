@@ -18,7 +18,7 @@ nn.Module.load_weights = lambda self, weights, strict=False, **kw: _orig_load(
     self, weights, strict=False, **kw
 )
 
-LOGDIR = os.path.expanduser("~/.plasmie/logs")
+LOGDIR = os.path.expanduser(os.environ.get("PLASMIE_LOGS") or "~/Library/Logs/Plasmie")
 RETAIN_DAYS = 30
 
 

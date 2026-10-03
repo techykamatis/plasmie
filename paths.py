@@ -15,9 +15,20 @@ Layout (llm-wiki):
 import datetime
 import os
 
+# --- where things live: engine (code) vs data vs logs --------------------------
+# The engine is wherever these scripts are: the dev checkout, or inside Plasmie.app for
+# an installed copy (read-only, replaced on update). Everything Plasmie writes lives in
+# the per-user data and log folders, macOS-conventionally, never next to the code.
+# Shell scripts get the same three from plasmie-env.sh; the app from PlasmiePaths.
+ENGINE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.expanduser(os.environ.get("PLASMIE_HOME") or "~/Library/Application Support/Plasmie")
+LOG_DIR = os.path.expanduser(os.environ.get("PLASMIE_LOGS") or "~/Library/Logs/Plasmie")
+LOOP_DIR = DATA_DIR          # older name for the data folder (state files hang off it)
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
+
 # --- config.env: the ONE reader (the app writes it; shell scripts source it) ---
-LOOP_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG = os.path.join(LOOP_DIR, "config.env")
+CONFIG = os.path.join(DATA_DIR, "config.env")
 
 # Every connector the menu-bar app shows a card (and an On/Off switch) for.
 SOURCES = ("slack", "github", "git", "confluence", "outlook", "claude", "agentcli")

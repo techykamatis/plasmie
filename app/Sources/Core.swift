@@ -1,7 +1,7 @@
 // Plasmie (Plasmie) — native menu-bar app (macOS 13+ MenuBarExtra, .window style).
 // HIG-aligned panel: SF Symbols, system materials, native typography. Actions run
 // in-process (no Terminal pop-outs) and show output inline. Reads state via
-// ~/.plasmie/plasmie-status.py; shells to the existing python/launchd you run.
+// the bundled plasmie-status.py; shells to the existing python/launchd you run.
 import AppKit
 import Carbon.HIToolbox
 import Combine
@@ -122,8 +122,31 @@ func openInObsidian(_ path: String) {
 }
 func detectObsidian() -> Bool { NSWorkspace.shared.urlForApplication(withBundleIdentifier: "md.obsidian") != nil }
 
+/// Where things live; mirrors paths.py and plasmie-env.sh. The engine (Python + shell)
+/// ships inside the app and is replaced on update; data and logs are per-user, in the
+/// macOS-conventional folders, never next to the code.
+enum PlasmiePaths {
+    static let home = "\(NSHomeDirectory())/Library/Application Support/Plasmie"
+    static let logs = "\(NSHomeDirectory())/Library/Logs/Plasmie"
+    static let config = "\(home)/config.env"
+    /// The bundled engine. Dev override: `defaults write com.plasmie.legacy plasmie.engine <checkout>`.
+    static var engine: String {
+        if let o = UserDefaults.standard.string(forKey: "plasmie.engine"), !o.isEmpty {
+            return (o as NSString).expandingTildeInPath
+        }
+        return (Bundle.main.resourcePath ?? "") + "/backend"
+    }
+    static func script(_ name: String) -> String { "\(engine)/\(name)" }
+    /// Plasmie's own venv. Never /usr/bin/python3 on a fresh Mac: it's a stub that pops the
+    /// "install developer tools" dialog. The fallback only covers the moments before setup.
+    static var python: String {
+        let v = "\(home)/venv/bin/python3"
+        return FileManager.default.isExecutableFile(atPath: v) ? v : "/usr/bin/python3"
+    }
+}
+
 func loadStatus() -> Status {
-    let out = runCapture("/usr/bin/python3", ["\(NSHomeDirectory())/.plasmie/plasmie-status.py"])
+    let out = runCapture(PlasmiePaths.python, [PlasmiePaths.script("plasmie-status.py")])
     guard let data = out.data(using: .utf8) else { return Status() }
     return (try? JSONDecoder().decode(Status.self, from: data)) ?? Status()
 }
@@ -343,7 +366,7 @@ final class Model: ObservableObject {
         if let settled { shownGlyph = settled }
     }
 
-    private var py: String { "/usr/bin/python3" }
+    private var py: String { PlasmiePaths.python }
 
     /// Fire a launchd job (spin immediately, poll fast) and follow it to completion:
     /// the row shows a running state, then a "<label> finished · <summary>" note.
@@ -401,13 +424,13 @@ final class Model: ObservableObject {
         }
     }
 
-    func reindexCheck() { capture(["\(s.loop)/reindex.py", "--check", s.vault], "Reindex") }
+    func reindexCheck() { capture([PlasmiePaths.script("reindex.py"), "--check", s.vault], "Reindex") }
 
     /// ask a natural-language question against the vault (local RAG via ask.py)
     func ask(_ q: String) {
         let query = q.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return }
-        capture(["\(s.loop)/ask.py", query, s.vault], "Asking")
+        capture([PlasmiePaths.script("ask.py"), query, s.vault], "Asking")
     }
 
     /// mark a held draft resolved so it clears from the pending count
@@ -423,7 +446,7 @@ final class Model: ObservableObject {
         guard !hold.isEmpty else { return }
         busy = true; note = "Approving…"; output = ""; recomputePlasmie(); updateAnimation()
         DispatchQueue.global().async {
-            let o = runCapture(self.py, ["\(self.s.loop)/promote-apply.py", hold, "--apply"])
+            let o = runCapture(self.py, [PlasmiePaths.script("promote-apply.py"), hold, "--apply"])
             self.markResolved(hold)
             DispatchQueue.main.async {
                 self.busy = false

@@ -13,7 +13,7 @@
 # raw/ is indexed by qmd and a pasted token would otherwise get embedded.
 set -euo pipefail
 SELF="$(cd "$(dirname "$0")" && pwd)"
-[ -f "$SELF/config.env" ] && . "$SELF/config.env"
+. "$SELF/plasmie-env.sh"
 VAULT="${PLASMIE_VAULT:-${VAULT_DIR:-$HOME/knowledge}}"
 
 title=""
@@ -29,10 +29,10 @@ text="${text#"${text%%[![:space:]]*}"}"  # trim leading whitespace
 # Redact FIRST. The title, slug and filename are all derived from the text, so
 # redacting only the body would still leak a pasted key into the filename — and a
 # filename is the one thing that shows up in listings, promote drafts and git.
-clean="$(printf '%s' "$text" | PLASMIE_SELF="$SELF" /usr/bin/python3 -c \
+clean="$(printf '%s' "$text" | PLASMIE_SELF="$SELF" "$PY" -c \
   'import sys,os; sys.path.insert(0,os.environ["PLASMIE_SELF"]); from scrub import redact; print(redact(sys.stdin.read()), end="")' )" \
   || clean="$text"
-[ -n "$title" ] && title="$(printf '%s' "$title" | PLASMIE_SELF="$SELF" /usr/bin/python3 -c \
+[ -n "$title" ] && title="$(printf '%s' "$title" | PLASMIE_SELF="$SELF" "$PY" -c \
   'import sys,os; sys.path.insert(0,os.environ["PLASMIE_SELF"]); from scrub import redact; print(redact(sys.stdin.read()), end="")' )"
 
 [ -n "$title" ] || title="$(printf '%s' "$clean" | head -1 | cut -c1-60)"

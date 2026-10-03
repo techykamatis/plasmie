@@ -6,16 +6,15 @@
 set -euo pipefail
 umask 077   # audit/transcript logs are owner-only (contain your data)
 SELF="$(cd "$(dirname "$0")" && pwd)"
-mkdir -p "$SELF/logs"
+. "$SELF/plasmie-env.sh"
 # one audit line per run -> logs/audit-YYYY-MM-DD.log (one file per day; pruned after 90d)
-audit(){ printf '%s | summarize | %s\n' "$(date '+%F %T')" "$1" >> "$SELF/logs/audit-$(date +%F).log"
-         find "$SELF/logs" -name 'audit-*.log' -mtime +90 -delete 2>/dev/null || true; }
-[ -f "$SELF/config.env" ] && . "$SELF/config.env"
+audit(){ printf '%s | summarize | %s\n' "$(date '+%F %T')" "$1" >> "$PLASMIE_LOGS/audit-$(date +%F).log"
+         find "$PLASMIE_LOGS" -name 'audit-*.log' -mtime +90 -delete 2>/dev/null || true; }
 VAULT="${VAULT_DIR:-$HOME/knowledge}"
 DAY="$(date +%F)"
 
 # raw dirs to read: every connector not switched Off in the app (paths.py owns the rule)
-DIRS="$("$SELF/.venv/bin/python3" "$SELF/paths.py" activity-dirs 2>/dev/null || python3 "$SELF/paths.py" activity-dirs)" \
+DIRS="$("$PY" "$SELF/paths.py" activity-dirs)" \
   || { audit "FAILED: paths.py activity-dirs"; exit 1; }
 # gather today's raw source files. Each present source gets an equal share of the
 # 20k budget (tail = newest), so one chatty source can't crowd the rest out.
@@ -65,7 +64,7 @@ $input"
 # unsupported-claim counts (2026-09-30), and needs no 5GB model load. fm.generate
 # returns "" (-> Gemma) when unavailable, busy, over the context window, or slow.
 model="Apple on-device"
-out="$(printf '%s' "$prompt" | "$SELF/.venv/bin/python3" -c 'import sys; sys.path.insert(0, sys.argv[1]); import fm; print(fm.generate(sys.stdin.read(), timeout=90, max_tokens=800) or "", end="")' "$SELF" 2>>"$SELF/logs/gen.err")" || out=""
+out="$(printf '%s' "$prompt" | "$PY" -c 'import sys; sys.path.insert(0, sys.argv[1]); import fm; print(fm.generate(sys.stdin.read(), timeout=90, max_tokens=800) or "", end="")' "$SELF" 2>>"$PLASMIE_LOGS/gen.err")" || out=""
 if [ -z "$out" ]; then
   model="Local-Gemma"
   out="$("$SELF/gen.sh" 200 "$prompt")" || { audit "skipped (busy or timed out)"; echo "summarize skipped — retries next hour"; exit 0; }

@@ -6,12 +6,12 @@ import SwiftUI
 // MARK: - configuration store (connectors + sync)
 
 /// Reads/writes the loop's configuration, which lives in two plain files:
-///   ~/.plasmie/config.env  — VAULT_DIR, PLASMIE_DISABLED_SOURCES (quoted, spaces-safe)
+///   ~/Library/Application Support/Plasmie/config.env  — VAULT_DIR, PLASMIE_DISABLED_SOURCES (quoted, spaces-safe)
 ///   ~/.claude/.env                — connector secrets, SHARED with other tools; we
 ///                                   upsert only our own keys and preserve the rest.
 enum ConfigStore {
     static var home: String { NSHomeDirectory() }
-    static var configEnv: String { "\(home)/.plasmie/config.env" }
+    static var configEnv: String { PlasmiePaths.config }
     static var dotEnv: String { "\(home)/.claude/.env" }
 
     /// Parse KEY=value, tolerating a leading `export ` and single/double quotes.
@@ -147,7 +147,6 @@ struct SettingsView: View {
     @FocusState private var vaultFocused: Bool
     @AppStorage(NotchPrefs.key) private var notchOn = true
 
-    private var loop: String { "\(NSHomeDirectory())/.plasmie" }
 
     /// The non-secret fields as `load()` last read them — the dirty baseline.
     private struct Fields: Equatable {
@@ -327,7 +326,8 @@ struct SettingsView: View {
                 .klNote()
             Text("Where things live").font(.klLabel).foregroundStyle(.secondary).padding(.top, 4)
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
-                pathRow("Loop", loop)
+                pathRow("Data", PlasmiePaths.home)
+                pathRow("Logs", PlasmiePaths.logs)
                 pathRow("Secrets", "\(NSHomeDirectory())/.claude/.env")
             }
         }
@@ -406,9 +406,7 @@ struct SettingsView: View {
     /// message; on success the script writes MS_REFRESH_TOKEN to ~/.claude/.env.
     private func connectOutlook() {
         connecting = true; outlookLog = "Starting…"
-        let py = FileManager.default.fileExists(atPath: "\(loop)/.venv/bin/python3")
-            ? "\(loop)/.venv/bin/python3" : "/usr/bin/python3"
-        runStreaming(py, ["\(loop)/msgraph.py", "login"],
+        runStreaming(PlasmiePaths.python, [PlasmiePaths.script("msgraph.py"), "login"],
             onStatus: { _ in },
             onChunk: { full in outlookLog = full.trimmingCharacters(in: .whitespacesAndNewlines) },
             onDone: { connecting = false; conn.refresh(["outlook"]) })

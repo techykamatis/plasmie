@@ -187,18 +187,14 @@ final class ConnectorsModel: ObservableObject {
     /// Latest refresh generation per connector; a result from an older one is stale.
     private var generation: [String: Int] = [:]
 
-    private var loop: String { "\(NSHomeDirectory())/.plasmie" }
-    private var python: String {
-        FileManager.default.fileExists(atPath: "\(loop)/.venv/bin/python3")
-            ? "\(loop)/.venv/bin/python3" : "/usr/bin/python3"
-    }
+    private var python: String { PlasmiePaths.python }
 
     func refresh(_ sources: [String] = []) {
         let keys = sources.isEmpty ? Connector.all.map(\.id) : sources
         checking.formUnion(keys)
         var mine: [String: Int] = [:]
         for k in keys { generation[k, default: 0] += 1; mine[k] = generation[k] }
-        let py = python, script = "\(loop)/plasmie-doctor.py"
+        let py = python, script = PlasmiePaths.script("plasmie-doctor.py")
         DispatchQueue.global().async {
             let out = runCapture(py, [script] + sources)
             let parsed = (out.data(using: .utf8)).flatMap {

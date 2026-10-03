@@ -27,7 +27,7 @@ from pathlib import Path
 import paths
 
 HERE = Path(__file__).resolve().parent
-STATE = HERE / ".patterns.json"
+STATE = Path(paths.DATA_DIR) / ".patterns.json"
 WINDOW = 28
 MIN_DAYS = 3
 SIM = 0.22          # digest lines are short; measured on the real vault (0.32 found nothing)

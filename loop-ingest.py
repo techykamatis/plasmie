@@ -24,7 +24,7 @@ VAULT = paths.vault()
 # Connectors switched Off in the app. Off means off: no fetch, no network, and the
 # watermark still advances, so switching back On never backfills the Off period.
 OFF = paths.disabled_sources()
-STATE = os.path.expanduser("~/.plasmie/.loop-state.json")
+STATE = os.path.join(paths.DATA_DIR, ".loop-state.json")
 SESS_ROOT = os.path.expanduser("~/.claude/projects")
 NOW = time.time()
 TOKEN = os.environ.get("SLACK_USER_TOKEN", "")

@@ -1,23 +1,28 @@
 #!/bin/bash
-# First-run backend setup, driven by the menu-bar app (no terminal, no Homebrew).
-# Idempotent: every step detects what's already done, so it's safe to re-run and
-# resumes a partial setup. Emits "PROGRESS:<pct>:<message>" lines for the app to
-# show, and "DONE" / "ERROR:<message>" at the end.
+# First-run setup, driven by Plasmie.app (no terminal, no Homebrew). Two modes:
 #
-#   app-setup.sh <RESOURCES_DIR> [VAULT_DIR]
-#     RESOURCES_DIR contains backend/ (the scripts) and python/ (standalone 3.12)
+#   app-setup.sh --check <RESOURCES_DIR>          prerequisite report, changes nothing
+#   app-setup.sh <RESOURCES_DIR> [VAULT_DIR]      install (idempotent, resumable)
 #
-# ponytail: bundles a BARE standalone python and pip-installs mlx-vlm (generation)
-# on first run. Retrieval is qmd (Node) — installed via npm here; Node 22+ is the
-# one host prerequisite we don't bundle. Models (~8.6 GB total) download once.
+# --check prints one line per prerequisite for the app's checklist:
+#   CHECK:<id>:<ok|missing|warn>:<required|recommended>:<label>:<detail>
+# Install prints "PROGRESS:<pct>:<message>" lines, then "DONE" or "ERROR:<message>".
+#
+# Layout: the engine runs IN PLACE from <RESOURCES_DIR>/backend (read-only, replaced on
+# app update; never copied out). Everything written goes to $PLASMIE_HOME (data: config,
+# state, venv, models) and $PLASMIE_LOGS. See plasmie-env.sh.
 set -uo pipefail
 
-RES="${1:?usage: app-setup.sh <RESOURCES_DIR> [VAULT]}"
+MODE=install
+[ "${1:-}" = --check ] && { MODE=check; shift; }
+RES="${1:?usage: app-setup.sh [--check] <RESOURCES_DIR> [VAULT]}"
 VAULT="${2:-$HOME/knowledge}"
-LOOP="$HOME/.plasmie"
-VENV="$LOOP/.venv"
+ENGINE="$RES/backend"
+. "$ENGINE/plasmie-env.sh"
+VENV="$PLASMIE_HOME/venv"
 PY="$VENV/bin/python3"
-MODEL_DIR="$LOOP/models/gemma-4-e4b"
+MODEL_DIR="$PLASMIE_HOME/models/gemma-4-e4b"
+NEED_GB=12          # answer model 4.9 + search models 3.7 + runtime ~1.5, with headroom
 
 # make node/npm/qmd reachable even under the app's bare GUI PATH. Each dir is
 # PREPENDED, so the last one wins: nvm goes last. qmd's better-sqlite3 is a native
@@ -30,15 +35,46 @@ export PATH
 
 p()   { printf 'PROGRESS:%s:%s\n' "$1" "$2"; }
 fail(){ printf 'ERROR:%s\n' "$1"; exit 1; }
+chk() { printf 'CHECK:%s:%s:%s:%s:%s\n' "$1" "$2" "$3" "$4" "$5"; }
 
-# 1) backend scripts ---------------------------------------------------------
-p 5 "Installing the engine…"
-mkdir -p "$LOOP" || fail "can't create $LOOP"
-# copy everything but the heavy/per-machine bits; never clobber an existing venv/model
-/usr/bin/rsync -a --delete \
-  --exclude '.venv' --exclude 'models' --exclude 'logs' --exclude 'config.env' \
-  "$RES/backend/" "$LOOP/" 2>/dev/null || cp -R "$RES/backend/." "$LOOP/" || fail "copy failed"
-chmod +x "$LOOP"/*.sh "$LOOP"/launchd/*.sh 2>/dev/null || true
+# --- prerequisites (shared by --check and the install's own preflight) --------
+node_major() { node -v 2>/dev/null | sed -E 's/^v([0-9]+).*/\1/'; }
+check_all() {
+  if [ "$(uname -m)" = arm64 ]; then chk chip ok required "Apple silicon" "Runs the on-device models."
+  else chk chip missing required "Apple silicon" "Plasmie's on-device models need an M-series Mac."; fi
+
+  local free; free="$(df -g "$HOME" 2>/dev/null | awk 'NR==2{print $4}')"
+  if [ "${free:-0}" -ge "$NEED_GB" ]; then chk disk ok required "Disk space" "${free} GB free (needs about ${NEED_GB} GB)."
+  else chk disk missing required "Disk space" "${free:-?} GB free; free up about ${NEED_GB} GB for the models."; fi
+
+  if curl -fsI --max-time 6 https://huggingface.co >/dev/null 2>&1; then chk net ok required "Internet" "Needed once to download the models."
+  else chk net missing required "Internet" "Can't reach huggingface.co to download the models."; fi
+
+  local nm; nm="$(node_major)"
+  if [ -n "$nm" ] && [ "$nm" -ge 22 ]; then chk node ok required "Node.js 22+" "v$(node -v | tr -d v) powers vault search (qmd)."
+  elif [ -n "$nm" ]; then chk node missing required "Node.js 22+" "Found v$nm; vault search (qmd) needs 22 or newer."
+  else chk node missing required "Node.js 22+" "Vault search (qmd) runs on Node.js."; fi
+
+  if [ -d /Applications/Obsidian.app ] || [ -d "$HOME/Applications/Obsidian.app" ]; then chk obsidian ok recommended "Obsidian" "Opens and browses your vault."
+  else chk obsidian missing recommended "Obsidian" "The app you read your vault in."; fi
+
+  if xcode-select -p >/dev/null 2>&1; then chk clt ok recommended "Command Line Tools" "git keeps a history of your vault."
+  else chk clt missing recommended "Command Line Tools" "Without them there's no vault history (git)."; fi
+
+  if command -v claude >/dev/null 2>&1 || [ -x "$HOME/.local/bin/claude" ]; then chk claude ok recommended "Claude Code" "Files new knowledge nightly, on the local model."
+  else chk claude missing recommended "Claude Code" "Nightly filing (promote) uses it; everything else works without."; fi
+}
+
+if [ "$MODE" = check ]; then check_all; exit 0; fi
+
+# required prerequisites must pass before anything is installed
+if blockers="$(check_all | awk -F: '$3!="ok" && $4=="required"{print $5}' | paste -sd, -)" && [ -n "$blockers" ]; then
+  fail "Missing: ${blockers//,/, }. Fix these, then try again."
+fi
+
+# 1) migrate data from the old ~/.plasmie layout (older installs) -------
+p 5 "Preparing Plasmie's data folder…"
+"$ENGINE/migrate-home.sh" >/dev/null 2>&1 || fail "couldn't move older Plasmie data into place"
 
 # 2) python runtime (generation only — mlx-vlm) ------------------------------
 if [ -x "$PY" ] && "$PY" -c "import mlx_vlm" 2>/dev/null; then
@@ -58,8 +94,9 @@ fi
 
 # 3) vault (needed before qmd can index it) ----------------------------------
 p 25 "Creating your notes vault…"
-printf 'VAULT_DIR=%s\n' "$VAULT" > "$LOOP/config.env"
-"$LOOP/scaffold-vault.sh" "$VAULT" >/dev/null 2>&1 || true   # refuses if non-empty (fine)
+# never clobber an existing config (it holds the connector switches); only seed the vault
+grep -q '^VAULT_DIR=' "$PLASMIE_CONFIG" 2>/dev/null || printf 'VAULT_DIR="%s"\n' "$VAULT" >> "$PLASMIE_CONFIG"
+"$ENGINE/scaffold-vault.sh" "$VAULT" >/dev/null 2>&1 || true   # refuses if non-empty (fine)
 
 # 4) retrieval engine — qmd (hybrid search + MCP; Node 22+) ------------------
 QMD="$(command -v qmd || true)"
@@ -97,20 +134,20 @@ fi
 # Only on a genuine first run (no prior state). Best-effort: whatever defers here
 # the hourly/nightly loops backfill. Confluence + GitHub = full contributor
 # history; Slack + Claude sessions = the bootstrap window (PLASMIE_BOOTSTRAP_DAYS).
-if [ ! -f "$LOOP/.loop-state.json" ]; then
+if [ ! -f "$PLASMIE_HOME/.loop-state.json" ]; then
   p 85 "Gathering your recent history (first-time crawl)…"
   set -a; [ -f "$HOME/.claude/.env" ] && . "$HOME/.claude/.env"; set +a
   export PLASMIE_VAULT="$VAULT" PLASMIE_BOOTSTRAP_DAYS="${PLASMIE_BOOTSTRAP_DAYS:-30}"
-  "$PY" "$LOOP/confluence-backfill.py" "$VAULT" >/dev/null 2>&1 || true
-  "$PY" "$LOOP/github-backfill.py"     "$VAULT" >/dev/null 2>&1 || true
-  "$PY" "$LOOP/loop-ingest.py"                   >/dev/null 2>&1 || true
-  "$PY" "$LOOP/reindex.py" "$VAULT"              >/dev/null 2>&1 || true
+  "$PY" "$ENGINE/confluence-backfill.py" "$VAULT" >/dev/null 2>&1 || true
+  "$PY" "$ENGINE/github-backfill.py"     "$VAULT" >/dev/null 2>&1 || true
+  "$PY" "$ENGINE/loop-ingest.py"                   >/dev/null 2>&1 || true
+  "$PY" "$ENGINE/reindex.py" "$VAULT"              >/dev/null 2>&1 || true
   "$QMD" embed                                   >/dev/null 2>&1 || true
 fi
 
 # 6) background loops --------------------------------------------------------
 p 95 "Turning on the background helpers…"
-"$LOOP/launchd/install.sh" >/dev/null 2>&1 || fail "couldn't start the background helpers"
+"$ENGINE/launchd/install.sh" >/dev/null 2>&1 || fail "couldn't start the background helpers"
 
 p 100 "Done"
 echo "DONE"

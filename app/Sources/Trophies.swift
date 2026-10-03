@@ -127,11 +127,10 @@ extension Achievements {
 
 /// Runs plasmie-achievements.py (venv python first, then system) and decodes its stdout.
 /// Blocking: call off the main thread. Returns nil on any failure.
-func loadAchievements(loop: String = "\(NSHomeDirectory())/.plasmie") -> Achievements? {
-    let script = "\(loop)/plasmie-achievements.py"
+func loadAchievements() -> Achievements? {
+    let script = PlasmiePaths.script("plasmie-achievements.py")
     guard FileManager.default.fileExists(atPath: script) else { return nil }
-    let pythons = ["\(loop)/.venv/bin/python3", "/usr/bin/python3"]
-        .filter { FileManager.default.isExecutableFile(atPath: $0) }
+    let pythons = [PlasmiePaths.python].filter { FileManager.default.isExecutableFile(atPath: $0) }
     for py in pythons {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: py)

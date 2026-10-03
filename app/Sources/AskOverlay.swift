@@ -52,7 +52,7 @@ final class OverlayController {
 
     private func show() {
         let st = loadStatus()
-        let root = AskOverlay(loop: st.loop, vault: st.vault, notes: st.notes) { [weak self] in self?.panel?.orderOut(nil) }
+        let root = AskOverlay(vault: st.vault, notes: st.notes) { [weak self] in self?.panel?.orderOut(nil) }
         let p = panel ?? makePanel()
         panel = p
         p.contentView = NSHostingView(rootView: root)
@@ -145,7 +145,6 @@ struct MarkdownText: View {
 
 /// The Spotlight-like content: big field on top, answer scrolls below. Reuses ask.py.
 struct AskOverlay: View {
-    let loop: String
     let vault: String
     var notes = ""
     let onClose: () -> Void
@@ -299,9 +298,7 @@ struct AskOverlay: View {
         busy = true; answer = ""; status = ""; answerHeight = 0; gapLogged = false
         AskActivity.shared.answering = true
         // The venv holds apple_fm_sdk (on-device answers); system python can't import it.
-        let venvPy = "\(loop)/.venv/bin/python3"
-        let py = FileManager.default.fileExists(atPath: venvPy) ? venvPy : "/usr/bin/python3"
-        runStreaming(py, ["\(loop)/ask.py", q, vault],
+        runStreaming(PlasmiePaths.python, [PlasmiePaths.script("ask.py"), q, vault],
                      onStatus: { status = $0; if $0.contains("coverage gap") { gapLogged = true } },
                      onChunk: { answer = $0 },
                      onDone: {

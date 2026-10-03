@@ -12,11 +12,12 @@
 # the next machine (that is how knowledge-improve went unversioned for a month).
 set -euo pipefail
 SELF="$(cd "$(dirname "$0")" && pwd)"
-LOOP_DIR="$(cd "$SELF/.." && pwd)"
+LOOP_DIR="$(cd "$SELF/.." && pwd)"          # the engine: this checkout, or the app bundle's backend/
+. "$LOOP_DIR/plasmie-env.sh"                  # PLASMIE_HOME (data) and PLASMIE_LOGS
 DEST="$HOME/Library/LaunchAgents"
 DOMAIN="gui/$(id -u)"
 
-mkdir -p "$DEST" "$LOOP_DIR/logs"
+mkdir -p "$DEST"
 
 if [ "${1:-}" = uninstall ]; then
   for tpl in "$SELF"/*.plist; do
@@ -31,7 +32,8 @@ fi
 for tpl in "$SELF"/*.plist; do
   label="$(basename "$tpl" .plist)"
   out="$DEST/$label.plist"
-  sed -e "s|__LOOP_DIR__|$LOOP_DIR|g" -e "s|__HOME__|$HOME|g" "$tpl" > "$out"
+  sed -e "s|__LOOP_DIR__|$LOOP_DIR|g" -e "s|__DATA__|$PLASMIE_HOME|g" -e "s|__LOGS__|$PLASMIE_LOGS|g" \
+      -e "s|__HOME__|$HOME|g" "$tpl" > "$out"
   launchctl bootout "$DOMAIN/$label" 2>/dev/null || true   # ignore "not loaded"
   launchctl bootstrap "$DOMAIN" "$out"
   launchctl enable "$DOMAIN/$label"

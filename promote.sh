@@ -6,13 +6,12 @@
 set -euo pipefail
 umask 077   # audit/transcript logs are owner-only (contain your data)
 SELF="$(cd "$(dirname "$0")" && pwd)"
-mkdir -p "$SELF/logs"
+. "$SELF/plasmie-env.sh"
 # one audit line per run -> logs/audit-YYYY-MM-DD.log (one file per day; pruned after 90d)
-audit(){ printf '%s | promote | %s\n' "$(date '+%F %T')" "$1" >> "$SELF/logs/audit-$(date +%F).log"
-         find "$SELF/logs" -name 'audit-*.log' -mtime +90 -delete 2>/dev/null || true; }
+audit(){ printf '%s | promote | %s\n' "$(date '+%F %T')" "$1" >> "$PLASMIE_LOGS/audit-$(date +%F).log"
+         find "$PLASMIE_LOGS" -name 'audit-*.log' -mtime +90 -delete 2>/dev/null || true; }
 # live one-line heartbeat the menu-bar app reads: "<epoch>|<message>"
-status(){ printf '%s|%s' "$(date +%s)" "$1" > "$SELF/.status"; }
-[ -f "$SELF/config.env" ] && . "$SELF/config.env"
+status(){ printf '%s|%s' "$(date +%s)" "$1" > "$PLASMIE_HOME/.status"; }
 VAULT="${VAULT_DIR:-$HOME/knowledge}"
 TODAY="$(date +%F)"
 YEST="$(date -v-1d +%F 2>/dev/null || date -d 'yesterday' +%F)"
@@ -20,7 +19,7 @@ DRAFT="$VAULT/meta/promotion-drafts/$TODAY.md"
 mkdir -p "$VAULT/meta/promotion-drafts"
 
 # raw dirs to read: every connector not switched Off in the app (paths.py owns the rule)
-DIRS="$("$SELF/.venv/bin/python3" "$SELF/paths.py" activity-dirs 2>/dev/null || python3 "$SELF/paths.py" activity-dirs)" \
+DIRS="$("$PY" "$SELF/paths.py" activity-dirs)" \
   || { audit "FAILED: paths.py activity-dirs"; exit 1; }
 # gather recent raw activity across sources. Each present file gets an equal share
 # of the 24k budget (tail = newest): a global tail used to drop whole sources.
@@ -45,7 +44,7 @@ done
 # ingest, but a hand-dropped file never passes through loop-ingest.py — and this
 # text reaches the local model AND the full-prompt transcript log, so it must be
 # scrubbed here or it is the one unredacted path into logs/transcript-*.log.
-redact_stdin(){ PLASMIE_SELF="$SELF" /usr/bin/python3 -c \
+redact_stdin(){ PLASMIE_SELF="$SELF" "$PY" -c \
   'import sys,os; sys.path.insert(0,os.environ["PLASMIE_SELF"]); from scrub import redact; print(redact(sys.stdin.read()), end="")'; }
 
 inbox_block=""
@@ -96,9 +95,9 @@ echo "wrote promotion draft -> $DRAFT ($n lines)"
 # and holds the uncertain ones in <date>.hold.md for a quick review. No human gate.
 if command -v python3 >/dev/null 2>&1; then
   status "Finding duplicates…"
-  python3 "$SELF/dedupe.py" "$DRAFT" "$VAULT" --write && audit "ok: dedupe-enriched draft" || audit "dedupe skipped (error)"
+  "$PY" "$SELF/dedupe.py" "$DRAFT" "$VAULT" --write && audit "ok: dedupe-enriched draft" || audit "dedupe skipped (error)"
   status "Auto-applying…"
-  result="$(python3 "$SELF/promote-apply.py" --auto "$DRAFT" "$VAULT" 2>&1)"
+  result="$("$PY" "$SELF/promote-apply.py" --auto "$DRAFT" "$VAULT" 2>&1)"
   echo "$result"
   summary="$(printf '%s' "$result" | sed -n 's/^AUTO: //p' | head -1)"
   audit "auto: ${summary:-none}"

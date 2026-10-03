@@ -256,7 +256,7 @@ struct Panel: View {
             }
             .padding(.horizontal, 12).padding(.vertical, 6)
             output
-            ActionRow(title: "Full activity log", symbol: "doc.plaintext") { openExternal("\(m.s.loop)/feed.log") }
+            ActionRow(title: "Full activity log", symbol: "doc.plaintext") { openExternal("\(PlasmiePaths.home)/feed.log") }
                 .padding(.horizontal, 6).padding(.bottom, 4)
         }
     }

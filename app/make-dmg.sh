@@ -14,20 +14,22 @@ ln -s /Applications "$STAGE/Applications"
 # Gatekeeper. Spell out the one-time right-click → Open workaround in the DMG.
 cat > "$STAGE/HOW TO OPEN (first time).txt" <<'TXT'
 Opening Plasmie the first time
-=====================================
+============================
 
 1. Drag "Plasmie" onto the Applications folder (in this window).
 
-2. Open the Applications folder, then RIGHT-CLICK "Plasmie"
-   and choose "Open". (Double-clicking the first time will be blocked.)
+2. Open Applications and double-click Plasmie. macOS will say it can't
+   check it for malicious software (it isn't from the App Store yet).
+   Click "Done".
 
-3. A box says it's from an unidentified developer — click "Open".
+3. Open System Settings > Privacy & Security, scroll down, and click
+   "Open Anyway" next to Plasmie. Confirm with your password.
 
-You only do this once. After that it opens normally, and a small brain
-icon appears in your menu bar at the top of the screen.
+You only do this once. Plasmie then checks your Mac, shows anything it
+needs (with a button for each), and sets itself up. It lives beside the
+notch at the top of your screen; press Control-Option-Command-K to ask.
 
-If you don't see an "Open" option: open System Settings ▸ Privacy &
-Security, scroll down, and click "Open Anyway" next to Plasmie.
+Your notes never leave your Mac.
 TXT
 
 rm -f "$DMG"

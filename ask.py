@@ -46,7 +46,8 @@ import paths
 
 SELF = Path(__file__).resolve().parent
 ENDPOINT = os.environ.get("PLASMIE_ENDPOINT", "http://127.0.0.1:8091")   # mlx Gemma server
-MODEL = os.environ.get("GEMMA_MODEL", str(SELF / "models/gemma-4-e4b"))
+MODEL = os.environ.get("GEMMA_MODEL") or os.path.join(
+    os.path.expanduser(os.environ.get("PLASMIE_HOME") or "~/Library/Application Support/Plasmie"), "models/gemma-4-e4b")
 TIMEOUT = 90          # seconds for the local model
 TOP_K = 4             # notes fed as context
 PER_NOTE = 4000       # ceiling on chars of one note (the real share is budget-driven)

@@ -6,7 +6,7 @@
     <string>com.plasmie.dev-improve</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/python3</string>
+        <string>__DATA__/venv/bin/python3</string>
         <string>__LOOP_DIR__/plasmie-improve.py</string>
     </array>
     <key>EnvironmentVariables</key>
@@ -19,9 +19,9 @@
         <dict><key>Minute</key><integer>17</integer></dict>
     </array>
     <key>StandardOutPath</key>
-    <string>__LOOP_DIR__/logs/improve.log</string>
+    <string>__LOGS__/improve.log</string>
     <key>StandardErrorPath</key>
-    <string>__LOOP_DIR__/logs/improve.log</string>
+    <string>__LOGS__/improve.log</string>
     <key>RunAtLoad</key>
     <false/>
     <key>ProcessType</key>

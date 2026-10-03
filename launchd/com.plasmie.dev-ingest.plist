@@ -17,9 +17,9 @@
         </dict>
     </array>
     <key>StandardOutPath</key>
-    <string>__LOOP_DIR__/launchd.log</string>
+    <string>__LOGS__/launchd.log</string>
     <key>StandardErrorPath</key>
-    <string>__LOOP_DIR__/launchd.log</string>
+    <string>__LOGS__/launchd.log</string>
     <key>RunAtLoad</key>
     <false/>
     <key>ProcessType</key>

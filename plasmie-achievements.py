@@ -165,7 +165,7 @@ def _link_density(vault):
 
 
 def _clean(vault):
-    script = Path(paths.LOOP_DIR) / "reindex.py"
+    script = Path(paths.ENGINE_DIR) / "reindex.py"
     try:
         r = subprocess.run([sys.executable, str(script), "--check", str(vault)],
                            capture_output=True, text=True, timeout=60)

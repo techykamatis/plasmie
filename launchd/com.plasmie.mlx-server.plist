@@ -6,7 +6,7 @@
     <string>com.plasmie.mlx-server</string>
     <key>ProgramArguments</key>
     <array>
-        <string>__LOOP_DIR__/.venv/bin/python</string>
+        <string>__DATA__/venv/bin/python</string>
         <string>__LOOP_DIR__/mlx_serve.py</string>
         <string>--host</string>
         <string>127.0.0.1</string>
@@ -18,9 +18,9 @@
     <key>RunAtLoad</key>
     <false/>
     <key>StandardOutPath</key>
-    <string>__LOOP_DIR__/logs/mlx-server.log</string>
+    <string>__LOGS__/mlx-server.log</string>
     <key>StandardErrorPath</key>
-    <string>__LOOP_DIR__/logs/mlx-server.log</string>
+    <string>__LOGS__/mlx-server.log</string>
     <key>ProcessType</key>
     <string>Background</string>
 </dict>

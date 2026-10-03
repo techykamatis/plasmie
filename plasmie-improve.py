@@ -240,8 +240,8 @@ def _audit(msg):
     successful, every scheduled stage needs a heartbeat, not just a changelog.
     """
     try:
-        d = Path(__file__).resolve().parent / "logs"
-        d.mkdir(exist_ok=True)
+        d = Path(paths.LOG_DIR)
+        d.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now()
         with (d / f"audit-{stamp:%Y-%m-%d}.log").open("a") as fh:
             fh.write(f"{stamp:%F %T} | improve | {msg}\n")

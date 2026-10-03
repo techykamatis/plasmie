@@ -10,6 +10,7 @@
 set -uo pipefail
 umask 077   # logs/transcripts contain your data -> create them owner-only (0600)
 SELF="$(cd "$(dirname "$0")" && pwd)"
+. "$SELF/plasmie-env.sh"
 to="${1:?timeout secs}"; prompt="${2:?prompt}"
 
 [ "$("$SELF/mlx-ctl.sh" guard)" = ok ] || { echo "skip: machine busy/hot/low-RAM" >&2; exit 3; }
@@ -19,7 +20,7 @@ trap '"$SELF/mlx-ctl.sh" down' EXIT
 tmp="$(mktemp)"
 "$SELF/cc-local.sh" -p "$prompt" --output-format text --bare \
   --no-session-persistence --permission-mode bypassPermissions \
-  >"$tmp" 2>>"$SELF/logs/gen.err" &
+  >"$tmp" 2>>"$PLASMIE_LOGS/gen.err" &
 cpid=$!
 # watchdog: detached from our stdout (else its orphaned `sleep` holds the caller's
 # $(...) pipe open for the full timeout) and killed with its sleep when the model returns
@@ -36,8 +37,8 @@ out="$(cat "$tmp")"; rm -f "$tmp"
     "$(date '+%F %T')" "${ANTHROPIC_BASE_URL:-http://127.0.0.1:8091}" "${GEMMA_MODEL:-gemma-4-e4b(4bit)}"
   printf -- '----- REQUEST (context sent to model) -----\n%s\n' "$prompt"
   printf -- '----- RESPONSE (rc=%s) -----\n%s\n' "$rc" "$out"
-} >> "$SELF/logs/transcript-$(date +%F).log"
-find "$SELF/logs" -name 'transcript-*.log' -mtime +30 -delete 2>/dev/null || true
+} >> "$PLASMIE_LOGS/transcript-$(date +%F).log"
+find "$PLASMIE_LOGS" -name 'transcript-*.log' -mtime +30 -delete 2>/dev/null || true
 
 if [ "$rc" -ne 0 ] || [ -z "$out" ]; then
   echo "gen aborted (rc=$rc, likely ${to}s timeout under load) — will retry next run" >&2

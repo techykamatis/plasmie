@@ -105,7 +105,7 @@ struct NotchInfo {
     var activity = ""
     var celebrating: String? = nil
     var pending = 0                   // items held for review
-    var loop = "", vault = "", notes = ""
+    var vault = "", notes = ""
 
     var working: Bool { [.ingest, .summarize, .promote, .ask].contains(pipeline) }
     var word: String {
@@ -184,7 +184,7 @@ struct NotchView: View {
             case .expanded:    expanded.fixedSize(horizontal: false, vertical: true).measured().transition(fromNotch)
             case .celebrating: banner.transition(fromNotch)
             case .asking, .answering:                      // one branch: the conversation keeps its state as it grows
-                AskOverlay(loop: info.loop, vault: info.vault, notes: info.notes, onClose: actions.closeAsk,
+                AskOverlay(vault: info.vault, notes: info.notes, onClose: actions.closeAsk,
                            inNotch: true, topInset: geo.notchH, onAnswer: actions.answered)
                     .fixedSize(horizontal: false, vertical: true).measured()
                     .transition(fromNotch)
@@ -434,7 +434,7 @@ private struct NotchRoot: View {
         let info = NotchInfo(hero: m.heroPlasmie, pipeline: m.plasmie, status: m.s.state, reason: m.s.reason,
                              stageName: m.stage?.name, accessory: m.stage?.accessory, fact: m.funFact,
                              activity: m.s.activity, celebrating: nm.bannerText, pending: m.s.pending,
-                             loop: m.s.loop, vault: m.s.vault, notes: m.s.notes)
+                             vault: m.s.vault, notes: m.s.notes)
         let mode = NotchMode.resolve(ask: nm.asking, answered: nm.answered, hover: nm.hovering, banner: nm.banner, working: info.working)
         NotchView(info: info, geo: geo, mode: mode, actions: actions, panelShift: nm.panelShift,
                   onTarget: { onMode(mode, $0) })

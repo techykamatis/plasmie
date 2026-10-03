@@ -19,9 +19,9 @@
         <dict><key>Hour</key><integer>0</integer><key>Minute</key><integer>47</integer></dict>
     </array>
     <key>StandardOutPath</key>
-    <string>__LOOP_DIR__/logs/snapshot.log</string>
+    <string>__LOGS__/snapshot.log</string>
     <key>StandardErrorPath</key>
-    <string>__LOOP_DIR__/logs/snapshot.log</string>
+    <string>__LOGS__/snapshot.log</string>
     <key>RunAtLoad</key>
     <false/>
     <key>ProcessType</key>

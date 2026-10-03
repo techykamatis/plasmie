@@ -9,18 +9,18 @@ set -a
 set +a
 
 SELF="$(cd "$(dirname "$0")" && pwd)"
-[ -f "$SELF/config.env" ] && . "$SELF/config.env"
+. "$SELF/plasmie-env.sh"
 export PLASMIE_VAULT="${VAULT_DIR:-$HOME/knowledge}"
 
-LOGDIR="$HOME/.plasmie/logs"
-FEED="$HOME/.plasmie/feed.log"
+LOGDIR="$PLASMIE_LOGS"
+FEED="$PLASMIE_HOME/feed.log"
 mkdir -p "$LOGDIR"
 LOG="$LOGDIR/ingest-$(date '+%Y%m%d-%H%M%S').log"
 TS="$(date '+%Y-%m-%d %H:%M:%S')"
-status(){ printf '%s|%s' "$(date +%s)" "$1" > "$HOME/.plasmie/.status"; }
+status(){ printf '%s|%s' "$(date +%s)" "$1" > "$PLASMIE_HOME/.status"; }
 
 status "Ingesting Slack + Claude sessions…"
-out="$(/opt/homebrew/opt/python@3.12/bin/python3.12 "$HOME/.plasmie/loop-ingest.py" 2>&1)"
+out="$("$PY" "$SELF/loop-ingest.py" 2>&1)"
 rc=$?
 
 # full detail → per-run file
@@ -61,9 +61,9 @@ fi
 status "Ingested · ${summary:-done}"
 
 # trophies + evolution: cheap, read-only on the vault; notifies only on NEW unlocks
-"$SELF/.venv/bin/python3" "$SELF/plasmie-achievements.py" --notify >/dev/null 2>>"$LOG" || true
+"$PY" "$SELF/plasmie-achievements.py" --notify >/dev/null 2>>"$LOG" || true
 # weekly (self-gated): draft recurring patterns for review — nothing reaches the wiki unapproved
-"$SELF/.venv/bin/python3" "$SELF/plasmie-patterns.py" >>"$LOG" 2>&1 || true
+"$PY" "$SELF/plasmie-patterns.py" >>"$LOG" 2>&1 || true
 
 # one summary line → rolling feed. Written AFTER indexing so a qmd failure lands
 # on the feed line too — `tail feed.log` is the one place failures get noticed.

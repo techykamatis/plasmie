@@ -77,7 +77,7 @@ def test_resolve_gaps_is_a_noop_without_retrieval(tmp_path, monkeypatch):
 
 def test_run_writes_a_timestamped_heartbeat(tmp_path, monkeypatch):
     """A no-op pass must still prove it ran — that was the observability hole."""
-    logs = HERE / "logs"
+    logs = Path(paths.LOG_DIR)        # PLASMIE_LOGS; point it at a temp dir when testing
     audit = logs / f"audit-{date.today():%Y-%m-%d}.log"
     before = audit.read_text() if audit.exists() else ""
 

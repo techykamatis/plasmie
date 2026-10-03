@@ -4,7 +4,7 @@
 # this, all of it lives only in one uncommitted working tree on one laptop.
 set -euo pipefail
 _env_vault="${VAULT_DIR:-}"   # an explicit VAULT_DIR wins over config.env (makes this testable)
-[ -f "$HOME/.plasmie/config.env" ] && . "$HOME/.plasmie/config.env"
+. "$(cd "$(dirname "$0")" && pwd)/plasmie-env.sh"
 VAULT="${_env_vault:-${VAULT_DIR:-$HOME/knowledge}}"
 cd "$VAULT" || exit 0
 

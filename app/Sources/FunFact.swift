@@ -23,10 +23,7 @@ struct FunFact: Codable, Equatable {
 
 /// Runs the engine off the main thread. nil = nothing to show (empty vault, script missing, bad JSON).
 func loadFunFact(next: Bool) -> FunFact? {
-    let loop = "\(NSHomeDirectory())/.plasmie"
-    let venv = "\(loop)/.venv/bin/python3"
-    let py = FileManager.default.isExecutableFile(atPath: venv) ? venv : "/usr/bin/python3"
-    let out = runCapture(py, ["\(loop)/plasmie-funfact.py"] + (next ? ["--next"] : []))
+    let out = runCapture(PlasmiePaths.python, [PlasmiePaths.script("plasmie-funfact.py")] + (next ? ["--next"] : []))
     guard let data = out.data(using: .utf8),
           let f = try? JSONDecoder().decode(FunFact.self, from: data), f.isUsable else { return nil }
     return f

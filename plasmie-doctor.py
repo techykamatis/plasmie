@@ -124,7 +124,7 @@ def check_outlook():
     rt = os.environ.get("MS_REFRESH_TOKEN", "")
     if not rt:
         return _result(False, None, "Not connected.", "Click Connect and approve the sign-in code.")
-    sys.path.insert(0, f"{H}/.plasmie")
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     try:
         import msgraph
         tok, _ = msgraph.access_token(rt)

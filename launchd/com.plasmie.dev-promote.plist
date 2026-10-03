@@ -19,9 +19,9 @@
         <dict><key>Hour</key><integer>2</integer><key>Minute</key><integer>30</integer></dict>
     </array>
     <key>StandardOutPath</key>
-    <string>__LOOP_DIR__/logs/promote.log</string>
+    <string>__LOGS__/promote.log</string>
     <key>StandardErrorPath</key>
-    <string>__LOOP_DIR__/logs/promote.log</string>
+    <string>__LOGS__/promote.log</string>
     <key>RunAtLoad</key>
     <false/>
     <key>ProcessType</key>

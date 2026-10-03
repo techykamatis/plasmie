@@ -19,9 +19,9 @@
         <dict><key>Minute</key><integer>15</integer></dict>
     </array>
     <key>StandardOutPath</key>
-    <string>__LOOP_DIR__/logs/summarize.log</string>
+    <string>__LOGS__/summarize.log</string>
     <key>StandardErrorPath</key>
-    <string>__LOOP_DIR__/logs/summarize.log</string>
+    <string>__LOGS__/summarize.log</string>
     <key>RunAtLoad</key>
     <false/>
     <key>ProcessType</key>

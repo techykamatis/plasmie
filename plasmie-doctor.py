@@ -86,7 +86,7 @@ def check_confluence():
         return _result(True, False, f"HTTP {e.code} from Confluence.", hint)
     except Exception as e:
         return _result(True, False, f"Could not reach Confluence: {e}", "Usually no network — it self-heals.")
-    return _result(True, True, f"Reachable — {r.get('size', 0)} page(s) in the first slice.")
+    return _result(True, True, f"Reachable — {r.get('size', 0)} page{'' if r.get('size', 0) == 1 else 's'} in the first slice.")
 
 
 def check_github():
@@ -139,7 +139,7 @@ def check_claude():
     if not os.path.isdir(root):
         return _result(False, None, "No Claude Code sessions folder found.")
     n = len(glob.glob(os.path.join(root, "*", "*.jsonl")))
-    return _result(True, True, f"{n} session file(s) on disk. Always on — no setup needed.")
+    return _result(True, True, f"{n} session file{'' if n == 1 else 's'} on disk — nothing to set up.")
 
 
 
@@ -154,7 +154,7 @@ def check_agentcli():
         con.close()
     except sqlite3.Error as e:
         return _result(True, False, f"Can't read the session database: {e}")
-    return _result(True, True, f"{n} session(s) on disk. Always on — no setup needed.")
+    return _result(True, True, f"{n} session{'' if n == 1 else 's'} on disk — nothing to set up.")
 
 
 def check_git():
@@ -185,7 +185,7 @@ def check_git():
             recent += len([l for l in out.splitlines() if l.strip()])
         except Exception:
             continue
-    return _result(True, True, f"{len(repos)} repo(s) in {', '.join(roots)} — "
+    return _result(True, True, f"{len(repos)} repo{'' if len(repos) == 1 else 's'} in {', '.join(roots)} — "
                                f"{recent} of your commits in the last 30 days.")
 
 

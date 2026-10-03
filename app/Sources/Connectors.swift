@@ -25,23 +25,38 @@ struct Connector: Identifiable {
     let ageKey: String
     let errCode: String
     let blurb: String
+    /// How often this source normally delivers new data, in hours. One concept
+    /// drives both the verdict ("Quiet" = nothing new for 4x this) and the
+    /// freshness bar (empty at 4x). Slack/Outlook/Claude: daily. GitHub, local
+    /// git, AgentCLI: bursty, every ~3 days. Confluence: weekly.
+    let cadenceHours: Double
+    let cadenceLabel: String
+    /// Hours without new data after which the card reads "Quiet".
+    var quietAfterHours: Double { cadenceHours * 4 }
 
     static let all: [Connector] = [
         Connector(id: "slack", name: "Slack", symbol: "bubble.left.and.bubble.right.fill",
-                  ageKey: "slack", errCode: "SLACK", blurb: "Messages you sent and received."),
+                  ageKey: "slack", errCode: "SLACK", blurb: "Messages you sent and received.",
+                  cadenceHours: 24, cadenceLabel: "daily"),
         Connector(id: "github", name: "GitHub", symbol: "chevron.left.forwardslash.chevron.right",
-                  ageKey: "github", errCode: "GH", blurb: "Pull requests and issues you opened or commented on."),
+                  ageKey: "github", errCode: "GH", blurb: "Pull requests and issues you opened or commented on.",
+                  cadenceHours: 72, cadenceLabel: "every ~3 days"),
         Connector(id: "git", name: "Local git commits", symbol: "arrow.triangle.branch",
                   ageKey: "git", errCode: "GIT",
-                  blurb: "Your own commit messages, from repos cloned on this Mac. Finer-grained than GitHub, and needs no network or token."),
+                  blurb: "Your own commit messages, from repos cloned on this Mac. Finer-grained than GitHub, and needs no network or token.",
+                  cadenceHours: 72, cadenceLabel: "every ~3 days"),
         Connector(id: "confluence", name: "Confluence", symbol: "doc.text.fill",
-                  ageKey: "confluence", errCode: "CONF", blurb: "Pages you created or edited."),
+                  ageKey: "confluence", errCode: "CONF", blurb: "Pages you created or edited.",
+                  cadenceHours: 168, cadenceLabel: "weekly"),
         Connector(id: "outlook", name: "Outlook", symbol: "envelope.fill",
-                  ageKey: "outlook", errCode: "MAIL", blurb: "Mail and calendar."),
+                  ageKey: "outlook", errCode: "MAIL", blurb: "Mail and calendar.",
+                  cadenceHours: 24, cadenceLabel: "daily"),
         Connector(id: "claude", name: "Claude Code sessions", symbol: "terminal.fill",
-                  ageKey: "sessions", errCode: "", blurb: "What you worked on, from local session logs."),
+                  ageKey: "sessions", errCode: "", blurb: "What you worked on, from local session logs.",
+                  cadenceHours: 24, cadenceLabel: "daily"),
         Connector(id: "agentcli", name: "AgentCLI sessions", symbol: "sparkles.rectangle.stack",
-                  ageKey: "agentcli", errCode: "AGENTCLI", blurb: "What you worked on in AgentCLI, from its local session database."),
+                  ageKey: "agentcli", errCode: "AGENTCLI", blurb: "What you worked on in AgentCLI, from its local session database.",
+                  cadenceHours: 72, cadenceLabel: "every ~3 days"),
     ]
 }
 
@@ -84,8 +99,8 @@ enum ConnVerdict {
     /// One line each, for the legend popover.
     var meaning: String {
         switch self {
-        case .flowing:        return "Reachable, and new data arrived in the last 4 days."
-        case .quiet:          return "Reachable, but no new data for over 4 days. Normal for some sources."
+        case .flowing:        return "Reachable, and new data arrived within 4x its usual interval."
+        case .quiet:          return "Reachable, but nothing new for over 4x its usual interval. Normal for some sources."
         case .noData:         return "Reachable, but nothing has been pulled yet."
         case .lastRunFailed:  return "Reachable now, but the most recent ingest run reported an error."
         case .failing:        return "Credentials are set, but the connector cannot be reached."
@@ -117,7 +132,7 @@ func connVerdict(_ c: Connector, health: ConnectorHealth?, status: Status, check
     if h.ok == false { return .failing }
     if !c.errCode.isEmpty && status.errSources.contains(c.errCode) { return .lastRunFailed }
     guard let age = status.age(c.ageKey) else { return .noData }
-    return age > 96 ? .quiet : .flowing
+    return age > c.quietAfterHours ? .quiet : .flowing
 }
 
 /// "38h ago" / "4d ago" / "never" — the answer to "is this actually feeding me?"
@@ -207,8 +222,16 @@ struct ConnectorCard<Fields: View>: View {
     let c: Connector
     @ObservedObject var m: ConnectorsModel
     let onDisconnect: (() -> Void)?
-    @ViewBuilder let fields: () -> Fields
+    let fields: () -> Fields
+    /// Explicit when known; nil falls back to "has a non-empty fields builder".
+    private let hasFieldsOverride: Bool?
     @State private var confirmDisconnect = false
+
+    init(c: Connector, m: ConnectorsModel, onDisconnect: (() -> Void)?, hasFields: Bool? = nil,
+         @ViewBuilder fields: @escaping () -> Fields) {
+        self.c = c; self.m = m; self.onDisconnect = onDisconnect
+        self.hasFieldsOverride = hasFields; self.fields = fields
+    }
 
     private var health: ConnectorHealth? { m.health[c.id] }
     private var isChecking: Bool { m.checking.contains(c.id) }
@@ -235,6 +258,12 @@ struct ConnectorCard<Fields: View>: View {
             }
             .opacity(isOff ? 0.55 : 1)
             if !isOff { controls }
+        }
+        .confirmationDialog("Disconnect \(c.name)?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
+            Button("Disconnect", role: .destructive) { onDisconnect?() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the \(c.name) token from ~/.claude/.env, a file shared with other tools. Paste it again to reconnect.")
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
@@ -266,12 +295,13 @@ struct ConnectorCard<Fields: View>: View {
             .accessibilityLabel("\(c.name), \(verdict.label)")
             Toggle(c.name, isOn: onBinding)
                 .toggleStyle(.switch).controlSize(.small).labelsHidden()
+                .accessibilityLabel(c.name)
                 .accessibilityValue(isOff ? "off" : "on")
                 .help(isOff ? "Turn \(c.name) on" : "Turn \(c.name) off")
         }
     }
 
-    private var hasFields: Bool { !(Fields.self is EmptyView.Type) }
+    private var hasFields: Bool { hasFieldsOverride ?? !(Fields.self is EmptyView.Type) }
 
     @ViewBuilder private var detailLine: some View {
         if verdict == .notSetUp {
@@ -283,8 +313,17 @@ struct ConnectorCard<Fields: View>: View {
         // The freshness line is the whole point: it separates "quiet" from "broken".
         if health?.configured == true {
             let age = m.status.age(c.ageKey)
-            Text("Last new data: " + ageText(age)).klNote()
-            if let age { FreshnessBar(age: age, tint: verdict.color) }
+            HStack(spacing: 8) {
+                Text("Last new data: " + ageText(age)).klNote()
+                if let age {
+                    FreshnessBar(age: age, quietAfter: c.quietAfterHours, tint: verdict.color)
+                        .help("How recently \(c.name) delivered, against its usual pace. Full means on schedule.")
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Freshness")
+                        .accessibilityValue(age > c.quietAfterHours ? "quiet" : age > c.cadenceHours ? "behind" : "on schedule")
+                    Text("usual: \(c.cadenceLabel)").klNote()
+                }
+            }
         }
         if let h = health, !h.hint.isEmpty {
             HStack(alignment: .firstTextBaseline, spacing: 5) {
@@ -300,28 +339,24 @@ struct ConnectorCard<Fields: View>: View {
     private var controls: some View {
         HStack(spacing: 8) {
             Button("Test") { m.refresh([c.id]) }.disabled(isChecking)
-            if let d = onDisconnect, health?.configured == true {
+            if onDisconnect != nil, health?.configured == true {
                 Button("Disconnect", role: .destructive) { confirmDisconnect = true }
-                    .confirmationDialog("Disconnect \(c.name)?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
-                        Button("Disconnect \(c.name)", role: .destructive, action: d)
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        Text("This removes the \(c.name) token from ~/.claude/.env, a file shared with other tools. You will need to paste it again to reconnect.")
-                    }
             }
             Spacer(minLength: 0)
         }
     }
 }
 
-/// Freshness as a thin capsule: full at 0h, empty at the 96h Quiet threshold.
-/// The "Last new data" text already states the age, so this is hidden from AX.
+/// Freshness as a thin capsule: full at 0h, empty at the source's Quiet
+/// threshold (4x its usual cadence). Sits inline between the age and the
+/// "usual: ..." caption so it reads as a gauge, not as loading.
 private struct FreshnessBar: View {
     let age: Double
+    let quietAfter: Double
     let tint: Color
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var fraction: Double { max(0, min(1, 1 - age / 96)) }
+    private var fraction: Double { max(0, min(1, 1 - age / quietAfter)) }
 
     var body: some View {
         Capsule().fill(Color.primary.opacity(0.1))
@@ -331,9 +366,8 @@ private struct FreshnessBar: View {
                     Capsule().fill(tint).frame(width: g.size.width * fraction)
                 }
             }
-            .frame(maxWidth: 200)
+            .frame(width: 80)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.4), value: fraction)
-            .accessibilityHidden(true)
     }
 }
 
@@ -372,6 +406,8 @@ struct ConnectorsSummary: View {
                 .accessibilityLabel("What the statuses mean")
                 .popover(isPresented: $showLegend, arrowEdge: .bottom) { legend }
             Button("Test all") { conn.refresh() }.disabled(!conn.checking.isEmpty)
+                .keyboardShortcut("t", modifiers: .command)
+                .help("Re-check every connector (\u{2318}T)")
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
@@ -390,6 +426,9 @@ struct ConnectorsSummary: View {
                 }
                 .accessibilityElement(children: .combine)
             }
+            Divider()
+            Text("The thin bar on a card shows freshness against that source's usual pace. Full means on schedule; empty means Quiet.")
+                .klNote()
         }
         .padding(12).frame(width: 300)
     }

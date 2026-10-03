@@ -92,11 +92,14 @@ final class SettingsController: NSObject, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard state.isDirty() else { return true }
         let alert = NSAlert()
-        alert.messageText = "Save your changes?"
-        alert.informativeText = "You have unsaved changes to the vault folder, connector fields or tokens."
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Cancel")
-        alert.addButton(withTitle: "Discard")
+        alert.messageText = "Save changes before closing?"
+        alert.informativeText = "Unsaved token and field changes will be lost."
+        alert.addButton(withTitle: "Save")                    // default, rightmost
+        alert.addButton(withTitle: "Cancel")                  // Esc
+        let dontSave = alert.addButton(withTitle: "Don\u{2019}t Save")   // leftmost per HIG
+        dontSave.keyEquivalent = "d"
+        dontSave.keyEquivalentModifierMask = .command
+        dontSave.hasDestructiveAction = true
         switch alert.runModal() {
         case .alertFirstButtonReturn: state.save(); return true
         case .alertThirdButtonReturn: return true
@@ -120,6 +123,7 @@ struct SettingsView: View {
     let onRequestClose: () -> Void
 
     @StateObject private var conn = ConnectorsModel()
+    @FocusState private var vaultFocused: Bool
 
     private var loop: String { "\(NSHomeDirectory())/.plasmie" }
 
@@ -150,14 +154,16 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            titleBar
-            Divider()
+            if firstRun {
+                titleBar
+                Divider()
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     connectorsPage
                     vaultPage
                 }
-                .padding(20)
+                .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 32)
             }
             Divider()
             footer
@@ -166,6 +172,8 @@ struct SettingsView: View {
         .background(shortcuts)
         .onAppear {
             load(); conn.refresh()
+            // Land focus on content, not on the Close/Save buttons.
+            DispatchQueue.main.async { vaultFocused = true }
             state.isDirty = { dirty }
             state.save = { save() }
         }
@@ -177,7 +185,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 Image(nsImage: kLogo)
-                Text(firstRun ? "Set up your connectors" : "Settings").font(.klTitle)
+                Text("Set up your connectors").font(.klTitle)
                 Spacer()
             }
             if firstRun {
@@ -286,12 +294,11 @@ struct SettingsView: View {
     private var vaultPage: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Vault").font(.klHeading)
-            labeled("Vault folder") { TextField("~/knowledge", text: $vaultDir).textFieldStyle(.roundedBorder) }
+            labeled("Vault folder") { TextField("~/knowledge", text: $vaultDir).textFieldStyle(.roundedBorder).focused($vaultFocused) }
             Text("Keep the vault on local disk. Background jobs cannot read from iCloud/OneDrive folders.")
                 .klNote()
             Text("Where things live").font(.klLabel).foregroundStyle(.secondary).padding(.top, 4)
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
-                pathRow("Vault", conn.status.vault.isEmpty ? vaultDir : conn.status.vault)
                 pathRow("Loop", loop)
                 pathRow("Secrets", "\(NSHomeDirectory())/.claude/.env")
             }
@@ -302,7 +309,7 @@ struct SettingsView: View {
         GridRow {
             Text(label).font(.klMeta).foregroundStyle(.secondary)
             Text(path).font(.klMono).textSelection(.enabled)
-                .lineLimit(1).truncationMode(.middle)
+                .lineLimit(1).truncationMode(.middle).help(path)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button {
                 var isDir: ObjCBool = false
@@ -318,12 +325,6 @@ struct SettingsView: View {
 
     // MARK: helpers
 
-    @ViewBuilder private func group<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.klHeading)
-            content()
-        }
-    }
     @ViewBuilder private func labeled<C: View>(_ label: String, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label).font(.klMeta).foregroundStyle(.secondary)
@@ -385,5 +386,3 @@ struct SettingsView: View {
             onDone: { connecting = false; conn.refresh(["outlook"]) })
     }
 }
-
-/// Wires the global hotkey to the overlay at launch (the MenuBarExtra scene stays).

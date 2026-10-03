@@ -20,7 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `open -a "Plasmie" --args --settings` opens straight to the
         // connectors page. Only honoured on a cold start — macOS does not deliver
         // args to an already-running app, which is fine: the menu has Settings.
-        if CommandLine.arguments.contains("--settings") {
+        if CommandLine.arguments.contains("--setup") {
+            SetupController.shared.show()
+        } else if CommandLine.arguments.contains("--settings") {
             SettingsController.shared.show()
         } else {
             SetupController.shared.showIfNeeded()

@@ -23,6 +23,13 @@ final class SetupController {
     private var win: NSWindow?
     func showIfNeeded() {
         guard !backendReady() else { return }
+        show()
+    }
+
+    /// Also "Run setup again…": idempotent, so it repairs a partial install, adopts the
+    /// existing vault, and keeps settings.
+    func show() {
+        if let w = win { bringForward(w); return }
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 300),
                          styleMask: [.titled, .closable], backing: .buffered, defer: false)
         w.title = "Set up Plasmie"
@@ -30,7 +37,7 @@ final class SetupController {
         w.isReleasedWhenClosed = false
         w.level = .floating
         // A hosting controller resizes the window to its content, so a long error grows it.
-        w.contentViewController = NSHostingController(rootView: SetupView { [weak self] in self?.win?.orderOut(nil) })
+        w.contentViewController = NSHostingController(rootView: SetupView { [weak self] in self?.win?.orderOut(nil); self?.win = nil })
         w.center()
         win = w
         bringForward(w)
@@ -71,8 +78,15 @@ struct SetupCheck: Identifiable, Equatable {
 /// app-setup.sh with friendly progress. The script is idempotent, so "Try again" resumes.
 struct SetupView: View {
     let onDone: () -> Void
-    private enum Phase { case checking, checklist, installing, done }
+    private enum Phase { case checking, checklist, vault, choices, installing, done }
     @State private var phase: Phase = .checking
+    // A reinstall offers the vault it already knows; a new install, ~/knowledge.
+    @State private var vaultPath: String = {
+        let v = ConfigStore.read(PlasmiePaths.config)["VAULT_DIR"] ?? ""
+        return v.isEmpty ? "\(NSHomeDirectory())/knowledge" : (v as NSString).expandingTildeInPath
+    }()
+    @State private var openAtLogin = false        // offered, never assumed (owner, 2026-10-04)
+    @State private var icloud = false
     @State private var checks: [SetupCheck] = []
     @State private var pct: Double = 0
     @State private var msg = "Preparing…"
@@ -96,6 +110,10 @@ struct SetupView: View {
                 ProgressView().controlSize(.small)
             case .checklist:
                 checklist
+            case .vault:
+                VaultStep(path: $vaultPath) { _ in phase = .choices }
+            case .choices:
+                ChoicesStep(openAtLogin: $openAtLogin, icloud: $icloud) { install() }
             case .installing:
                 if let f = failed {
                     Text(f).font(.klLabel).foregroundStyle(.red)
@@ -112,8 +130,10 @@ struct SetupView: View {
             case .done:
                 HStack {
                     Spacer()
-                    Button("Set up connectors") { onDone(); SettingsController.shared.show(firstRun: true) }
-                    Button("Done") { onDone() }.keyboardShortcut(.defaultAction)
+                    Button("Set up connectors") {
+                        onDone(); SettingsController.shared.show(firstRun: true); NotchController.shared.startTour()
+                    }
+                    Button("Done") { onDone(); NotchController.shared.startTour() }.keyboardShortcut(.defaultAction)
                 }
             }
         }
@@ -123,7 +143,7 @@ struct SetupView: View {
 
     private var title: String {
         switch phase {
-        case .checking, .checklist: return "Hi, I'm Plasmie"
+        case .checking, .checklist, .vault, .choices: return "Hi, I'm Plasmie"
         case .installing: return failed == nil ? "Setting things up" : "Setup hit a snag"
         case .done: return "You're all set"
         }
@@ -133,6 +153,8 @@ struct SetupView: View {
         case .checking: return "Checking your Mac first…"
         case .checklist: return blocked ? "A few things are needed before I can set up."
                                         : "Your Mac is ready. Setup downloads about 4 GB of search models once; keep working meanwhile."
+        case .vault: return "First, where your notes live."
+        case .choices: return "Last thing before I set up."
         case .installing: return "One-time setup: search and your notes vault. Answers come from Apple Intelligence, on this Mac."
         case .done: return "Press ⌃⌥⌘K anywhere to ask your notes. I live beside the notch."
         }
@@ -160,7 +182,7 @@ struct SetupView: View {
             HStack {
                 Button("Check again") { check() }
                 Spacer()
-                Button(blocked ? "Install what's missing first" : "Set up Plasmie") { install() }
+                Button(blocked ? "Install what's missing first" : "Continue") { phase = .vault }
                     .keyboardShortcut(.defaultAction).disabled(blocked)
             }
         }
@@ -183,7 +205,7 @@ struct SetupView: View {
 
     private func install() {
         phase = .installing; failed = nil; pct = 0; msg = "Preparing…"
-        runStreaming("/bin/bash", ["\(res)/backend/app-setup.sh", res],
+        runStreaming("/bin/bash", ["\(res)/backend/app-setup.sh", res, vaultPath],
             onStatus: { _ in },
             onChunk: { full in                       // full accumulated stdout each call
                 for line in full.components(separatedBy: "\n") {
@@ -196,7 +218,11 @@ struct SetupView: View {
                 }
             },
             onDone: {
-                if failed == nil && pct >= 100 { phase = .done }
+                if failed == nil && pct >= 100 {
+                    if openAtLogin { LoginItem.set(true) }                 // the user's choices, now that setup worked
+                    if icloud { ICloudSync.shared.set(true) }
+                    phase = .done
+                }
                 else if failed == nil { failed = "Setup ended early. Try again to resume where it stopped." }
             })
     }

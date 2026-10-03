@@ -34,7 +34,7 @@ for m in "$LOOP"/*.py "$LOOP"/*.sh "$LOOP"/launchd "$LOOP"/vault-template; do
   cp -R "$m" "$BACKEND/"
 done
 shopt -u nullglob
-rm -f "$BACKEND"/test_*.py "$BACKEND/conftest.py" "$BACKEND/conftest.py" "$BACKEND/install.sh"   # dev-only / brew-based
+rm -f "$BACKEND"/test_*.py "$BACKEND/conftest.py" "$BACKEND/install.sh"   # dev-only / brew-based
 say "bundled backend ($(ls "$BACKEND" | wc -l | tr -d ' ') items)"
 
 # standalone Python 3.12 (bare: the engine is stdlib-only, nothing is pip-installed). Cached
@@ -48,6 +48,25 @@ PYTGZ="$CACHE/python-${PYVER}-${ARCH}.tar.gz"
 [ -f "$PYTGZ" ] || { say "downloading standalone Python…"; curl -sL "$PYURL" -o "$PYTGZ"; }
 mkdir -p "$RES/pytmp" && tar xzf "$PYTGZ" -C "$RES/pytmp"
 mv "$RES/pytmp/python" "$RES/python" && rm -rf "$RES/pytmp"
+
+# standalone Node 22 LTS for vault search (qmd is a Node CLI): pinned, checksum-verified
+# against nodejs.org's SHASUMS256, cached. Setup installs qmd with it into
+# $PLASMIE_HOME/qmd, so a friend needs no Node install (prebuilt binaries, no compiler).
+NODEVER="v22.23.3"; NODEARCH="$([ "$ARCH" = arm64 ] && echo arm64 || echo x64)"
+NODENAME="node-${NODEVER}-darwin-${NODEARCH}"
+NODETGZ="$CACHE/${NODENAME}.tar.gz"
+if [ ! -f "$NODETGZ" ]; then
+  say "downloading Node ${NODEVER}…"
+  curl -fsSL "https://nodejs.org/dist/${NODEVER}/${NODENAME}.tar.gz" -o "$NODETGZ.part"
+  want="$(curl -fsSL "https://nodejs.org/dist/${NODEVER}/SHASUMS256.txt" | awk -v f="${NODENAME}.tar.gz" '$2==f{print $1}')"
+  got="$(shasum -a 256 "$NODETGZ.part" | awk '{print $1}')"
+  [ -n "$want" ] && [ "$want" = "$got" ] || { rm -f "$NODETGZ.part"; echo "Node checksum mismatch"; exit 1; }
+  mv "$NODETGZ.part" "$NODETGZ"
+fi
+mkdir -p "$RES/nodetmp" && tar xzf "$NODETGZ" -C "$RES/nodetmp"
+mv "$RES/nodetmp/$NODENAME" "$RES/node" && rm -rf "$RES/nodetmp"
+rm -rf "$RES/node/include" "$RES/node/share" "$RES/node"/*.md "$RES/node/LICENSE"   # headers + docs: not needed to run
+say "bundled Node $("$RES/node/bin/node" -v)"
 say "bundled Python $("$RES/python/bin/python3" -V 2>&1 | awk '{print $2}')"
 
 # Plasmie (idle pose, coloured) -> AppIcon.icns; uses the app's own PlasmieShapes anchors

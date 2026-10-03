@@ -79,7 +79,8 @@ check_all() {
   else chk net missing required "Internet" "Can't reach huggingface.co to download the search models."; fi
 
   local nm; nm="$(node_major)"
-  if [ -n "$nm" ] && [ "$nm" -ge 22 ]; then chk node ok required "Node.js 22+" "v$(node -v | tr -d v) powers vault search (qmd)."
+  if [ -x "$RES/node/bin/node" ]; then chk node ok required "Search engine" "Included with Plasmie."
+  elif [ -n "$nm" ] && [ "$nm" -ge 22 ]; then chk node ok required "Node.js 22+" "v$(node -v | tr -d v) powers vault search (qmd)."
   elif [ -n "$nm" ]; then chk node missing required "Node.js 22+" "Found v$nm; vault search (qmd) needs 22 or newer."
   else chk node missing required "Node.js 22+" "Vault search (qmd) runs on Node.js."; fi
 
@@ -110,22 +111,48 @@ fi
 "$PY" -c 'import sys; sys.exit(sys.version_info < (3, 10))' || fail "the bundled Python runtime is broken — reinstall Plasmie"
 p 20 "Python runtime ready"
 
-# 3) vault (needed before qmd can index it) ----------------------------------
-p 25 "Creating your notes vault…"
-# never clobber an existing config (it holds the connector switches); only seed the vault
-grep -q '^VAULT_DIR=' "$PLASMIE_CONFIG" 2>/dev/null || printf 'VAULT_DIR="%s"\n' "$VAULT" >> "$PLASMIE_CONFIG"
-"$ENGINE/scaffold-vault.sh" "$VAULT" >/dev/null 2>&1 || true   # refuses if non-empty (fine)
+# 3) vault: adopt, never overwrite (ADR 0022) -------------------------------------
+# The vault is the one thing that must never be lost: the folder the user chose in setup
+# is recorded (other config lines, e.g. connector switches, are kept), an existing vault
+# gets a restore point before anything else, a Plasmie vault is adopted untouched, and any
+# other folder only gains the pieces it lacks (never an overwrite).
+p 25 "Preparing your notes vault…"
+ok="$("$PY" "$ENGINE/plasmie-vault.py" check-folder "$VAULT")"
+case "$ok" in *'"ok": true'*) ;; *) fail "$(printf '%s' "$ok" | sed -E 's/.*"reason": "([^"]*)".*/\1/')";; esac
+esc="$(printf '%s' "$VAULT" | sed "s/'/'\\\\''/g")"
+{ grep -v '^VAULT_DIR=' "$PLASMIE_CONFIG" 2>/dev/null; printf "VAULT_DIR='%s'\n" "$esc"; } > "$PLASMIE_CONFIG.tmp" \
+  && mv "$PLASMIE_CONFIG.tmp" "$PLASMIE_CONFIG"
+"$PY" "$ENGINE/plasmie-vault.py" snapshot "$VAULT" "Plasmie setup" >/dev/null 2>&1 || true
+info="$("$PY" "$ENGINE/plasmie-vault.py" inspect "$VAULT")"
+case "$info" in
+  *'"plasmie_vault": true'*) p 28 "Found your Plasmie vault; using it as is" ;;
+  *) mkdir -p "$VAULT" && cp -Rn "$ENGINE/vault-template/." "$VAULT/" 2>/dev/null
+     find "$VAULT" -name .gitkeep -delete 2>/dev/null ;;
+esac
+# versioned data migrations, incl. seeding ingest's watermarks from an existing vault so a
+# reinstall never re-captures what's already there (ingest appends, it doesn't de-duplicate)
+"$PY" "$ENGINE/plasmie-migrate.py" >/dev/null 2>&1 || fail "couldn't prepare Plasmie's data (migration); try again"
+[ "${PLASMIE_SETUP_UNTIL:-}" = vault ] && { echo "DONE"; exit 0; }   # tests stop here (no jobs, no downloads)
 
-# 4) retrieval engine — qmd (hybrid search + MCP; Node 22+) ------------------
-QMD="$(command -v qmd || true)"
-if [ -z "$QMD" ]; then
-  NPM="$(command -v npm || true)"
-  [ -n "$NPM" ] || fail "Retrieval needs Node.js 22+ (for qmd). Install Node, then reopen the app."
-  p 30 "Installing the search engine (qmd)…"
-  "$NPM" install -g @tobilu/qmd >/dev/null 2>&1 || fail "could not install qmd via npm"
+# 4) retrieval engine — qmd (hybrid search + MCP), Plasmie's own copy ---------------
+# Installed with the Node that ships in Plasmie.app into $PLASMIE_HOME/qmd (prebuilt native
+# modules, no compiler); pinned to the version Plasmie is tested with. A dev build without
+# a bundled Node falls back to an installed qmd.
+QMD_VERSION="2.5.3"
+NODE_BIN="$RES/node/bin"
+if [ -x "$NODE_BIN/node" ]; then
+  if [ ! -x "$PLASMIE_HOME/qmd/bin/qmd" ]; then
+    p 30 "Installing the search engine…"
+    PATH="$NODE_BIN:$PATH" npm_config_build_from_source=false npm_config_update_notifier=false \
+      "$NODE_BIN/npm" install -g --prefix "$PLASMIE_HOME/qmd" "@tobilu/qmd@$QMD_VERSION" >/dev/null 2>&1 \
+      || fail "couldn't install the search engine; check the internet connection and try again"
+  fi
+  QMD="$PLASMIE_HOME/qmd/bin/qmd"
+  export PATH="$NODE_BIN:$PLASMIE_HOME/qmd/bin:$PATH"
+else
   QMD="$(command -v qmd || true)"
+  [ -n "$QMD" ] || fail "Search needs Node.js 22+ (this build has none bundled). Install Node, then try again."
 fi
-[ -n "$QMD" ] || fail "qmd not found after install — install Node.js 22+, then reopen the app"
 
 p 35 "Indexing your vault…"
 "$QMD" collection add "$VAULT/raw"  --name raw  >/dev/null 2>&1 || true

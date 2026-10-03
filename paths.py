@@ -79,6 +79,32 @@ def load_env(environ=None):
                 environ.setdefault(k, legacy[k])
 
 
+def qmd_bin():
+    """qmd: Plasmie's own copy ($PLASMIE_HOME/qmd), else PLASMIE_QMD, PATH, or an nvm install."""
+    import glob
+    import shutil
+    own = os.path.join(DATA_DIR, "qmd", "bin", "qmd")
+    node = os.path.join(ENGINE_DIR, "..", "node", "bin", "node")      # ships inside Plasmie.app
+    usable = os.access(own, os.X_OK) and (os.access(node, os.X_OK) or shutil.which("node"))
+    return ((own if usable else None) or os.environ.get("PLASMIE_QMD")
+            or shutil.which("qmd")
+            or next(iter(sorted(glob.glob(os.path.expanduser("~/.nvm/versions/node/*/bin/qmd")), reverse=True)), None)
+            or "qmd")
+
+
+def qmd_env(qmd, environ=None):
+    """An env where qmd's `#!/usr/bin/env node` works: qmd's bin dir, plus the Node that
+    ships inside Plasmie.app (Resources/node/bin, beside the engine), on PATH."""
+    env = dict(os.environ if environ is None else environ)
+    dirs = [os.path.normpath(os.path.join(ENGINE_DIR, "..", "node", "bin"))]
+    if os.sep in qmd:
+        dirs.append(os.path.dirname(qmd))
+    for d in dirs:
+        if os.path.isdir(d) and d not in env.get("PATH", "").split(os.pathsep):
+            env["PATH"] = d + os.pathsep + env.get("PATH", "")
+    return env
+
+
 def csv_setting(name, environ=None):
     """A comma-separated setting (PLASMIE_GITHUB_ORGS, PLASMIE_GIT_ROOTS) as a list; empty if unset."""
     environ = os.environ if environ is None else environ

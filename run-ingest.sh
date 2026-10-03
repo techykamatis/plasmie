@@ -39,7 +39,7 @@ summary="$(printf '%s\n' "$out" | sed -n 's/^SUMMARY: //p' | head -1)"
 # where nobody reads it. Put qmd's own bin dir (which holds node) on PATH, and
 # surface failures on the feed line instead of muting them.
 status "Indexing new docs…"
-QMD="$(command -v qmd || true)"
+QMD="${PLASMIE_QMD:-$(command -v qmd || true)}"              # Plasmie's own qmd first (plasmie-env.sh)
 [ -z "$QMD" ] && QMD="$(ls "$HOME"/.nvm/versions/node/*/bin/qmd 2>/dev/null | tail -1)"
 qmd_err=""
 if [ -n "$QMD" ]; then

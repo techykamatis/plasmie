@@ -17,6 +17,17 @@ PY="$PLASMIE_HOME/venv/bin/python3"
 PLASMIE_CONFIG="$PLASMIE_HOME/config.env"
 [ -f "$PLASMIE_CONFIG" ] && . "$PLASMIE_CONFIG"
 export PLASMIE_ENGINE PY
+# Search (qmd, a Node CLI): Plasmie's own copy in $PLASMIE_HOME/qmd, run by the Node that ships
+# inside Plasmie.app (Resources/node), so a friend needs no Node install. qmd's
+# `#!/usr/bin/env node` shebang means node must be on PATH, not just qmd. A dev checkout
+# without either falls back to whatever qmd is installed.
+PLASMIE_NODE_BIN="$PLASMIE_ENGINE/../node/bin"
+# Only when a Node is actually reachable: a dev checkout run by launchd has neither the
+# bundled Node beside it nor node on PATH, and then keeps using the installed qmd.
+if [ -x "$PLASMIE_HOME/qmd/bin/qmd" ] && [ -x "$PLASMIE_NODE_BIN/node" ]; then
+  PATH="$PLASMIE_NODE_BIN:$PLASMIE_HOME/qmd/bin:$PATH"
+  export PLASMIE_QMD="$PLASMIE_HOME/qmd/bin/qmd" PATH
+fi
 
 # Connector credentials live in the login Keychain (service "Plasmie", account = the
 # variable name), never in a file. Mirrors keychain.SECRETS / Keychain.secrets.

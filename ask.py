@@ -30,9 +30,7 @@ Usage:
 import datetime
 import hashlib
 import json
-import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -56,16 +54,7 @@ RECAP_TOKENS = 320    # 8 short bullets; a recap ran 26 bullets / 25s on the sha
 RECAP_CHARS = 12000   # recap prompts stay well under the window: prefill time scales with it
 LONG_WINDOW_DAYS = 2  # recaps spanning more days read digests, not raw logs
 
-def _find_qmd():
-    """Resolve the qmd binary even under launchd's bare PATH (node lives in nvm)."""
-    import glob
-    return (os.environ.get("PLASMIE_QMD") or shutil.which("qmd")
-            or next(iter(sorted(glob.glob(os.path.expanduser(
-                "~/.nvm/versions/node/*/bin/qmd")), reverse=True)), None)
-            or "qmd")
-
-
-QMD = _find_qmd()
+QMD = paths.qmd_bin()   # Plasmie's own qmd first, then any installed one
 QMD_TIMEOUT = 60
 # raw per-source dirs a temporal recap reads (+ the legacy combined journal)
 RECAP_DIRS = [paths.RAW_SLACK, paths.RAW_CLAUDE, paths.RAW_OUTLOOK, paths.RAW_GITHUB, paths.RAW_GIT,
@@ -83,12 +72,8 @@ def _say(msg):
 
 
 def _qmd_env():
-    """Put qmd's own bin dir on PATH so a launchd-spawned ask can still find node."""
-    env = dict(os.environ)
-    qbin = os.path.dirname(QMD) if os.sep in QMD else ""
-    if qbin and qbin not in env.get("PATH", ""):
-        env["PATH"] = qbin + os.pathsep + env.get("PATH", "")
-    return env
+    """qmd's bin dir and Plasmie's bundled Node on PATH (the app and launchd give a bare PATH)."""
+    return paths.qmd_env(QMD)
 
 
 def _run_qmd(args):

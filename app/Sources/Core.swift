@@ -131,6 +131,11 @@ func loadStatus() -> Status {
 // MARK: - model
 
 final class Model: ObservableObject {
+    /// One per app: the notch, the menu-bar icon and the Plasmie window all observe it.
+    static let shared = Model()
+    /// Mirrors the "plasmie.notch" default, set only when it really changes (NotchController.sync):
+    /// binding MenuBarExtra to @AppStorage loops, since the status item writes defaults itself.
+    @Published var notchOn = true
     @Published var s = Status()
     @Published var obsidian = detectObsidian()
     @Published var note = ""            // transient status line ("Promote started…")

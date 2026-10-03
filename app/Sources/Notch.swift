@@ -36,11 +36,12 @@ struct NotchGeometry: Equatable {
     }
 }
 
-enum NotchMode: Equatable, CaseIterable { case resting, working, expanded, celebrating }
+enum NotchMode: Equatable, CaseIterable { case resting, working, expanded, celebrating, asking, answering }
 
 extension NotchMode {
-    static func resolve(hover: Bool, banner: Bool, working: Bool) -> NotchMode {
-        hover ? .expanded : banner ? .celebrating : working ? .working : .resting
+    static func resolve(ask: Bool, answered: Bool, hover: Bool, banner: Bool, working: Bool) -> NotchMode {
+        ask ? (answered ? .answering : .asking)
+            : hover ? .expanded : banner ? .celebrating : working ? .working : .resting
     }
     func size(_ g: NotchGeometry) -> CGSize {
         // flush with the hardware notch, ONE ear on the left for the character: the right side
@@ -51,6 +52,8 @@ extension NotchMode {
         case .working:     return CGSize(width: g.notchW + 2 * Self.ear + 140, height: rest.height)
         case .expanded:    return CGSize(width: 460, height: 210)
         case .celebrating: return CGSize(width: 360, height: 70)
+        case .asking:      return CGSize(width: 560, height: g.notchH + 84)
+        case .answering:   return CGSize(width: 560, height: 470)
         }
     }
     static let ear: CGFloat = 46
@@ -97,6 +100,8 @@ struct NotchInfo {
     var fact: FunFact? = nil
     var activity = ""
     var celebrating: String? = nil
+    var pending = 0                   // items held for review
+    var loop = "", vault = "", notes = ""
 
     var working: Bool { [.ingest, .summarize, .promote, .ask].contains(pipeline) }
     var word: String {
@@ -123,6 +128,11 @@ struct NotchActions {
     var ingest: () -> Void = {}
     var trophies: () -> Void = {}
     var openFact: () -> Void = {}
+    var vault: () -> Void = {}
+    var openApp: () -> Void = {}      // the Plasmie window: every other option + settings
+    var quit: () -> Void = {}
+    var closeAsk: () -> Void = {}
+    var answered: (Bool) -> Void = { _ in }
 }
 
 // MARK: - view
@@ -139,7 +149,7 @@ struct NotchView: View {
     // One spring on the whole shape, hung from the top edge: it grows down and out of the
     // (black) notch and halts with a small bounce; closing glides back up, fast-to-slow.
     // Content arrives a beat after the shape and leaves with it, scaling toward the notch.
-    private var opening: Bool { mode == .expanded || mode == .celebrating }
+    private var opening: Bool { [.expanded, .celebrating, .asking, .answering].contains(mode) }
     private var anim: Animation {
         if reduceMotion { return .easeInOut(duration: 0.15) }
         return opening ? .spring(response: 0.36, dampingFraction: 0.72)
@@ -160,11 +170,22 @@ struct NotchView: View {
             case .working:     working.transition(.opacity)
             case .expanded:    expanded.transition(fromNotch)
             case .celebrating: banner.transition(fromNotch)
+            case .asking, .answering:                      // one branch: the conversation keeps its state as it grows
+                AskOverlay(loop: info.loop, vault: info.vault, notes: info.notes, onClose: actions.closeAsk,
+                           inNotch: true, topInset: geo.notchH, onAnswer: actions.answered)
+                    .transition(fromNotch)
             }
         }
         .frame(width: size.width, height: size.height, alignment: .top)
         .background(NotchShape().fill(Color.black))
         .clipShape(NotchShape())
+        .contentShape(NotchShape())
+        .contextMenu {
+            Button("Ask Plasmie…", action: actions.ask)
+            Button("Open Plasmie…", action: actions.openApp)
+            Divider()
+            Button("Quit Plasmie", action: actions.quit)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Plasmie, \(info.statusWord)")
         .offset(x: mode.shift(geo) - panelShift)
@@ -221,16 +242,27 @@ struct NotchView: View {
                 HStack(spacing: 6) {
                     Text("Plasmie").font(.klHeading).foregroundStyle(.white)
                     if let st = info.stageName {
-                        Text(st).font(.klMeta).foregroundStyle(.white.opacity(0.6)).lineLimit(1)
+                        Button(action: actions.trophies) {
+                            Text(st).font(.klMeta).foregroundStyle(.white.opacity(0.6)).lineLimit(1)
+                        }
+                        .buttonStyle(.plain).help("Open trophies").accessibilityLabel("\(st). Open trophies")
                     }
                     Spacer(minLength: 4)
                     StatusPill(state: info.status, reason: info.reason).lineLimit(1)
                 }
                 factView
+                // the few things worth doing from the notch; everything else is one click away
                 HStack(spacing: 6) {
                     NotchChip(title: "Ask", symbol: "sparkle.magnifyingglass", label: "Ask Plasmie", action: actions.ask)
-                    NotchChip(title: "Ingest", symbol: "tray.and.arrow.down", label: "Ingest now", action: actions.ingest)
-                    NotchChip(title: "Trophies", symbol: "trophy", label: "Open trophies", action: actions.trophies)
+                    if info.pending > 0 {
+                        NotchChip(title: "Review \(info.pending)", symbol: "tray.full", label: "Review \(info.pending) held items",
+                                  action: actions.openApp)
+                    } else {
+                        NotchChip(title: "Ingest", symbol: "tray.and.arrow.down", label: "Ingest now", action: actions.ingest)
+                    }
+                    NotchChip(title: "Vault", symbol: "folder", label: "Open the vault in Obsidian", action: actions.vault)
+                    NotchChip(title: "More", symbol: "ellipsis.circle", label: "Open Plasmie: all options and settings",
+                              action: actions.openApp)
                 }
             }
         }
@@ -302,6 +334,8 @@ final class NotchModel: ObservableObject {
     @Published var banner = false
     @Published var bannerText: String? = nil
     @Published var panelShift: CGFloat = 0        // panel centre minus notch centre (pt)
+    @Published var asking = false                 // Ask is open in the island (sticky: hover can't close it)
+    @Published var answered = false               // an answer is on screen: the island grows to hold it
     private var collapse: DispatchWorkItem?
     private var bannerEnd: DispatchWorkItem?
 
@@ -339,8 +373,9 @@ private struct NotchRoot: View {
     var body: some View {
         let info = NotchInfo(hero: m.heroPlasmie, pipeline: m.plasmie, status: m.s.state, reason: m.s.reason,
                              stageName: m.stage?.name, accessory: m.stage?.accessory, fact: m.funFact,
-                             activity: m.s.activity, celebrating: nm.bannerText)
-        let mode = NotchMode.resolve(hover: nm.hovering, banner: nm.banner, working: info.working)
+                             activity: m.s.activity, celebrating: nm.bannerText, pending: m.s.pending,
+                             loop: m.s.loop, vault: m.s.vault, notes: m.s.notes)
+        let mode = NotchMode.resolve(ask: nm.asking, answered: nm.answered, hover: nm.hovering, banner: nm.banner, working: info.working)
         NotchView(info: info, geo: geo, mode: mode, actions: actions, panelShift: nm.panelShift)
             .onChange(of: mode) { onMode($0, $0.shift(geo)) }
             .onAppear { onMode(mode, mode.shift(geo)) }
@@ -348,7 +383,8 @@ private struct NotchRoot: View {
 }
 
 private final class NotchPanel: NSPanel {
-    override var canBecomeKey: Bool { false }
+    var allowsKey = false                                  // only while Ask needs the keyboard
+    override var canBecomeKey: Bool { allowsKey }
     override var canBecomeMain: Bool { false }
     // Borderless windows are otherwise pushed below the menu bar.
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
@@ -410,6 +446,7 @@ final class NotchController {
     }
 
     private func sync() {
+        if let m = model, m.notchOn != NotchPrefs.isOn { m.notchOn = NotchPrefs.isOn }
         if NotchPrefs.isOn { if panel == nil { show() } } else if panel != nil { stop() }
     }
 
@@ -426,12 +463,17 @@ final class NotchController {
         p.hidesOnDeactivate = false; p.isReleasedWhenClosed = false
         p.ignoresMouseEvents = true                                                // until the pointer is over the shape
         let actions = NotchActions(
-            ask: { OverlayController.shared.toggle() },
+            ask: { [weak self] in _ = self?.toggleAsk() },
             ingest: { [weak model] in model?.kick("com.plasmie.dev-ingest", "Ingest") },
             trophies: { [weak model] in if let model { TrophiesController.shared.show(model) } },
             openFact: { [weak model] in
                 if let model, let path = model.funFact?.path, !path.isEmpty { openInObsidian("\(model.s.vault)/\(path)") }
-            })
+            },
+            vault: { [weak model] in if let model { openInObsidian(model.s.vault) } },
+            openApp: { SettingsController.shared.show() },
+            quit: { NSApp.terminate(nil) },
+            closeAsk: { [weak self] in self?.closeAsk() },
+            answered: { [weak self] in self?.nm.answered = $0 })
         let host = NotchHostingView(rootView: NotchRoot(m: model, nm: nm, geo: geo, actions: actions) { [weak self] in
             self?.target($0, $1)
         })
@@ -442,6 +484,25 @@ final class NotchController {
         p.orderFrontRegardless()
         target(NotchMode.resting, NotchMode.resting.shift(geo))
         startPointer()
+    }
+
+    /// Open or close Ask in the island. Returns false when the island can't host it (notch
+    /// off, or hidden on a full-screen Space) so the caller falls back to the floating panel.
+    func toggleAsk() -> Bool {
+        guard let p = panel else { return false }
+        if nm.asking { closeAsk(); return true }
+        guard p.occlusionState.contains(.visible) else { return false }
+        nm.answered = false; nm.asking = true
+        p.allowsKey = true; p.ignoresMouseEvents = false
+        NSApp.activate(ignoringOtherApps: true)
+        p.makeKeyAndOrderFront(nil)
+        return true
+    }
+
+    private func closeAsk() {
+        nm.asking = false; nm.answered = false
+        panel?.resignKey(); panel?.allowsKey = false
+        if SettingsController.shared.isOpen == false { NSApp.deactivate() }   // hand focus back to the previous app
     }
 
     private func reposition() {
@@ -471,6 +532,9 @@ final class NotchController {
     }
 
     private func startPointer() {
+        if ProcessInfo.processInfo.environment["PLASMIE_NOTCH_DEMO"] == "ask" {  // verification only
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in _ = self?.toggleAsk() }
+        }
         if ProcessInfo.processInfo.environment["PLASMIE_NOTCH_DEMO"] == "1" {    // verification only
             var open = false
             demo = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { [weak self] _ in

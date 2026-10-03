@@ -44,3 +44,19 @@ The owner asked whether Plasmie could be a notch app. This Mac's built-in displa
 
 ## Open question
 Whether the notch replaces the menu-bar icon is decided after the owner tries it.
+
+## The notch becomes the front door (owner request, 2026-10-03)
+- **The menu-bar icon is hidden while the notch is on**; turning the notch off brings it
+  back. Reopening Plasmie (Finder, Spotlight, `open -a Plasmie`) shows the Plasmie window, so
+  nothing becomes unreachable. The icon's visibility mirrors a `Model.notchOn` value set
+  only on real changes: binding `MenuBarExtra(isInserted:)` straight to `@AppStorage`
+  spun the main thread at 100% (the status item writes defaults, which re-render the app).
+- **Island actions, few on purpose:** Ask · Ingest (or *Review N* when items are held) ·
+  Vault · More. The stage name opens Trophies; right-click gives Ask / Open Plasmie / Quit.
+- **The Plasmie window** holds everything else: the old menu panel on the left (status,
+  Run / Open / Maintain, held items) beside Settings and connectors on the right.
+- **Ask lives in the island**, not a spotlight: it grows to 560 × (notch + 84) for the
+  question and to 560 × 470 once an answer streams in, with the same view and state
+  throughout. The panel takes the keyboard only while Ask is open; Esc or ⌃⌥⌘K closes
+  it and hands focus back. The floating spotlight remains only as a fallback when the
+  island can't host it (notch off, or a full-screen Space hides the island).

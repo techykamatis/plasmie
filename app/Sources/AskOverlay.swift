@@ -42,8 +42,11 @@ final class OverlayController {
     static let shared = OverlayController()   // also reachable from the menu-bar panel
     private var panel: OverlayPanel?
 
+    /// Ask lives in the notch when it's on and visible; the floating panel is the fallback
+    /// (notch off, or a full-screen Space where the notch island is hidden).
     func toggle() {
         if let p = panel, p.isVisible { p.orderOut(nil); return }
+        if NotchController.shared.toggleAsk() { return }
         show()
     }
 
@@ -146,6 +149,9 @@ struct AskOverlay: View {
     let vault: String
     var notes = ""
     let onClose: () -> Void
+    var inNotch = false                       // inside the black notch island: dark, no chrome
+    var topInset: CGFloat = 0                 // the hardware notch band to keep clear
+    var onAnswer: (Bool) -> Void = { _ in }   // the island grows when an answer arrives
     @State private var query = ""
     @State private var answer = ""
     @State private var status = ""
@@ -162,7 +168,7 @@ struct AskOverlay: View {
     private static let gutter: CGFloat = 14    // Plasmie column to field
 
     /// Plasmie's size: the hero (88) while asking, a step down (56) when an answer is on screen.
-    private var plasmieSize: CGFloat { answer.isEmpty ? 88 : 56 }
+    private var plasmieSize: CGFloat { inNotch ? (answer.isEmpty ? 52 : 40) : (answer.isEmpty ? 88 : 56) }
 
     private var plasmieState: PlasmieState {
         busy ? .ask : (outcome == .failed ? .error : (outcome == .done ? .success : .idle))
@@ -236,7 +242,8 @@ struct AskOverlay: View {
                         Color.clear.preference(key: HeightKey.self, value: g.size.height)
                     })
                 }
-                .frame(height: min(max(answerHeight, 1), maxAnswerHeight))
+                .frame(height: inNotch ? nil : min(max(answerHeight, 1), maxAnswerHeight))
+                .frame(maxHeight: inNotch ? .infinity : nil)
                 .transition(.opacity.combined(with: .offset(y: 6)))
                 .onPreferenceChange(HeightKey.self) { answerHeight = $0 }
             }
@@ -251,13 +258,19 @@ struct AskOverlay: View {
             }
         }
         .motion(Motion.glide, value: plasmieSize)          // 88 -> 56 and the answer reveal glide into place
-        .background(.regularMaterial)
+        .padding(.top, topInset)
+        .background(inNotch ? AnyShapeStyle(Color.clear) : AnyShapeStyle(.regularMaterial))
         .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.12)))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(inNotch ? 0 : 0.12)))
         .frame(width: 560)
+        .environment(\.colorScheme, inNotch ? .dark : .light)
+        .onChange(of: answer.isEmpty) { onAnswer(!$0) }
         // Defer to the next runloop tick: onAppear fires before the panel finishes
         // becoming key, and focus set that early doesn't stick. async lands it after.
-        .onAppear { DispatchQueue.main.async { focused = true } }
+        .onAppear {
+            DispatchQueue.main.async { focused = true }
+            if let q = ProcessInfo.processInfo.environment["PLASMIE_ASK_DEMO_Q"], inNotch { query = q; run() }  // verification only
+        }
         .onExitCommand(perform: onClose)   // Esc closes
     }
 

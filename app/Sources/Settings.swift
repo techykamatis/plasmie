@@ -70,19 +70,29 @@ final class SettingsController: NSObject, NSWindowDelegate {
     static let shared = SettingsController()
     private var win: NSWindow?
     private let state = SettingsState()
+    var isOpen: Bool { win?.isVisible == true }
 
+    /// The Plasmie window: everything the menu had (status, Run / Open / Maintain, held items)
+    /// on the left, settings and connectors on the right. First run shows settings alone.
     func show(firstRun: Bool = false) {
         if let w = win { NSApp.activate(ignoringOtherApps: true); w.makeKeyAndOrderFront(nil); return }
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 680),
-                         styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        w.title = firstRun ? "Set up connectors" : "Plasmie Settings"
-        w.center(); w.isReleasedWhenClosed = false
-        w.contentMinSize = NSSize(width: 520, height: 560)
-        w.delegate = self
-        w.contentView = NSHostingView(rootView: SettingsView(
+        let settings = SettingsView(
             firstRun: firstRun, state: state,
             onDone: { [weak self] in self?.win?.close() },
-            onRequestClose: { [weak self] in self?.win?.performClose(nil) }))
+            onRequestClose: { [weak self] in self?.win?.performClose(nil) })
+        let side: CGFloat = firstRun ? 0 : 320
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560 + side, height: 680),
+                         styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        w.title = firstRun ? "Set up connectors" : "Plasmie"
+        w.center(); w.isReleasedWhenClosed = false
+        w.contentMinSize = NSSize(width: 520 + side, height: 560)
+        w.delegate = self
+        w.contentView = firstRun ? NSHostingView(rootView: AnyView(settings)) : NSHostingView(rootView: AnyView(
+            HStack(spacing: 0) {
+                ScrollView { Panel(m: .shared, inWindow: true) }.frame(width: side)
+                Divider()
+                settings
+            }))
         win = w
         NSApp.activate(ignoringOtherApps: true)
         w.makeKeyAndOrderFront(nil)

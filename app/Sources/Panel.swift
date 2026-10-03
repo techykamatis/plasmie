@@ -93,6 +93,7 @@ struct ActionRow: View {
 
 struct Panel: View {
     @ObservedObject var m: Model
+    var inWindow = false                 // inside the Plasmie window: no Settings row (it's beside it)
     private enum Confirm { case approve, dismiss }
     @State private var confirm: Confirm?
     @AppStorage(NotchPrefs.key) private var notchOn = true
@@ -203,8 +204,10 @@ struct Panel: View {
                 ActionRow(title: "Reindex check", symbol: "magnifyingglass",
                           detail: "Rebuild catalog & flag dead links · changes nothing") { m.reindexCheck() }
                 ActionRow(title: "Plasmie in the notch", symbol: "capsule.tophalf.filled",
-                          detail: notchOn ? "On · experimental" : "Off · experimental") { notchOn.toggle() }
-                ActionRow(title: "Settings", symbol: "gearshape", key: ",") { SettingsController.shared.show() }
+                          detail: notchOn ? "On · replaces the menu-bar icon" : "Off · using the menu-bar icon") { notchOn.toggle() }
+                if !inWindow {
+                    ActionRow(title: "Settings", symbol: "gearshape", key: ",") { SettingsController.shared.show() }
+                }
             }
             .padding(.horizontal, 6).padding(.vertical, 4)
 

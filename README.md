@@ -172,6 +172,14 @@ python3 plasmie-doctor.py      # per-connector health + freshness
 
 ---
 
+## Design & decisions
+
+- `PRODUCT.md`: who Plasmie is for and what it must never do.
+- `DESIGN.md`: the visual system (palette, type, shapes, motion, components).
+- `docs/decisions/`: one short record per design or architecture decision, with the
+  alternatives that were rejected. Start at `docs/decisions/README.md`.
+- Brand sheet: `app/brand/plasmie-brand.html` (built by `app/brand/build.py`).
+
 ## Repo layout
 
 ```

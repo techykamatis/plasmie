@@ -77,14 +77,15 @@ say "3/8 · Scaffold vault"
 
 # 4) secrets ------------------------------------------------------------------
 say "4/8 · Secrets (Slack ingest)"
-ENV="$HOME/.claude/.env"; mkdir -p "$(dirname "$ENV")"; touch "$ENV"; chmod 600 "$ENV"
-if grep -q SLACK_USER_TOKEN "$ENV" 2>/dev/null; then
-  ok "SLACK_USER_TOKEN already set"
+# credentials live in the login Keychain (keychain.py), never in a file
+if /usr/bin/security find-generic-password -s Plasmie -a SLACK_USER_TOKEN >/dev/null 2>&1; then
+  ok "SLACK_USER_TOKEN already in the Keychain"
 elif yes "Add a Slack user token now? (enables Slack ingest)"; then
   tok="$(ask "Paste SLACK_USER_TOKEN (xoxp-…)" "")"
-  [ -n "$tok" ] && { printf 'export SLACK_USER_TOKEN=%q\n' "$tok" >> "$ENV"; ok "saved to ~/.claude/.env"; }
+  [ -n "$tok" ] && printf '%s\n' "$tok" | "$PY312" "$SELF/keychain.py" set SLACK_USER_TOKEN \
+    && ok "saved to the Keychain"
 else
-  warn "skipped — ingest logs 'SLACK_USER_TOKEN not set' until you add it to ~/.claude/.env"
+  warn "skipped — add it later in Plasmie's Settings (Slack card)"
 fi
 
 # 5) python env + MLX ---------------------------------------------------------
@@ -142,5 +143,5 @@ echo "  Ask anything:  press ⌃⌥⌘K, type a question about your notes."
 echo "  Menu bar:      look for the brain icon at the top of your screen."
 echo "  Your notes:    $VAULT  (open it in Obsidian: File ▸ Open folder as vault)"
 echo
-echo "  Slack ingest is optional — add a token to ~/.claude/.env any time to turn it on."
+echo "  Slack ingest is optional — add a token in Plasmie's Settings any time to turn it on."
 echo "  Run this wizard again whenever you like; it only does what's still needed."

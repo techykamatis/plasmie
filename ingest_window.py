@@ -11,6 +11,7 @@ window held 231 messages across 3 pages; the code captured 100.
 This module holds that decision so `loop-ingest.py` and `test_ingest.py` share one
 implementation rather than a replica that can drift.
 """
+import re
 import time
 
 # Sources that own an independent watermark. Claude sessions come off the
@@ -120,3 +121,20 @@ def paginate(fetch, ts_of, last_run, until, max_pages=10, pause=0.0, _sleep=None
         if page <= pages and page <= max_pages and pause:
             sleeper(pause)            # Slack search 429s when hammered
     return kept, (page > max_pages and page <= pages)
+
+
+def session_project(dirname, home, roots=()):
+    """A readable project label for a Claude Code session folder.
+
+    Claude Code names the folder after the session's working directory with every
+    non-alphanumeric character turned into "-" (/Users/me/code/app ->
+    -Users-me-code-app). A repo under one of the git roots is labelled by its own
+    name ("app"); anything else under home reads "home-..." ("home" for home itself).
+    """
+    def slug(p):
+        return re.sub(r"[^A-Za-z0-9]", "-", p.rstrip("/"))
+    for r in roots:
+        prefix = slug(r) + "-"
+        if dirname.startswith(prefix):
+            return dirname[len(prefix):] or "home"
+    return dirname.replace(slug(home), "home").lstrip("-") or "home"

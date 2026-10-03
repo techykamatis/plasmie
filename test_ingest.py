@@ -309,3 +309,12 @@ def test_activity_dirs_follow_the_switches(tmp_path, monkeypatch):
     assert "claude" in paths.activity_dirs(_cfg(tmp_path, 'PLASMIE_DISABLED_SOURCES="claude"\n'))
     assert paths.activity_dirs(_cfg(tmp_path, 'PLASMIE_DISABLED_SOURCES="claude,agentcli,github"\n')) == \
         ["slack", "outlook", "git"]
+
+
+def test_session_project_labels_come_from_home_and_git_roots_not_a_hardcoded_user():
+    home, roots = "/Users/jane.doe", ["/Users/jane.doe/code"]
+    sp = ingest_window.session_project
+    assert sp("-Users-jane-doe-code-my-app", home, roots) == "my-app"
+    assert sp("-Users-jane-doe", home, roots) == "home"
+    assert sp("-Users-jane-doe-Documents-notes", home, roots) == "home-Documents-notes"
+    assert sp("-Users-jane-doe-code-app", home, []) == "home-code-app"   # no roots chosen

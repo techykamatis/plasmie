@@ -27,16 +27,13 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths  # noqa: E402
 
-H = os.path.expanduser("~")
 TIMEOUT = 15
 
 
 def _load_env():
-    """Mirror run-ingest.sh: ~/.claude/.env then config.env, via paths.read_config —
-    line by line, so one malformed value can't truncate everything below it."""
-    for path in (f"{H}/.claude/.env", paths.CONFIG):
-        for k, v in paths.read_config(path).items():
-            os.environ.setdefault(k, v)
+    """What the ingest sees: config.env settings + Keychain credentials (paths.load_env).
+    The first run after an upgrade also migrates ~/.claude/.env, once."""
+    paths.load_env()
 
 
 def _result(configured, ok, detail, hint=""):
@@ -106,7 +103,9 @@ def check_github():
         # to `gh auth login` when the real problem is that the network is down.
         detail = "Not signed in, or the network is down." if "not authenticated" in msg[0] else msg[0]
         return _result(True, False, detail, "Run `gh auth login` if this persists while online.")
-    orgs = [o.strip() for o in os.environ.get("PLASMIE_GITHUB_ORGS", "fabrikam").split(",") if o.strip()]
+    orgs = paths.csv_setting("PLASMIE_GITHUB_ORGS")
+    if not orgs:
+        return _result(True, True, f"Signed in as {user} — searching all your activity.")
     good, bad = [], []
     for org in orgs:
         r = subprocess.run([gh, "api", "search/issues", "-X", "GET",
@@ -160,8 +159,9 @@ def check_agentcli():
 def check_git():
     """Local clones — no network, no token. The failure mode is not auth but
     "pointed at the wrong folder", so report what it can actually see."""
-    roots = [os.path.expanduser(r.strip())
-             for r in os.environ.get("PLASMIE_GIT_ROOTS", "~/code").split(",") if r.strip()]
+    roots = [os.path.expanduser(r) for r in paths.csv_setting("PLASMIE_GIT_ROOTS")]
+    if not roots:
+        return _result(False, None, "No folders chosen.", "Add the folders where your repos live.")
     missing = [r for r in roots if not os.path.isdir(r)]
     if missing:
         return _result(False, False, "Folder not found: " + ", ".join(missing),

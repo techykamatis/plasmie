@@ -54,7 +54,7 @@ The wizard has 8 idempotent, skippable steps:
 1. **Preflight** — Homebrew, `python@3.12`, git, Obsidian, claude CLI, free disk.
 2. **Vault location** — default `~/knowledge`, saved to `config.env` (refuses cloud-synced folders).
 3. **Scaffold** — `scaffold-vault.sh` copies `vault-template/` (never into a non-empty dir).
-4. **Secrets** — `SLACK_USER_TOKEN` into `~/.claude/.env` (chmod 600).
+4. **Secrets** — `SLACK_USER_TOKEN` into the login Keychain (`keychain.py set`).
 5. **Python env** — `.venv` with `mlx-vlm` and `mlx-embeddings`.
 6. **Models** — Gemma-4 E4B 4-bit (~4.9 GB) and `embeddinggemma` (see `models/README.md`; the latter is vestigial).
 7. **Loops** — `launchd/install.sh` installs every agent in `launchd/`.
@@ -80,16 +80,20 @@ Agents, all templates in `launchd/` (the installer rewrites `__LOOP_DIR__`/`__HO
 | Connector | Source | Needs | Raw dir |
 |-----------|--------|-------|---------|
 | Slack | your sent/to-you messages | `SLACK_USER_TOKEN` (`xoxp-`, `search:read`, `users:read`) | `raw/slack` |
-| GitHub | PRs, issues, comments | `gh` CLI signed in; `PLASMIE_GITHUB_ORGS` (default `fabrikam`) | `raw/github` |
-| Local git commits | your commits from local clones, low-signal ones dropped | `PLASMIE_GIT_ROOTS` (default `~/code`); no network | `raw/git` |
-| Confluence | pages you touched; page changes logged hourly, content via `confluence-backfill.py` | `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` (or `CONFLUENCE_*`) | `raw/confluence` |
+| GitHub | PRs, issues, comments | `gh` CLI signed in; optional `PLASMIE_GITHUB_ORGS` to narrow (blank = all your activity) | `raw/github` |
+| Local git commits | your commits from local clones, low-signal ones dropped | `PLASMIE_GIT_ROOTS` (setup detects `~/code`, `~/Developer`, … when they hold repos); no network | `raw/git` |
+| Confluence | pages you touched; page changes logged hourly, content via `confluence-backfill.py` | `JIRA_BASE_URL`; `JIRA_EMAIL` + `JIRA_API_TOKEN` (or `CONFLUENCE_*`) in the Keychain | `raw/confluence` |
 | Outlook | mail + calendar via Microsoft Graph (`msgraph.py`) | `MS_REFRESH_TOKEN`; usually needs tenant-admin approval | `raw/outlook` |
 | Claude Code sessions | `~/.claude/projects/**/*.jsonl` | nothing | `raw/claude` |
 | AgentCLI sessions | AgentCLI SQLite DB (`PLASMIE_AGENTCLI_DB`) | nothing | `raw/claude` |
 
+**Where settings live.** Credentials (`SLACK_USER_TOKEN`, `JIRA_API_TOKEN`, `CONFLUENCE_API_TOKEN`, `MS_REFRESH_TOKEN`, `JIRA_EMAIL`, `CONFLUENCE_EMAIL`) are generic passwords in the login Keychain, service `Plasmie`, account = the variable name; everything else (site URL, orgs, folders, switches) is in `config.env`. Python jobs load both with `paths.load_env()`, shell jobs call `plasmie_secrets` (plasmie-env.sh). An install from before this read `~/.claude/.env`; its Plasmie keys are copied out once (`keychain.py migrate`) and the file is never edited. See ADR 0021.
+
+**Fresh installs start with every connector Off** except local sources whose folder exists (Claude Code sessions, AgentCLI, local git); see ADR 0022.
+
 `plasmie-doctor.py [source]` prints per-connector reachability and data freshness as JSON (what the app's Settings "Test" button runs).
 
-**On/Off switch.** Each connector has a toggle in the app (Settings → Connectors), stored as `PLASMIE_DISABLED_SOURCES="github,confluence"` (comma-separated source names: `slack github git confluence outlook claude agentcli`) in `config.env`; edit it by hand if you like. The env var `PLASMIE_DISABLED_SOURCES` overrides `config.env`. Off means: ingest skips the source with no network call; its watermark still advances, so turning it back On does **not** backfill the Off period; summarize/promote ignore its raw files; `plasmie-doctor.py` reports `enabled:false` without probing. `github-backfill.py` and `confluence-backfill.py` do not read the switch.
+**On/Off switch.** Each connector has a toggle in the app (Settings → Connectors), stored as `PLASMIE_DISABLED_SOURCES="github,confluence"` (comma-separated source names: `slack github git confluence outlook claude agentcli`) in `config.env`; edit it by hand if you like. The env var `PLASMIE_DISABLED_SOURCES` overrides `config.env`. Off means: ingest skips the source with no network call; its watermark still advances, so turning it back On does **not** backfill the Off period; summarize/promote ignore its raw files; `plasmie-doctor.py` reports `enabled:false` without probing. `github-backfill.py` and `confluence-backfill.py` refuse to run for an Off source.
 
 Each source has its own watermark in `.loop-state.json`; a source that errors holds its watermark so the next run re-covers the gap. A first run seeds `PLASMIE_BOOTSTRAP_DAYS` (30) days.
 
@@ -101,7 +105,7 @@ Each source has its own watermark in `.loop-state.json`; a source that errors ho
 |------|------|
 | `loop-ingest.py` | Pulls every enabled source since its watermark, scrubs, appends to `raw/<source>/`, logs to `log.md`. |
 | `ingest_window.py` | Watermark/pagination arithmetic and git-commit filter, shared with tests. |
-| `run-ingest.sh` | launchd wrapper: loads `.env`/`config.env`, runs ingest, then `qmd update` + `qmd embed`; full detail to a per-run log, one line to `feed.log`. |
+| `run-ingest.sh` | launchd wrapper: loads `config.env` + Keychain credentials, runs ingest, then `qmd update` + `qmd embed`; full detail to a per-run log, one line to `feed.log`. |
 | `summarize.sh` | Condenses today's `raw/{slack,claude,outlook}` into a rolling `meta/digests/` note; skipped if input unchanged. |
 | `promote.sh` | Nightly: drafts promotable knowledge (incl. `raw/inbox` content) with local Gemma, then dedupe + auto-apply. |
 | `dedupe.py` | TF-IDF cosine against existing notes; sets `Action:` and `Near:` on each draft item. |
@@ -146,7 +150,7 @@ Each source has its own watermark in `.loop-state.json`; a source that errors ho
 - **Untrusted model output**: `promote-apply.py` confines every draft path to the vault, scrubs bodies, refuses to overwrite and never deletes.
 - **Owner-only files**: scripts set `umask 077`; logs are `0600`; runtime data, `.venv`, models and `config.env` are gitignored.
 - **Vault stays on local disk.** launchd agents cannot read `~/Library/CloudStorage` (TCC). The OneDrive mirror was removed in commit `e070d75` after 528 failures; do not put `VAULT_DIR` in OneDrive/iCloud.
-- **Known weak spot**: the worker sources `~/.claude/.env`, a plaintext secrets file.
+- **Credentials in the Keychain**, never in a file: written and read only through `/usr/bin/security`, so no ad-hoc app build or background job ever raises an access prompt (ADR 0021).
 
 ---
 

@@ -136,7 +136,7 @@ fi
 # history; Slack + Claude sessions = the bootstrap window (PLASMIE_BOOTSTRAP_DAYS).
 if [ ! -f "$PLASMIE_HOME/.loop-state.json" ]; then
   p 85 "Gathering your recent history (first-time crawl)…"
-  set -a; [ -f "$HOME/.claude/.env" ] && . "$HOME/.claude/.env"; set +a
+  plasmie_secrets   # connector credentials from the Keychain (plasmie-env.sh)
   export PLASMIE_VAULT="$VAULT" PLASMIE_BOOTSTRAP_DAYS="${PLASMIE_BOOTSTRAP_DAYS:-30}"
   "$PY" "$ENGINE/confluence-backfill.py" "$VAULT" >/dev/null 2>&1 || true
   "$PY" "$ENGINE/github-backfill.py"     "$VAULT" >/dev/null 2>&1 || true

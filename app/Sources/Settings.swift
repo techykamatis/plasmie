@@ -5,14 +5,12 @@ import SwiftUI
 
 // MARK: - configuration store (connectors + sync)
 
-/// Reads/writes the loop's configuration, which lives in two plain files:
-///   ~/Library/Application Support/Plasmie/config.env  — VAULT_DIR, PLASMIE_DISABLED_SOURCES (quoted, spaces-safe)
-///   ~/.claude/.env                — connector secrets, SHARED with other tools; we
-///                                   upsert only our own keys and preserve the rest.
+/// Reads/writes the loop's non-secret configuration, in one plain file:
+///   ~/Library/Application Support/Plasmie/config.env — VAULT_DIR, PLASMIE_DISABLED_SOURCES and the
+///   connector settings (site URL, GitHub orgs, git folders); quoted, spaces-safe.
+/// Credentials (tokens, the Atlassian email) live in the login Keychain: see Keychain.swift.
 enum ConfigStore {
-    static var home: String { NSHomeDirectory() }
     static var configEnv: String { PlasmiePaths.config }
-    static var dotEnv: String { "\(home)/.claude/.env" }
 
     /// Parse KEY=value, tolerating a leading `export ` and single/double quotes.
     static func read(_ path: String) -> [String: String] {
@@ -33,7 +31,7 @@ enum ConfigStore {
         return out
     }
 
-    /// Upsert keys, preserving every other line (critical for the shared .env).
+    /// Upsert keys, preserving every other line.
     /// Empty value removes the key. `exportPrefix`/`quoted` match each file's style.
     static func upsert(_ path: String, _ kv: [String: String],
                        exportPrefix: Bool, quoted: Bool, perms: Int16? = nil) {
@@ -165,6 +163,7 @@ struct SettingsView: View {
     @State private var jiraToken = ""
     // transient
     @State private var saved = false
+    @State private var saveError = ""
     @State private var outlookLog = ""
     @State private var connecting = false
 
@@ -197,6 +196,7 @@ struct SettingsView: View {
         .background(shortcuts)
         .onAppear {
             load(); conn.refresh()
+            migrateThenReload()
             // First run lands focus on content, not on the buttons. The everyday Plasmie window
             // focuses no field: it can come forward while you're typing elsewhere, and stray
             // keystrokes must not edit the vault path.
@@ -216,7 +216,7 @@ struct SettingsView: View {
                 Spacer()
             }
             if firstRun {
-                Text("Choose what Plasmie pulls into your vault. Everything here is optional and can be changed later from the menu.")
+                Text("Every connector starts off. Switch on the ones you want Plasmie to pull into your vault; you can change this any time from the menu.")
                     .klNote()
             }
         }
@@ -225,7 +225,9 @@ struct SettingsView: View {
 
     private var footer: some View {
         HStack {
-            if dirty {
+            if !saveError.isEmpty {
+                Text(saveError).font(.klMeta).foregroundStyle(.red)
+            } else if dirty {
                 Text("Unsaved changes").font(.klMeta).foregroundStyle(.orange)
             } else if saved {
                 Text("Saved ✓").font(.klMeta).foregroundStyle(.green)
@@ -265,7 +267,7 @@ struct SettingsView: View {
     @ViewBuilder private func card(for c: Connector) -> some View {
         switch c.id {
         case "slack":
-            ConnectorCard(c: c, m: conn, onDisconnect: { disconnect(["SLACK_USER_TOKEN": ""]) }) {
+            ConnectorCard(c: c, m: conn, onDisconnect: { disconnect(["SLACK_USER_TOKEN"]) }) {
                 SecureField(conn.health["slack"]?.configured == true
                             ? "Connected — paste a new token to replace"
                             : "Paste SLACK_USER_TOKEN (xoxp-…)", text: $slackToken)
@@ -273,22 +275,23 @@ struct SettingsView: View {
             }
         case "github":
             ConnectorCard(c: c, m: conn, onDisconnect: nil) {
-                labeled("Organisations (comma-separated)") {
-                    TextField("fabrikam", text: $githubOrgs).textFieldStyle(.roundedBorder)
+                labeled("Organisations (comma-separated, optional)") {
+                    TextField("Blank = all your activity, or e.g. my-org, other-org", text: $githubOrgs)
+                        .textFieldStyle(.roundedBorder)
                 }
-                Text("Signed in with the `gh` CLI. An org you are not a member of fails every run — Test names it.")
+                Text("Signed in with the `gh` CLI. List organisations to narrow it; an org you are not a member of fails every run — Test names it.")
                     .klNote()
             }
         case "git":
             ConnectorCard(c: c, m: conn, onDisconnect: nil) {
                 labeled("Folders to scan (comma-separated)") {
-                    TextField("~/code", text: $gitRoots).textFieldStyle(.roundedBorder)
+                    TextField("e.g. ~/code, ~/Developer", text: $gitRoots).textFieldStyle(.roundedBorder)
                 }
                 Text("Only commits authored by you, with a real explanation in the message — one-liners and mechanical chores are filtered out.")
                     .klNote()
             }
         case "confluence":
-            ConnectorCard(c: c, m: conn, onDisconnect: { disconnect(["JIRA_API_TOKEN": "", "CONFLUENCE_API_TOKEN": ""]) }) {
+            ConnectorCard(c: c, m: conn, onDisconnect: { disconnect(["JIRA_API_TOKEN", "CONFLUENCE_API_TOKEN"]) }) {
                 labeled("Site URL") { TextField("https://your-site.atlassian.net", text: $jiraBase).textFieldStyle(.roundedBorder) }
                 labeled("Email") { TextField("you@company.com", text: $jiraEmail).textFieldStyle(.roundedBorder) }
                 SecureField(conn.health["confluence"]?.configured == true
@@ -297,7 +300,7 @@ struct SettingsView: View {
                     .textFieldStyle(.roundedBorder)
             }
         case "outlook":
-            ConnectorCard(c: c, m: conn, onDisconnect: { disconnect(["MS_REFRESH_TOKEN": ""]) }) {
+            ConnectorCard(c: c, m: conn, onDisconnect: { disconnect(["MS_REFRESH_TOKEN"]) }) {
                 HStack {
                     Button(connecting ? "Connecting…" : (conn.health["outlook"]?.configured == true ? "Reconnect" : "Connect Outlook")) {
                         connectOutlook()
@@ -328,7 +331,7 @@ struct SettingsView: View {
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
                 pathRow("Data", PlasmiePaths.home)
                 pathRow("Logs", PlasmiePaths.logs)
-                pathRow("Secrets", "\(NSHomeDirectory())/.claude/.env")
+                keychainRow
             }
         }
     }
@@ -351,6 +354,23 @@ struct SettingsView: View {
         }
     }
 
+    /// Credentials aren't a file: point at Keychain Access, where the "Plasmie" items live.
+    private var keychainRow: some View {
+        GridRow {
+            Text("Secrets").font(.klMeta).foregroundStyle(.secondary)
+            Text("Login Keychain, items named \u{201C}\(Keychain.service)\u{201D}").font(.klMono)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.keychainaccess") {
+                    NSWorkspace.shared.openApplication(at: app, configuration: .init())
+                }
+            } label: { Image(systemName: "key") }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Open Keychain Access")
+                .help("Open Keychain Access")
+        }
+    }
+
     // MARK: helpers
 
     @ViewBuilder private func labeled<C: View>(_ label: String, @ViewBuilder _ content: () -> C) -> some View {
@@ -363,47 +383,78 @@ struct SettingsView: View {
     private func load() {
         let cfg = ConfigStore.read(ConfigStore.configEnv)
         vaultDir = cfg["VAULT_DIR"] ?? "\(NSHomeDirectory())/knowledge"
-        let env = ConfigStore.read(ConfigStore.dotEnv)
-        jiraBase = env["JIRA_BASE_URL"] ?? ""
-        jiraEmail = env["JIRA_EMAIL"] ?? ""
-        githubOrgs = env["PLASMIE_GITHUB_ORGS"] ?? "fabrikam"
-        gitRoots = env["PLASMIE_GIT_ROOTS"] ?? "~/code"
+        jiraBase = cfg["JIRA_BASE_URL"] ?? ""
+        githubOrgs = cfg["PLASMIE_GITHUB_ORGS"] ?? ""
+        gitRoots = cfg["PLASMIE_GIT_ROOTS"] ?? ""
         baseline = current
+        DispatchQueue.global().async {               // the email is a credential: Keychain
+            let email = Keychain.get("JIRA_EMAIL") ?? ""
+            DispatchQueue.main.async {
+                if jiraEmail == baseline.jiraEmail { jiraEmail = email }
+                baseline.jiraEmail = email
+            }
+        }
+    }
+
+    /// An install from before the Keychain moves its ~/.claude/.env values over once
+    /// (keychain.py; a no-op afterwards). Reload so the fields show what it brought.
+    private func migrateThenReload() {
+        let py = "\(PlasmiePaths.home)/venv/bin/python3"
+        guard FileManager.default.isExecutableFile(atPath: py) else { return }
+        DispatchQueue.global().async {
+            _ = runCapture(py, [PlasmiePaths.script("keychain.py"), "migrate"])
+            DispatchQueue.main.async { if !dirty { load() } }
+        }
     }
 
     private func save() {
-        ConfigStore.upsert(ConfigStore.configEnv, [
-            "VAULT_DIR": vaultDir.trimmingCharacters(in: .whitespaces),
-        ], exportPrefix: false, quoted: true)
+        // Settings → config.env (exported to every job by plasmie-env.sh). Only fields that
+        // changed are written, so a value another process just wrote isn't clobbered.
+        let trim = { (s: String) in s.trimmingCharacters(in: .whitespaces) }
+        let now = current, was = baseline
+        var cfg: [String: String] = [:]
+        if now.vaultDir != was.vaultDir { cfg["VAULT_DIR"] = trim(now.vaultDir) }
+        if now.jiraBase != was.jiraBase { cfg["JIRA_BASE_URL"] = trim(now.jiraBase) }
+        if now.githubOrgs != was.githubOrgs { cfg["PLASMIE_GITHUB_ORGS"] = trim(now.githubOrgs) }
+        if now.gitRoots != was.gitRoots { cfg["PLASMIE_GIT_ROOTS"] = trim(now.gitRoots) }
+        if !cfg.isEmpty { ConfigStore.upsert(ConfigStore.configEnv, cfg, exportPrefix: false, quoted: true) }
 
-        // Connector settings go in ~/.claude/.env, NOT config.env: run-ingest.sh
-        // sources .env under `set -a` (exported, so loop-ingest.py sees it) but
-        // sources config.env without it — a key written there would never arrive.
-        var env: [String: String] = [
-            "JIRA_BASE_URL": jiraBase.trimmingCharacters(in: .whitespaces),
-            "JIRA_EMAIL": jiraEmail.trimmingCharacters(in: .whitespaces),
-            "PLASMIE_GITHUB_ORGS": githubOrgs.trimmingCharacters(in: .whitespaces),
-            "PLASMIE_GIT_ROOTS": gitRoots.trimmingCharacters(in: .whitespaces),
-        ]
-        if !slackToken.isEmpty { env["SLACK_USER_TOKEN"] = slackToken.trimmingCharacters(in: .whitespaces) }
-        if !jiraToken.isEmpty { env["JIRA_API_TOKEN"] = jiraToken.trimmingCharacters(in: .whitespaces) }
-        ConfigStore.upsert(ConfigStore.dotEnv, env, exportPrefix: true, quoted: false, perms: 0o600)
-
-        slackToken = ""; jiraToken = ""; load()
-        saved = true
-        conn.refresh()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { saved = false }
+        // Credentials → Keychain, off the main thread (each is a `security` call).
+        var put: [String: String] = [:]
+        var drop: [String] = []
+        if !slackToken.isEmpty { put["SLACK_USER_TOKEN"] = trim(slackToken) }
+        if !jiraToken.isEmpty { put["JIRA_API_TOKEN"] = trim(jiraToken) }
+        if now.jiraEmail != was.jiraEmail {
+            if trim(now.jiraEmail).isEmpty { drop.append("JIRA_EMAIL") } else { put["JIRA_EMAIL"] = trim(now.jiraEmail) }
+        }
+        saveError = ""
+        DispatchQueue.global().async {
+            var failure: String?
+            for (k, v) in put {
+                do { try Keychain.set(k, v) } catch { failure = error.localizedDescription }
+            }
+            drop.forEach(Keychain.delete)
+            DispatchQueue.main.async {
+                if let failure { saveError = failure } else { slackToken = ""; jiraToken = "" }
+                load()
+                saved = failure == nil
+                conn.refresh()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { saved = false }
+            }
+        }
     }
 
-    /// Empty value removes the key (ConfigStore.upsert contract), so this really
-    /// does disconnect rather than blanking a field in the UI only.
-    private func disconnect(_ keys: [String: String]) {
-        ConfigStore.upsert(ConfigStore.dotEnv, keys, exportPrefix: true, quoted: false, perms: 0o600)
-        conn.refresh()
+    /// Removes the credentials from the Keychain, so this really disconnects rather
+    /// than blanking a field in the UI only.
+    private func disconnect(_ keys: [String]) {
+        DispatchQueue.global().async {
+            keys.forEach(Keychain.delete)
+            DispatchQueue.main.async { conn.refresh() }
+        }
     }
 
     /// Device-code login (msgraph.py) — streams the "open this URL, enter this code"
-    /// message; on success the script writes MS_REFRESH_TOKEN to ~/.claude/.env.
+    /// message; on success the script stores MS_REFRESH_TOKEN in the Keychain.
     private func connectOutlook() {
         connecting = true; outlookLog = "Starting…"
         runStreaming(PlasmiePaths.python, [PlasmiePaths.script("msgraph.py"), "login"],

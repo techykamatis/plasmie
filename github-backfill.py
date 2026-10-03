@@ -17,7 +17,7 @@ Search caps at 1000 results/query, so PRs/issues/comments come from search
 API (no cap) — repo set = every repo you touched via PR/issue/comment/commit.
 
 Usage:  github-backfill.py [VAULT] [--selftest]
-Env:    PLASMIE_GITHUB_ORGS  (comma-separated; default "fabrikam,Contoso")
+Env:    PLASMIE_GITHUB_ORGS  (comma-separated; blank = all your activity, any org)
         PLASMIE_VAULT        (vault root; default ~/knowledge)
 """
 import os, sys, re, json, time, shutil, subprocess
@@ -108,7 +108,8 @@ def main():
     if "--selftest" in argv:
         return selftest()
     vault = Path(argv[0] if argv else os.environ.get("PLASMIE_VAULT") or paths.vault()).expanduser()
-    orgs = [o.strip() for o in os.environ.get("PLASMIE_GITHUB_ORGS", "fabrikam,Contoso").split(",") if o.strip()]
+    paths.load_env()
+    orgs = paths.csv_setting("PLASMIE_GITHUB_ORGS") or [""]   # "" = no org qualifier
 
     who = gh("user", paginate=False)
     user = who.get("login") if isinstance(who, dict) else None
@@ -122,14 +123,16 @@ def main():
         return repos.setdefault(full, {"prs": [], "issues": [], "comments": [], "commits": []})
 
     for org in orgs:
+        oq = f" org:{org}" if org else ""
+        org = org or "all"
         print(f"[{org}] PRs…")
-        for it in search(f"is:pr author:{user} org:{org}"):
+        for it in search(f"is:pr author:{user}{oq}"):
             bucket(repo_full(it))["prs"].append(it)
         print(f"[{org}] issues…")
-        for it in search(f"is:issue author:{user} org:{org}"):
+        for it in search(f"is:issue author:{user}{oq}"):
             bucket(repo_full(it))["issues"].append(it)
         print(f"[{org}] commented threads…")
-        threads = search(f"commenter:{user} org:{org}")
+        threads = search(f"commenter:{user}{oq}")
         for i, it in enumerate(threads):
             full = repo_full(it)
             is_pr = "pull_request" in it
@@ -141,7 +144,7 @@ def main():
         # seed repo set with commit-heavy repos that may lack PR/issue/comment
         print(f"[{org}] commit-search seed…")
         from urllib.parse import quote
-        for pg in gh(f"search/commits?q={quote(f'author:{user} org:{org}')}&per_page=100"):
+        for pg in gh(f"search/commits?q={quote(f'author:{user}{oq}')}&per_page=100"):
             for it in pg.get("items", []):
                 bucket((it.get("repository") or {}).get("full_name") or "")
 
@@ -167,7 +170,7 @@ def main():
         _write_commits(d, full, b["commits"])
         _write_comments(d, full, b["comments"])
 
-    _write_moc(outdir, user, orgs, totals, repos)
+    _write_moc(outdir, user, [o or "all" for o in orgs], totals, repos)
     print(f"DONE · {len(totals)} repos · {sum(totals.values())} contributions -> {outdir}")
 
 
@@ -240,8 +243,8 @@ def _write_moc(outdir, user, orgs, totals, repos):
 
 
 def selftest():
-    assert slug("Frog/Asia Repo!!") == "frog-asia-repo"
-    assert repo_full({"repository_url": "https://api.github.com/repos/fabrikam/sample-repo"}) == "fabrikam/sample-repo"
+    assert slug("Acme/Big Repo!!") == "acme-big-repo"
+    assert repo_full({"repository_url": "https://api.github.com/repos/acme/widgets"}) == "acme/widgets"
     assert clean1("  a   b\nc  ", 100) == "a b c"
     assert "'" in clean1('say "hi"') and '"' not in clean1('say "hi"')
     print("selftest OK")

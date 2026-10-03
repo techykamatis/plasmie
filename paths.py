@@ -14,6 +14,7 @@ Layout (llm-wiki):
 """
 import datetime
 import os
+import sys
 
 # --- where things live: engine (code) vs data vs logs --------------------------
 # The engine is wherever these scripts are: the dev checkout, or inside Plasmie.app for
@@ -54,6 +55,32 @@ def read_config(path=CONFIG):
     except OSError:
         pass
     return out
+
+
+def load_env(environ=None):
+    """Settings from config.env, then connector tokens from the Keychain, into the
+    environment, without overriding anything already set there (a one-off run's env
+    wins). ~/.claude/.env is only migrated, once; until that succeeds (a Keychain that
+    refuses writes) its tokens are still used, so an upgrade never cuts a connector off."""
+    import keychain   # here, not at the top: keychain imports paths
+    environ = os.environ if environ is None else environ
+    res = keychain.migrate_if_needed()
+    for k, v in read_config(CONFIG).items():
+        environ.setdefault(k, v)
+    keychain.load(environ)
+    if res and res[2] and keychain.needs_migration():
+        print("secrets: Keychain migration incomplete (" + "; ".join(res[2]) +
+              "); using ~/.claude/.env until it succeeds", file=sys.stderr)
+        legacy = read_config(keychain.legacy_env())
+        for k in keychain.SECRETS:
+            if legacy.get(k):
+                environ.setdefault(k, legacy[k])
+
+
+def csv_setting(name, environ=None):
+    """A comma-separated setting (PLASMIE_GITHUB_ORGS, PLASMIE_GIT_ROOTS) as a list; empty if unset."""
+    environ = os.environ if environ is None else environ
+    return [p.strip() for p in environ.get(name, "").split(",") if p.strip()]
 
 
 def vault(config=CONFIG):

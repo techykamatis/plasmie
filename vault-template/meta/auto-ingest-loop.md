@@ -25,8 +25,8 @@ A set of macOS LaunchAgents keeps this vault current with no Claude session open
 |--------|----------|-------|
 | Slack | `raw/slack/` | user token; your sent + to-you messages via `search.messages` |
 | Claude Code + AgentCLI sessions | `raw/claude/` | local `~/.claude/projects/**/*.jsonl` and the AgentCLI SQLite DB; no network |
-| GitHub | `raw/github/` | `gh` CLI, orgs from `PLASMIE_GITHUB_ORGS` (default `fabrikam`); per-repo backfill mirror in `raw/github/<repo>/` |
-| Local git | `raw/git/` | your own commits from clones under `PLASMIE_GIT_ROOTS` (default `~/code`); low-signal commits are dropped |
+| GitHub | `raw/github/` | `gh` CLI, optional orgs from `PLASMIE_GITHUB_ORGS` (blank = all your activity); per-repo backfill mirror in `raw/github/<repo>/` |
+| Local git | `raw/git/` | your own commits from clones under `PLASMIE_GIT_ROOTS` (folders you choose in Settings); low-signal commits are dropped |
 | Confluence | `raw/confluence/` | backfill mirror; needs `JIRA_*` credentials (run `confluence-backfill.py`) |
 | Outlook | `raw/outlook/` | optional; needs a Microsoft 365 refresh token (tenant-admin approval may be required) |
 | Manual | `raw/inbox/` | `plasmie-capture.sh`; the nightly promote reads inbox content |
@@ -69,7 +69,7 @@ Safe by construction: paths confined to the vault, bodies scrubbed (emails too),
 - `scrub.py` redacts tokens, keys, connection-string passwords and PEM keys → `«redacted»` before anything is written; the promote path also strips emails.
 - Work-only: personal finance/family/health is skipped.
 - Network calls: Slack (user token), GitHub (`gh`), Confluence (Atlassian API, when credentialed), Outlook/Graph (if connected). All summarization/generation is on-device.
-- **TODO (security):** the worker sources `~/.claude/.env`, a plaintext file of real secrets. A keychain migration for just `SLACK_USER_TOKEN` was attempted and reverted; parked.
+- Connector credentials live in the login Keychain (service `Plasmie`), never in a plain file; settings are in `config.env`.
 - The vault must stay on local disk: launchd agents cannot read `~/Library/CloudStorage` (TCC). Do not point `VAULT_DIR` at OneDrive/iCloud.
 
 ## Related

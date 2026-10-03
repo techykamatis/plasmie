@@ -2,24 +2,33 @@
 """Minimal Microsoft Graph client (stdlib only).
 
 Auth: device-code flow against the well-known Azure CLI public client, so no
-app registration is needed. A long-lived refresh token is cached in
-~/.claude/.env as MS_REFRESH_TOKEN; each run swaps it for a short-lived access
-token. Refresh tokens rotate, so callers should persist the returned one.
+app registration is needed. A long-lived refresh token is kept in the login
+Keychain as MS_REFRESH_TOKEN (keychain.py); each run swaps it for a short-lived
+access token. Refresh tokens rotate, so callers should persist the returned one.
 
-CLI:  python3 msgraph.py login     # one-time browser consent → writes .env
-      python3 msgraph.py test      # smoke-test the cached token
+CLI:  python3 msgraph.py login     # one-time browser consent → stores the token
+      python3 msgraph.py test      # smoke-test the stored token
 """
 import os, sys, json, time, urllib.request, urllib.parse, urllib.error
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import keychain  # noqa: E402
+
 # Your own Entra app (recommended — locked-down tenants block borrowing Microsoft's
 # first-party Azure CLI client, AADSTS65002). Set MS_CLIENT_ID + MS_TENANT in
-# ~/.claude/.env after registering an app; falls back to the Azure CLI id.
-CLIENT_ID = os.environ.get("MS_CLIENT_ID", "04b07795-8ddb-461a-bbee-02f9e1bf7b46")
-TENANT = os.environ.get("MS_TENANT", "organizations")  # your tenant id, or "organizations"/"common"
-AUTH = f"https://login.microsoftonline.com/{TENANT}/oauth2/v2.0"
+# config.env after registering an app; falls back to the Azure CLI id. Read at call
+# time, so a caller's paths.load_env() takes effect even after this module loaded.
 GRAPH = "https://graph.microsoft.com/v1.0"
 SCOPE = "offline_access Mail.Read Calendars.Read"
-ENV = os.path.expanduser("~/.claude/.env")
+
+
+def _client():
+    return os.environ.get("MS_CLIENT_ID") or "04b07795-8ddb-461a-bbee-02f9e1bf7b46"
+
+
+def _auth():
+    tenant = os.environ.get("MS_TENANT") or "organizations"   # tenant id, or "organizations"/"common"
+    return f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0"
 
 
 def _post(url, data):
@@ -31,8 +40,8 @@ def _post(url, data):
 
 def access_token(refresh_token):
     """refresh_token -> (access_token, possibly-rotated refresh_token)."""
-    tok = _post(AUTH + "/token", {
-        "client_id": CLIENT_ID, "grant_type": "refresh_token",
+    tok = _post(_auth() + "/token", {
+        "client_id": _client(), "grant_type": "refresh_token",
         "refresh_token": refresh_token, "scope": SCOPE,
     })
     return tok["access_token"], tok.get("refresh_token", refresh_token)
@@ -50,15 +59,15 @@ def get(path, token, **params):
 
 def device_login():
     """Interactive device-code consent. Returns the token dict with refresh_token."""
-    dc = _post(AUTH + "/devicecode", {"client_id": CLIENT_ID, "scope": SCOPE})
+    dc = _post(_auth() + "/devicecode", {"client_id": _client(), "scope": SCOPE})
     print("\n" + dc["message"] + "\n", flush=True)
     deadline = time.time() + dc.get("expires_in", 900)
     interval = dc.get("interval", 5)
     while time.time() < deadline:
         time.sleep(interval)
         try:
-            return _post(AUTH + "/token", {
-                "client_id": CLIENT_ID,
+            return _post(_auth() + "/token", {
+                "client_id": _client(),
                 "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
                 "device_code": dc["device_code"],
             })
@@ -74,28 +83,18 @@ def device_login():
 
 
 def _save_refresh(rt):
-    """Upsert MS_REFRESH_TOKEN=<rt> in ~/.claude/.env (chmod 600)."""
-    lines, found = [], False
-    if os.path.exists(ENV):
-        lines = open(ENV).read().splitlines()
-    for i, ln in enumerate(lines):
-        if ln.startswith("MS_REFRESH_TOKEN="):
-            lines[i] = "MS_REFRESH_TOKEN=" + rt
-            found = True
-            break
-    if not found:
-        lines.append("MS_REFRESH_TOKEN=" + rt)
-    with open(ENV, "w") as f:
-        f.write("\n".join(lines) + "\n")
-    os.chmod(ENV, 0o600)
+    """Store the (possibly rotated) refresh token in the login Keychain."""
+    keychain.put("MS_REFRESH_TOKEN", rt)
 
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "login"
+    import paths
+    paths.load_env()
     if cmd == "login":
         tok = device_login()
         _save_refresh(tok["refresh_token"])
-        print(f"saved MS_REFRESH_TOKEN to {ENV}")
+        print("saved MS_REFRESH_TOKEN to the Keychain")
     elif cmd == "test":
         rt = os.environ.get("MS_REFRESH_TOKEN")
         assert rt, "MS_REFRESH_TOKEN not set — run: python3 msgraph.py login"

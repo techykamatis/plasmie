@@ -19,6 +19,8 @@ work is from 2026-10-03. Product truth lives in `/PRODUCT.md`, the visual system
 | [0009](0009-achievements.md) | Evolutions and trophies earned from existing records | Accepted |
 | [0010](0010-quality-gates.md) | Quality gates the pipeline enforces on itself | Accepted |
 | [0011](0011-app-structure.md) | App files by surface, shared tokens, rename to Plasmie | Accepted |
+| [0021](0021-secrets-in-keychain.md) | Credentials in the login Keychain, via /usr/bin/security only | Accepted |
+| [0022](0022-opt-in-connectors.md) | Connectors are opt-in; nothing about the owner is a default | Accepted |
 
 ## Design
 | # | Decision | Status |

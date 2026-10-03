@@ -11,7 +11,8 @@ confluence-backfill.py. Tracks a
 high-water mark in ~/.plasmie/.loop-state.json so each run only covers
 new material.
 
-Run via:  set -a; source ~/.claude/.env; set +a; python3 loop-ingest.py
+Run via:  run-ingest.sh (launchd), or python3 loop-ingest.py — settings come from
+config.env and credentials from the login Keychain (paths.load_env).
 """
 import os, json, time, glob, re, base64, html, subprocess, urllib.request, urllib.parse, datetime
 
@@ -20,6 +21,7 @@ import paths  # vault layout constants
 from scrub import redact  # shared redactor — default keeps emails (journal attribution)
 import msgraph  # Microsoft Graph (Outlook mail + calendar)
 
+paths.load_env()  # config.env settings + Keychain credentials; an already-set env var wins
 VAULT = paths.vault()
 # Connectors switched Off in the app. Off means off: no fetch, no network, and the
 # watermark still advances, so switching back On never backfills the Off period.
@@ -153,11 +155,9 @@ mail_counts = []  # (label, n)
 cal_lines = []
 ms_err = None
 MS_RT = os.environ.get("MS_REFRESH_TOKEN", "")
-if os.environ.get("PLASMIE_OUTLOOK", "0") != "1":  # off for now — set PLASMIE_OUTLOOK=1 to re-enable
+if "outlook" in OFF:  # the app's switch is the only gate (it used to be PLASMIE_OUTLOOK=1 too)
     MS_RT = ""
-if "outlook" in OFF:
-    MS_RT = ""
-ms_enabled = bool(MS_RT)  # shelved until an Entra app is registered — silent when off
+ms_enabled = bool(MS_RT)  # not connected — silent
 if MS_RT:
     try:
         at, new_rt = msgraph.access_token(MS_RT)
@@ -283,7 +283,8 @@ elif "confluence" not in OFF:
 gh_lines = []
 gh_counts = []   # (repo, n)
 gh_err = None
-GH_ORGS = [o.strip() for o in os.environ.get("PLASMIE_GITHUB_ORGS", "fabrikam").split(",") if o.strip()]
+# Blank = everything you authored or commented on, anywhere; orgs narrow it.
+GH_ORGS = paths.csv_setting("PLASMIE_GITHUB_ORGS")
 # launchd runs with a minimal PATH, so resolve the gh binary explicitly.
 import shutil
 GIT_BIN = shutil.which("git") or next((p for p in ("/opt/homebrew/bin/git", "/usr/bin/git") if os.path.exists(p)), "git")
@@ -310,7 +311,7 @@ def _gh_search(q):
     return items
 
 
-if GH_ORGS and "github" not in OFF:
+if "github" not in OFF:
     try:
         _who = subprocess.run([GH_BIN, "api", "user", "--jq", ".login"],
                               capture_output=True, text=True, timeout=30)
@@ -322,10 +323,11 @@ if GH_ORGS and "github" not in OFF:
         _upper = f" updated:<={datetime.datetime.fromtimestamp(UNTIL).strftime('%Y-%m-%d')}" if BACKFILL else ""
         byrepo = {}
         seen_ids = set()
-        for org in GH_ORGS:
+        for org in GH_ORGS or [""]:
+            _org = f" org:{org}" if org else ""
             for role in ("author", "commenter"):
                 try:
-                    items = _gh_search(f"{role}:{_guser} org:{org} updated:>={since_d}{_upper}")
+                    items = _gh_search(f"{role}:{_guser}{_org} updated:>={since_d}{_upper}")
                 except Exception as e:
                     gh_err = gh_err or str(e)
                     continue
@@ -361,9 +363,12 @@ for f in ([] if "claude" in OFF else glob.glob(os.path.join(SESS_ROOT, "*", "*.j
         pass
 updated.sort(key=lambda p: os.path.getmtime(p), reverse=True)
 
+GIT_ROOTS = [os.path.expanduser(p) for p in paths.csv_setting("PLASMIE_GIT_ROOTS")]
+
+
 def proj_of(f):
-    p = os.path.basename(os.path.dirname(f))
-    return p.replace("-Users-example-code-", "").replace("-Users-example", "home").lstrip("-") or "home"
+    return ingest_window.session_project(os.path.basename(os.path.dirname(f)),
+                                         os.path.expanduser("~"), GIT_ROOTS)
 
 proj_counts = {}
 for f in updated:
@@ -452,8 +457,7 @@ if "agentcli" not in OFF and os.path.exists(AGENTCLI_DB):
 #
 # Reads only your OWN commits, from clones already on this machine: no network,
 # no token, nothing to expire. Filtering is ingest_window.keep_commit().
-GIT_ROOTS = [os.path.expanduser(p.strip())
-             for p in os.environ.get("PLASMIE_GIT_ROOTS", "~/code").split(",") if p.strip()]
+# GIT_ROOTS (PLASMIE_GIT_ROOTS) is read above, with the session labels; blank = git is not set up.
 GIT_BODY_CAP = int(os.environ.get("PLASMIE_GIT_BODY_CAP", "800"))
 
 git_lines, git_counts, git_err, git_dropped = [], [], None, 0

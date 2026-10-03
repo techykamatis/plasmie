@@ -259,7 +259,7 @@ struct ConnectorCard<Fields: View>: View {
             Button("Disconnect", role: .destructive) { onDisconnect?() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes the \(c.name) token from ~/.claude/.env, a file shared with other tools. Paste it again to reconnect.")
+            Text("This removes the \(c.name) token from your Keychain. Paste it again to reconnect.")
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))

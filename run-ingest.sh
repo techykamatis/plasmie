@@ -4,12 +4,9 @@
 #   logs/ingest-<ts>.log  = FULL DETAIL of one run (window, per-channel + per-project
 #                            counts, journal path) — pruned after 14 days.
 #   feed.log              = ONE SUMMARY line per run, rolling — `tail -f` this.
-set -a
-[ -f "$HOME/.claude/.env" ] && . "$HOME/.claude/.env"
-set +a
-
 SELF="$(cd "$(dirname "$0")" && pwd)"
 . "$SELF/plasmie-env.sh"
+plasmie_secrets            # connector credentials from the login Keychain
 export PLASMIE_VAULT="${VAULT_DIR:-$HOME/knowledge}"
 
 LOGDIR="$PLASMIE_LOGS"

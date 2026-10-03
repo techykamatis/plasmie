@@ -24,6 +24,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import paths
 from scrub import redact as _scrub
 
+paths.load_env()   # config.env settings + Keychain credentials (read just below)
+
 def redact(s):
     return _scrub(s, emails=True)
 

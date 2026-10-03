@@ -8,6 +8,7 @@ feed.log
 
 # Python
 .venv/
+.venv
 __pycache__/
 *.pyc
 

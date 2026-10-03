@@ -1,6 +1,8 @@
 #!/bin/bash
-# Build Plasmie.app from the single Swift source — no Xcode project needed.
+# Build Plasmie.app from the Swift sources — no Xcode project needed.
 # Compiles with swiftc (CLT), assembles the bundle, ad-hoc signs (personal use).
+# Also builds plasmie-fm (app/build-fm.sh), the bridge to Apple's on-device model,
+# into Contents/MacOS: building needs the macOS 26+ SDK, running needs nothing.
 set -euo pipefail
 SELF="$(cd "$(dirname "$0")" && pwd)"
 APP="$SELF/build/Plasmie.app"
@@ -12,6 +14,9 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 swiftc -O -parse-as-library -target "${ARCH}-apple-macos13.0" \
   -framework SwiftUI -framework AppKit \
   -o "$APP/Contents/MacOS/Plasmie" "$SELF"/Sources/*.swift
+
+# the on-device model bridge (fm.py finds it at ../../MacOS/plasmie-fm from backend/)
+"$SELF/build-fm.sh" "$APP/Contents/MacOS/plasmie-fm"
 
 # --- bundle the backend so the app can self-install on first run -------------
 LOOP="$(cd "$SELF/.." && pwd)"
@@ -27,10 +32,10 @@ for m in "$LOOP"/*.py "$LOOP"/*.sh "$LOOP"/launchd "$LOOP"/vault-template; do
   cp -R "$m" "$BACKEND/"
 done
 shopt -u nullglob
-rm -f "$BACKEND"/test_*.py "$BACKEND/install.sh"   # dev-only / brew-based
+rm -f "$BACKEND"/test_*.py "$BACKEND/conftest.py" "$BACKEND/install.sh"   # dev-only / brew-based
 say "bundled backend ($(ls "$BACKEND" | wc -l | tr -d ' ') items)"
 
-# standalone Python 3.12 (bare; mlx-vlm is pip-installed on first run). Cached
+# standalone Python 3.12 (bare: the engine is stdlib-only, nothing is pip-installed). Cached
 # in app/build-cache so rebuilds don't re-download the ~15 MB tarball.
 PYVER="3.12.11"; PYTAG="20250612"
 # python-build-standalone names arm64 as "aarch64"; uname -m says "arm64".

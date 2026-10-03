@@ -193,12 +193,13 @@ def check_foundationmodels():
     """Apple's on-device model — a capability, not a data source.
 
     Reported here because the failure modes are indistinguishable from outside:
-    "no Xcode so the SDK never installed", "Apple Intelligence off" and "model
-    still downloading" all present as silence. `fm.py` owns the distinction.
+    "the plasmie-fm helper is missing", "Apple Intelligence off" and "model still
+    downloading" all present as silence. `fm.py` owns the distinction.
 
-    Not-set-up reports ok=null (unknown, not broken) so the menu-bar app doesn't
-    paint a red error for a feature nobody enabled; only a Mac that genuinely
-    can't run it, or a probe that blew up, reports ok=false.
+    Off or still downloading reports ok=null (not set up yet, not broken). A Mac
+    that can't run it (ineligible, macOS < 26), a missing helper (broken
+    install) or a probe that blew up reports ok=false: since ADR 0021 nothing
+    summarizes, files or answers without it.
     """
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     try:
@@ -208,10 +209,11 @@ def check_foundationmodels():
     p = fm.probe()
     if p["available"] is True:
         return _result(True, True, p["detail"])
-    # UNKNOWN means the SDK gave no reason — that is a fault, not "the user
+    # UNKNOWN means the model gave no reason — that is a fault, not "the user
     # hasn't switched it on". Filing it under not-configured would be exactly
     # the phantom-green this whole file exists to kill.
-    if p["reason"] in ("DEVICE_NOT_ELIGIBLE", "PROBE_FAILED", "UNKNOWN"):
+    if p["reason"] in ("DEVICE_NOT_ELIGIBLE", "UNSUPPORTED_OS", "HELPER_MISSING",
+                       "PROBE_FAILED", "UNKNOWN"):
         return _result(True, False, p["detail"], p["hint"])
     return _result(False, None, p["detail"], p["hint"])
 

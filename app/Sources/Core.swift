@@ -164,7 +164,13 @@ final class Model: ObservableObject {
     var totalTrophies: Int { ach?.trophyTotal ?? 0 }
     var newly: [String] { ach?.newly ?? [] }
     /// What the panel's hero shows: a brief `success` while a trophy is being celebrated.
-    var heroPlasmie: PlasmieState { celebrating != nil ? .success : plasmie }
+    var heroPlasmie: PlasmieState { celebrating != nil ? .success : (pondering ? .ask : plasmie) }
+
+    // Plasmie's fun fact (plasmie-funfact.py): one line from the vault, stable for the day
+    @Published var funFact: FunFact? = nil
+    @Published var pondering = false               // hero shows the lightbulb pose for ~0.8s after "Another"
+    private var funFactDay = ""
+    private var funFactLoading = false
 
     /// true whenever real work is happening (or just-kicked) — drives the animation
     var active: Bool { s.state == "running" || busy || Date() < hintUntil }
@@ -222,8 +228,43 @@ final class Model: ObservableObject {
         }
     }
 
+    private static let dayFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f
+    }()
+
+    /// Loads today's fact at launch and again whenever the date has rolled over.
+    func refreshFunFact() {
+        let today = Model.dayFmt.string(from: Date())
+        guard today != funFactDay, !funFactLoading else { return }
+        funFactLoading = true
+        DispatchQueue.global(qos: .utility).async {
+            let f = loadFunFact(next: false)
+            DispatchQueue.main.async {
+                self.funFactLoading = false
+                self.funFactDay = today
+                self.funFact = f
+            }
+        }
+    }
+
+    /// "Another": a different fact; Plasmie ponders (lightbulb) for a beat.
+    func nextFunFact() {
+        guard !funFactLoading else { return }
+        funFactLoading = true
+        pondering = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.pondering = false }
+        DispatchQueue.global(qos: .utility).async {
+            let f = loadFunFact(next: true)
+            DispatchQueue.main.async {
+                self.funFactLoading = false
+                if let f { self.funFact = f }
+            }
+        }
+    }
+
     func refresh() {
         refreshAchievements()
+        refreshFunFact()
         let wasActive = active
         DispatchQueue.global().async {
             let new = loadStatus()

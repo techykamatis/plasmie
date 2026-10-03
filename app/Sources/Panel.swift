@@ -119,6 +119,8 @@ struct Panel: View {
             .background(RoundedRectangle(cornerRadius: 12).fill(Color.plasmieBody.opacity(0.12)))
             .padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 8)
 
+            FunFactCard(m: m)
+
             // live "what's happening" line — the running step's heartbeat
             if !m.s.activity.isEmpty {
                 HStack(spacing: 7) {

@@ -31,3 +31,20 @@ Owner feedback: "some fun facts are confusing" (e.g. a bare "Rendering time drop
   are tried, then the verbatim quote prefixed with its subject ("Orbit · ...") is shown.
 - `--quote` prefixes the subject only when the quote lacks it. Cache keys carry VERSION (2) so older
   context-less phrasings are never reused.
+
+## Amendment · 2026-10-04 · conversational voice, no bare quotes
+Owner feedback: facts still read as citations ("In <full title>, ...", or the raw quote), rigid and not fun.
+- Measured on 19 real candidates (after: 0 bare, 0 openers, 5 framed on the per-candidate path; 1 framed in 20 real picks): 18 opened "In/For <subject>," and 1 fell back to the bare quote.
+- The prompt now talks *to* the reader ("you"/"your"), one opener per fact picked by id from a kind-specific
+  list (throwback: "Remember this one?", "Funny how..."; nudge: "Little reminder:", "Turns out...", "Heads up:").
+  "In/For <subject>," openers are banned; the subject is worked in as a short noun phrase.
+- Guard additions (the numbers/identifiers check stays): no capitalised name absent from fact+context, at most
+  one long word with no stem in the source, no copy of the quote with a lead glued on, no "your last attempt"
+  style leakage. A rejected first try gets one corrective retry (sampling is greedy, so only a changed prompt
+  changes the answer), then the next of up to 4 candidates is tried.
+- The fallback is no longer a bare quote: the verbatim quote in a deterministic frame by kind/type
+  ("Throwback from your notes on Orbit: ...", "Little reminder from your notes on Helm: ..."); a title over
+  36 chars is dropped from the frame ("Throwback from your notes: ...").
+- Cache VERSION is 3 (cache keys `v3:<id>`); `--quote` still shows the verbatim quote, subject-prefixed.
+- Known limit: a 3B on-device model still occasionally pads a sentence ("so that's the rule"); the guard
+  blocks invented specifics, not every flourish.

@@ -15,6 +15,7 @@ close wiki note / same-day sibling) so it names its subject; a digest bullet who
 is dropped. Only ~/.plasmie/.funfacts.json is written (today's pick + recent ids).
 """
 import datetime as dt
+import difflib
 import importlib.util
 import json
 import os
@@ -34,10 +35,10 @@ _spec.loader.exec_module(dedupe)
 STATE = Path(paths.LOOP_DIR) / ".funfacts.json"
 PHRASE_TIMEOUT = 12      # seconds; the card falls back to the quote rather than wait
 SEEN_MAX = 60
-VERSION = 2              # bump to retire cached phrasings (v2: context-aware, subject first)
+VERSION = 3              # bump to retire cached phrasings (v3: conversational voice, framed fallback)
 NEAR_MIN = 0.45          # tf-idf cosine to borrow a wiki note's context (measured: <0.40 is mostly wrong)
 BODY_CHARS = 400
-ATTEMPTS = 3             # candidates tried before settling for a subject-prefixed quote
+ATTEMPTS = 4             # candidates tried before settling for a framed quote
 KICKER = {"gotcha": "Watch out", "decision": "You decided", "pattern": "A pattern you spotted",
           "convention": "House rule", "concept": "Did you know?", "reference": "Handy to know"}
 RESURFACE_TYPES = set(KICKER)
@@ -261,7 +262,7 @@ def candidates(vault, today):
     for n in notes:                                        # useful: knowledge you may have forgotten
         if n["type"] in RESURFACE_TYPES and (today - n["date"]).days >= 14:
             kicker = "A pattern Plasmie noticed" if n["noticed"] else KICKER[n["type"]]
-            out.append({"id": f"re:{n['path']}", "kind": "resurface", "kicker": kicker,
+            out.append({"id": f"re:{n['path']}", "kind": "resurface", "type": n["type"], "kicker": kicker,
                         "text": n["text"], "title": n["title"], "path": n["path"], "date": n["date"].isoformat(),
                         "fresh": n["path"] not in asked, **ctx(n)})
     if notes:
@@ -319,45 +320,132 @@ def with_subject(quote, c):
 
 # --- Plasmie's voice: an on-device rephrase that may not change the facts -------------------
 _SPECIFIC = re.compile(r"[A-Za-z0-9]*\d[A-Za-z0-9._/-]*|[A-Za-z0-9]+(?:[_./-][A-Za-z0-9]+)+")
+# "In <subject>, ..." / "For <subject>, ..." is the citation-shaped opener the owner dislikes.
+_RIGID_OPENER = re.compile(r"^(?:in|for|on|at|per|regarding|according to)\b[^,.:;]*[,:]", re.I)
+_YOU = re.compile(r"\b(?:you|your|you['’](?:ve|d|re|ll)|yours)\b", re.I)
+_MARKERS = ("throwback", "look what", "back then", "hey", "here's", "turns out", "heads up", "little reminder", "quick reminder", "fun fact", "psst", "remember",
+            "funny", "did you know", "good to know", "quick refresher")
+MOOD = {
+    "on-this-day": "a throwback. Do not say what you did unless the Fact does.",
+    "resurface": "a friendly nudge.",
+    "milestone": "a milestone.",
+}
+# One opener per fact (picked by its id, so it is stable and the cards don't all sound alike).
+LEADS = {
+    "on-this-day": ("Remember this one?", "Funny how...", "Back then...", "Throwback:", "Look what you jotted down:"),
+    "resurface": ("Little reminder:", "Turns out...", "Heads up:", "Quick refresher:", "Psst, worth remembering:"),
+    "milestone": ("Your very first note was about...",),
+}
 
-PROMPT = """You are Plasmie, a small friendly blob who keeps the user's work memories.
-Retell the fact below to the user in fresh, warm, plain words, like a friend reminding them.
+
+def _lead(c):
+    leads = LEADS.get(c.get("kind"), LEADS["resurface"])
+    return leads[sum(map(ord, c["id"])) % len(leads)]
+
+
+# Deterministic lead-ins for when the model can't be trusted with the words (kind/type-appropriate).
+FRAME = {
+    "on-this-day": "Throwback from your notes on {s}:",
+    "milestone": "Where it all started, your notes on {s}:",
+    "gotcha": "Little reminder from your notes on {s}:",
+    "decision": "You settled this in your notes on {s}:",
+    "pattern": "A pattern from your notes on {s}:",
+    "convention": "House rule from your notes on {s}:",
+}
+UNGROUNDED_MAX = 1      # long words the source never hints at, tolerated per phrasing (synonyms happen)
+SUBJECT_MAX = 36       # a longer title reads like a citation inside a lead-in: drop it
+FRAME_DEFAULT = "From your notes on {s}:"
+
+PROMPT = """You are Plasmie, a small friendly blob chatting with the person whose work notes these are.
+Tell them the fact below like a warm, playful friend would: out loud, to "you", never like a citation.
 Rules:
 - One or two short sentences, under 35 words. No emoji, no hashtags, no quotation marks.
-- Name the subject up front, using the Context: begin with "In <project/subject>, ..." or "For <subject>, ...".
-  The reader must know WHAT and WHERE from the first words. Never start with a bare verb ("Identified...") or "It/This".
+- Speak to the reader as "you" ("you", "your"): the work in the Fact is theirs. Mood: {mood} Open with something like "{lead}" (reword to fit).
+- Work the subject in naturally as a short noun phrase from the Subject. Never start with "In <subject>," or
+  "For <subject>,"; never a bare verb ("Identified...") or "It/This".
 - Keep every name, number, version and identifier exactly as written.
-- Say only what the Fact says. Context is just to name the subject (use a short natural name, not the whole title,
-  and never a clumsy "In <long title>,"); never pull extra details from it. No new reasons, numbers, people, advice, jokes or puns.
-- Don't say when it happened (the card already shows that) and don't say "the note" or "the vault".
+- Say only what the Fact says. Subject and background only help you name it; never pull extra details from them.
+  No new reasons, numbers, names, people, advice or puns. Never invent what the reader did: use "you" + a verb
+  only if that verb is in the Fact (decided, deployed, found); otherwise just state the fact.
+- Put it in your own words; don't copy the Fact's sentence.
+- Don't say when it happened (the card shows that) and don't say "the note" or "the vault".
 
-Example
-Context: Orbit · Leave balance calculation
+Example (throwback)
+Subject: Orbit · Leave balance calculation
 Fact: Balances are recomputed nightly from the accrual job.
-Plasmie says: For Orbit leave balances, a nightly accrual job recomputes them, so edits show up the next day.
+Plasmie says: Remember this one? Orbit leave balances get recomputed by a nightly accrual job, so your edits show up the next day.
 
-Example
-Context: Redis ACL fix
-Fact: Deployed v1.0.0-pilot-28 to production after the Redis ACL fix.
-Plasmie says: In the Redis ACL fix work, v1.0.0-pilot-28 made it to production once the fix landed.
-
-Example
-Context: Helm
+Example (nudge)
+Subject: Helm
 Fact: Release names must be DNS-1123 (no underscores).
-Plasmie says: When naming Helm releases, stick to DNS-1123, so no underscores.
+Plasmie says: Little reminder for Helm: release names have to be DNS-1123, so no underscores.
 
-Context:
+Example (throwback)
+Subject: Redis ACL fix
+Fact: Deployed v1.0.0-pilot-28 to production after the Redis ACL fix.
+Plasmie says: Remember this one? v1.0.0-pilot-28 went to production right after the Redis ACL fix.
+
+Example (nudge)
+Subject: Secure token generation
+Fact: Tokens must be generated using 256 bits of randomness.
+Plasmie says: Turns out secure tokens need 256 bits of randomness, so don't skimp on it.
+
 {context}
 Fact: {text}
 Plasmie says:"""
+RETRY = """ {last}
+(Too stiff. Retell the same Fact again, warmer, to "you", in different words.)
+Plasmie says:"""
+_LEAK = re.compile(r"\b(?:last|previous|latest) (?:try|attempt|move)\b|your attempt|retell|copied|too stiff", re.I)
+
+
+_CHATTY = set("""you your youre youve youd little heads remember turns funny quick psst back then now once so but and
+that those these they here there since when its if also just which what where why how did does do can will should
+needs need must keep make makes made get gets got use uses used before after while still even though because
+without instead really actually basically one two good fun fact reminder refresher throwback""".split())
 
 
 def faithful(phrased, source):
-    """The rephrase may reword, never respecify: every number / identifier must be in the source."""
+    """The rephrase may reword, never respecify: every number / identifier must be in the source, and no
+    capitalised name the source never mentions (a model's "Blueprint System" out of thin air)."""
     if not phrased or len(phrased) > 260:
         return False
     src = source.lower()
-    return all(tok.lower().strip("._/-") in src for tok in _SPECIFIC.findall(phrased))
+    if not all(tok.lower().strip("._/-") in src for tok in _SPECIFIC.findall(phrased)):
+        return False
+    names = re.findall(r"\b[A-Z][a-z]{2,}\b", phrased)[1:]       # the opening word is just a sentence start
+    if not all(n.lower() in src or n.lower() in _CHATTY or n.lower() in dedupe.STOP for n in names):
+        return False
+    return _ungrounded(phrased, src) <= UNGROUNDED_MAX
+
+
+def _ungrounded(phrased, src):
+    """Long words with no stem (first 5 letters) anywhere in the source: the model bringing its own facts."""
+    stems = {w[:5] for w in re.findall(r"[a-z]+", src)}
+    lead_words = {w for ls in LEADS.values() for lead in ls for w in re.findall(r"[a-z]+", lead.lower())}
+    return sum(1 for w in re.findall(r"[a-z]{6,}", phrased.lower())
+               if w[:5] not in stems and w not in _CHATTY and w not in lead_words)
+
+
+def echoes(phrased, quote):
+    """True when the rephrase is the quote with a lead-in glued on (nothing was retold)."""
+    return len(quote.split()) >= 6 and difflib.SequenceMatcher(None, phrased.lower(), quote.lower()).ratio() > 0.88
+
+
+def conversational(text):
+    """Talks to the reader (you/your or a chatty marker) and doesn't open like a citation."""
+    t = (text or "").strip()
+    if not t or _RIGID_OPENER.match(t) or re.search(r"^(?:\W*\w+){0,4}?\s+for you\b", t, re.I):
+        return False
+    return bool(_YOU.search(t)) or t.lower().startswith(_MARKERS) or "?" in t.split(". ")[0]
+
+
+def framed(c):
+    """Deterministic last resort: the verbatim quote in a conversational frame, never bare."""
+    subj = c.get("project") or c.get("context") or c.get("title", "")
+    lead = FRAME.get(c.get("kind"), FRAME.get(c.get("type"), FRAME_DEFAULT))
+    lead = lead.format(s=subj) if len(subj) <= SUBJECT_MAX else lead.replace(" on {s}", "").format(s="")
+    return f"{lead} {c['quote']}"
 
 
 def _generate(prompt):
@@ -369,23 +457,46 @@ def _generate(prompt):
 
 
 def _context_block(c):
-    lines = [f"- Subject: {c.get('context') or c.get('title', '')}"]
+    lines = [f"Subject: {c.get('context') or c.get('title', '')}"]
     if c.get("body"):
-        lines.append(f"- Background (for understanding only): {c['body']}")
+        lines.append(f"Background (for understanding only): {c['body']}")
     return "\n".join(lines)
 
 
+def _verdict(out, chosen):
+    """None if `out` is acceptable, else a short reason."""
+    source = f"{chosen['quote']} {chosen.get('context', '')} {chosen.get('project', '')}"
+    if _LEAK.search(out):
+        return "it talked about itself"
+    if not faithful(out, source):
+        return "it added details that are not in the fact"
+    if not clear_text(out, _subject_words(chosen)):
+        return "it did not name the subject clearly"
+    if not conversational(out):
+        return "it read like a citation, not a chat"
+    if echoes(out, chosen["quote"]):
+        return "it copied the original instead of retelling it"
+    return None
+
+
+def _ask(prompt):
+    return (_generate(prompt) or "").strip().strip('"').strip()
+
+
 def _voice(chosen, cache):
-    """(text, cache) — Plasmie's phrasing if faithful and clear, else the subject-led quote. Cached per
-    fact id under the current VERSION so context-less phrasings from older versions never resurface."""
+    """(text, cache) — Plasmie's phrasing if faithful, clear and chatty (one corrective retry), else the
+    quote in a conversational frame. Cached per fact id under VERSION so old rigid phrasings never resurface."""
     key = f"v{VERSION}:{chosen['id']}"
     if key in cache:
         return cache[key], cache
-    out = _generate(PROMPT.format(context=_context_block(chosen), text=chosen["quote"]))
-    out = (out or "").strip().strip('"').strip()
-    source = f"{chosen['quote']} {chosen.get('context', '')} {chosen.get('project', '')}"
-    ok = faithful(out, source) and clear_text(out, _subject_words(chosen))
-    text = out if ok else with_subject(chosen["quote"], chosen)
+    prompt = PROMPT.format(mood=MOOD.get(chosen.get("kind"), MOOD["resurface"]), lead=_lead(chosen), context=_context_block(chosen),
+                           text=chosen["quote"])
+    out = _ask(prompt)
+    why = _verdict(out, chosen) if out else "empty"
+    if out and why:                                        # greedy sampling: only a changed prompt changes the answer
+        out = _ask(prompt + RETRY.format(last=out))
+        why = _verdict(out, chosen) if out else "empty"
+    text = out if out and not why else framed(chosen)
     cache = {**cache, key: text}
     return text, dict(list(cache.items())[-SEEN_MAX:])
 
@@ -407,8 +518,8 @@ def fact(vault, today=None, state=None, advance=False, phrase=False):
         if not c:
             break
         c = {k: v for k, v in c.items() if k not in ("fresh", "body")} | {"quote": c["text"], "body": c["body"]}
-        plain = with_subject(c["quote"], c)
-        c["text"], cache = _voice(c, cache) if phrase else (plain, cache)
+        plain = framed(c)
+        c["text"], cache = _voice(c, cache) if phrase else (with_subject(c["quote"], c), cache)
         c = {k: v for k, v in c.items() if k != "body"}
         first = first or c
         if not phrase or c["text"] != plain:

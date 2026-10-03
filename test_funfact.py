@@ -123,10 +123,10 @@ def test_unfaithful_or_missing_phrasing_falls_back_to_the_quote(tmp_path, monkey
     _note(v, "tok", "gotcha", "2026-07-03", "Tokens must be generated using 256 bits of randomness.", title="Tokens")
     monkeypatch.setattr(F, "_generate", lambda p: "Always use 512 bits!")
     f, _ = F.fact(v, today=D(2026, 10, 3), phrase=True)
-    assert f["text"] == f["quote"]
+    assert f["text"] == F.framed(f) and f["text"].endswith(f["quote"]) and f["text"] != f["quote"]
     monkeypatch.setattr(F, "_generate", lambda p: None)
     f, _ = F.fact(v, today=D(2026, 10, 3), state={}, phrase=True)
-    assert f["text"] == f["quote"]               # the quote already names its subject ("Tok")
+    assert f["text"] == "Throwback from your notes on Tokens: " + f["quote"]    # never a bare quote
 
 
 def test_patterns_plasmie_noticed_get_their_own_kicker(tmp_path):
@@ -223,20 +223,78 @@ def test_prompt_gets_context_block_and_guard_checks_context_too(tmp_path, monkey
     _note(v, "orbit-leave-balance", "gotcha", "2026-07-03", "Totals are recomputed nightly.",
           title="Leave balance v2 calculation", tags="orbit", body="Balances come from the accrual job.")
     prompts = []
-    monkeypatch.setattr(F, "_generate", lambda p: prompts.append(p) or "For Orbit leave balance v2 calculation, balances are recomputed nightly.")
+    monkeypatch.setattr(F, "_generate", lambda p: prompts.append(p) or "Turns out your Orbit leave balance v2 totals are recomputed nightly.")
     f, _ = F.fact(v, today=D(2026, 10, 3), phrase=True)
-    assert "Context:" in prompts[0] and "Leave balance v2 calculation" in prompts[0] and "accrual job" in prompts[0]
-    assert f["text"].startswith("For Orbit leave balance v2")        # "v2" is only in the context: allowed
+    assert "Subject:" in prompts[0] and "Leave balance v2 calculation" in prompts[0] and "accrual job" in prompts[0]
+    assert f["text"].startswith("Turns out your Orbit leave balance v2")        # "v2" is only in the context: allowed
 
 
-def test_unclear_phrasing_falls_back_to_the_subject_prefixed_quote(tmp_path, monkeypatch):
+def test_unclear_phrasing_falls_back_to_a_conversational_frame(tmp_path, monkeypatch):
     v = _vault(tmp_path)
     _orbit(v)
     _note(v, "orbit-leave-balance", "gotcha", "2026-07-03", "Totals are recomputed nightly.",
           title="Leave balance calculation", tags="orbit")
     monkeypatch.setattr(F, "_generate", lambda p: "Confirmed that totals are recomputed nightly.")
     f, _ = F.fact(v, today=D(2026, 10, 3), phrase=True)
-    assert f["text"] == "Orbit · Totals are recomputed nightly."
+    assert f["text"] == "Throwback from your notes on Orbit: Totals are recomputed nightly."
+
+
+def test_frame_is_conversational_per_kind_and_drops_a_long_title():
+    base = {"quote": "Q.", "project": "", "context": "Short title"}
+    assert F.framed({**base, "kind": "on-this-day"}) == "Throwback from your notes on Short title: Q."
+    assert F.framed({**base, "kind": "resurface", "type": "decision"}) == "You settled this in your notes on Short title: Q."
+    assert F.framed({**base, "kind": "resurface", "type": "concept"}) == "From your notes on Short title: Q."
+    long = F.framed({**base, "kind": "on-this-day", "context": "A very long title that reads like a citation"})
+    assert long == "Throwback from your notes: Q."
+
+
+def test_conversational_rejects_citation_openers_and_accepts_chat():
+    for stiff in ("In Orbit leave balances, totals are recomputed nightly.", "For Helm, release names must be DNS-1123.",
+                  "Totals are recomputed nightly.", "Little reminder for you: totals are recomputed nightly."):
+        assert not F.conversational(stiff), stiff
+    for chat in ("Remember this one? Totals are recomputed nightly.", "Turns out Orbit totals are recomputed nightly.",
+                 "Your Orbit totals are recomputed nightly."):
+        assert F.conversational(chat), chat
+
+
+def test_guard_rejects_invented_names_ungrounded_words_and_copies():
+    src = "Research report on Stripe's Minions agent architecture. Stripe Minions"
+    assert not F.faithful("Remember this one? Your report covers the Blueprint System behind Minions.", src)
+    assert not F.faithful("Look what you wrote: Minions use a blueprint orchestration scaffold framework.", src)
+    assert F.faithful("Remember this one? You wrote up how Stripe's Minions agent architecture works.", src)
+    quote = "Web access control must be in Apache config, not filesystem permissions."
+    assert F.echoes("Heads up: " + quote, quote)
+    assert not F.echoes("Heads up: Apache config, not file permissions, decides who can fetch a page.", quote)
+
+
+def test_a_stiff_first_try_gets_one_corrective_retry(tmp_path, monkeypatch):
+    v = _vault(tmp_path)
+    _note(v, "rds", "gotcha", "2026-07-03", "RDS storage only grows.")
+    tries = iter(["In RDS, storage only grows.", "Heads up, your RDS storage only ever grows."])
+    prompts = []
+    monkeypatch.setattr(F, "_generate", lambda p: prompts.append(p) or next(tries))
+    f, _ = F.fact(v, today=D(2026, 10, 3), phrase=True)
+    assert f["text"] == "Heads up, your RDS storage only ever grows." and len(prompts) == 2
+    assert "In RDS, storage only grows." in prompts[1]          # the retry shows the model what to avoid
+
+
+def test_leaked_retry_instructions_are_rejected(tmp_path, monkeypatch):
+    v = _vault(tmp_path)
+    _note(v, "rds", "gotcha", "2026-07-03", "RDS storage only grows.")
+    monkeypatch.setattr(F, "_generate", lambda p: "Heads up, your last attempt at RDS storage only grows missed the mark.")
+    f, _ = F.fact(v, today=D(2026, 10, 3), phrase=True)
+    assert f["text"] == F.framed(f)
+
+
+def test_cache_version_retires_rigid_phrasings(tmp_path, monkeypatch):
+    assert F.VERSION >= 3
+    v = _vault(tmp_path)
+    _note(v, "rds", "gotcha", "2026-07-03", "RDS storage only grows.")
+    old = {"v": 2, "today": "2026-10-03", "current": {"id": "re:wiki/rds.md", "text": "In RDS, storage grows."},
+           "seen": [], "phrased": {"v2:re:wiki/rds.md": "In RDS, storage grows."}}
+    monkeypatch.setattr(F, "_generate", lambda p: "Heads up, your RDS storage only ever grows.")
+    f, st = F.fact(v, today=D(2026, 10, 3), state=old, phrase=True)
+    assert f["text"] == "Heads up, your RDS storage only ever grows." and "v2:re:wiki/rds.md" not in st["phrased"]
 
 
 def test_old_context_less_phrasings_are_not_reused(tmp_path, monkeypatch):

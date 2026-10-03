@@ -88,7 +88,10 @@ style. Brand sheet only: Baloo 2 ExtraBold display, Hanken Grotesk text.
 Menu-bar panel 320pt wide: status header (Plasmie ~44pt + pill), Run / Open /
 Maintain groups of ≤4, Quit footer. Settings is one resizable scrolling page
 (min 520×560): Connectors (summary bar, then one card per connector), then
-Vault. Ask overlay 560pt wide; Plasmie (~28pt) lives in its status row.
+Vault. Ask overlay 560pt wide: Plasmie is the focal point in a leading column beside the
+query field (88pt; springs down to 56pt once an answer arrives so the answer gets room),
+with one status line under the field. Panel hero Plasmie is 104pt on a soft pink stage;
+click says hi, rapid clicks annoy it, click-drag pets it.
 
 ## Shapes
 

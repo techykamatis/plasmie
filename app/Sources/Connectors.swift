@@ -40,7 +40,7 @@ struct Connector: Identifiable {
                   ageKey: "outlook", errCode: "MAIL", blurb: "Mail and calendar."),
         Connector(id: "claude", name: "Claude Code sessions", symbol: "terminal.fill",
                   ageKey: "sessions", errCode: "", blurb: "What you worked on, from local session logs."),
-        Connector(id: "agentcli", name: "AgentCLI sessions", symbol: "terminal",
+        Connector(id: "agentcli", name: "AgentCLI sessions", symbol: "sparkles.rectangle.stack",
                   ageKey: "agentcli", errCode: "AGENTCLI", blurb: "What you worked on in AgentCLI, from its local session database."),
     ]
 }
@@ -68,6 +68,35 @@ enum ConnVerdict {
         case .checking:       return "Checking…"
         }
     }
+    /// A distinct shape per verdict, so state never rests on colour alone.
+    var symbol: String {
+        switch self {
+        case .off:            return "pause.circle"
+        case .notSetUp:       return "plus.circle"
+        case .failing:        return "xmark.octagon.fill"
+        case .lastRunFailed:  return "exclamationmark.triangle.fill"
+        case .noData:         return "circle.dotted"
+        case .quiet:          return "moon.zzz"
+        case .flowing:        return "checkmark.circle.fill"
+        case .checking:       return "arrow.triangle.2.circlepath"
+        }
+    }
+    /// One line each, for the legend popover.
+    var meaning: String {
+        switch self {
+        case .flowing:        return "Reachable, and new data arrived in the last 4 days."
+        case .quiet:          return "Reachable, but no new data for over 4 days. Normal for some sources."
+        case .noData:         return "Reachable, but nothing has been pulled yet."
+        case .lastRunFailed:  return "Reachable now, but the most recent ingest run reported an error."
+        case .failing:        return "Credentials are set, but the connector cannot be reached."
+        case .notSetUp:       return "No credentials yet. Add them on the card to start."
+        case .off:            return "Switched off. Nothing is pulled until you turn it back on."
+        case .checking:       return "Probing the connector."
+        }
+    }
+    /// Reachable and not failing.
+    var isWorking: Bool { self == .flowing || self == .quiet }
+    var needsAttention: Bool { self == .failing || self == .lastRunFailed }
     var color: Color {
         switch self {
         case .off, .notSetUp, .quiet: return .secondary
@@ -117,14 +146,31 @@ final class ConnectorsModel: ObservableObject {
     }
 
     /// Applies immediately (no Save): a switch that waits for another button lies.
+    /// The config write is instant; the doctor probe is coalesced so rapid flips
+    /// spawn one process, not one per flip.
     func setEnabled(_ id: String, _ on: Bool) {
         var next = ConnectorsModel.readOff()          // re-read: the file may have been hand-edited
         if on { next.remove(id) } else { next.insert(id) }
         ConfigStore.upsert(ConfigStore.configEnv, ["PLASMIE_DISABLED_SOURCES": next.sorted().joined(separator: ",")],
                            exportPrefix: false, quoted: true)
         off = ConnectorsModel.readOff()
-        refresh([id])
+        pending.insert(id)
+        checking.insert(id)
+        debounce?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            let ids = Array(self.pending)
+            self.pending.removeAll()
+            self.refresh(ids)
+        }
+        debounce = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
     }
+
+    private var pending: Set<String> = []
+    private var debounce: DispatchWorkItem?
+    /// Latest refresh generation per connector; a result from an older one is stale.
+    private var generation: [String: Int] = [:]
 
     private var loop: String { "\(NSHomeDirectory())/.plasmie" }
     private var python: String {
@@ -135,6 +181,8 @@ final class ConnectorsModel: ObservableObject {
     func refresh(_ sources: [String] = []) {
         let keys = sources.isEmpty ? Connector.all.map(\.id) : sources
         checking.formUnion(keys)
+        var mine: [String: Int] = [:]
+        for k in keys { generation[k, default: 0] += 1; mine[k] = generation[k] }
         let py = python, script = "\(loop)/plasmie-doctor.py"
         DispatchQueue.global().async {
             let out = runCapture(py, [script] + sources)
@@ -143,9 +191,11 @@ final class ConnectorsModel: ObservableObject {
             } ?? [:]
             let st = loadStatus()
             DispatchQueue.main.async {
-                for (k, v) in parsed { self.health[k] = v }
                 self.status = st
-                self.checking.subtract(keys)
+                for k in keys where self.generation[k] == mine[k] {   // drop stale results
+                    if let v = parsed[k] { self.health[k] = v }
+                    self.checking.remove(k)
+                }
             }
         }
     }
@@ -158,6 +208,7 @@ struct ConnectorCard<Fields: View>: View {
     @ObservedObject var m: ConnectorsModel
     let onDisconnect: (() -> Void)?
     @ViewBuilder let fields: () -> Fields
+    @State private var confirmDisconnect = false
 
     private var health: ConnectorHealth? { m.health[c.id] }
     private var isChecking: Bool { m.checking.contains(c.id) }
@@ -170,59 +221,75 @@ struct ConnectorCard<Fields: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             header
-            Text(c.blurb).font(.system(size: 11)).foregroundStyle(.secondary)
-            if isOff {
-                Text("Switched off — nothing is pulled from \(c.name) and it is left out of digests and promotion. Switching it back on resumes from now; the off period is not backfilled.")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                detailLine
+            // Off dims the body, not the switch; credentials stay editable so they
+            // can be fixed before switching on.
+            VStack(alignment: .leading, spacing: 8) {
+                Text(c.blurb).klNote()
+                if isOff {
+                    Text("Switched off — nothing is pulled from \(c.name) and it is left out of digests and promotion. Switching it back on resumes from now; the off period is not backfilled.")
+                        .klNote()
+                } else {
+                    detailLine
+                }
                 fields()
-                controls
             }
+            .opacity(isOff ? 0.55 : 1)
+            if !isOff { controls }
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(verdict.color.opacity(0.25), lineWidth: 1))
+        .accessibilityElement(children: .contain)
     }
 
     private var header: some View {
         HStack(spacing: 8) {
-            Image(systemName: c.symbol).frame(width: 18).foregroundStyle(verdict.color)
-            Text(c.name).font(.system(size: 13, weight: .semibold))
-            Spacer(minLength: 0)
-            HStack(spacing: 5) {
-                if isChecking {
-                    ProgressView().controlSize(.small).scaleEffect(0.6).frame(width: 10, height: 10)
-                } else {
-                    Circle().fill(verdict.color).frame(width: 6, height: 6)
+            HStack(spacing: 8) {
+                Image(systemName: c.symbol).frame(width: 18).foregroundStyle(verdict.color)
+                Text(c.name).font(.klHeading)
+                Spacer(minLength: 0)
+                if !isOff {
+                    HStack(spacing: 5) {
+                        if isChecking {
+                            ProgressView().controlSize(.small).scaleEffect(0.6).frame(width: 12, height: 12)
+                        } else {
+                            Image(systemName: verdict.symbol).font(.system(size: 10, weight: .semibold))
+                        }
+                        Text(verdict.label).font(.klMeta.weight(.semibold))
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Capsule().fill(verdict.color.opacity(0.16)))
+                    .foregroundStyle(verdict.color)
                 }
-                Text(verdict.label).font(.caption2.weight(.semibold))
             }
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(Capsule().fill(verdict.color.opacity(0.16)))
-            .foregroundStyle(verdict.color)
-            Toggle("", isOn: onBinding)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(c.name), \(verdict.label)")
+            Toggle(c.name, isOn: onBinding)
                 .toggleStyle(.switch).controlSize(.small).labelsHidden()
-                .accessibilityLabel("\(c.name) on or off")
+                .accessibilityValue(isOff ? "off" : "on")
                 .help(isOff ? "Turn \(c.name) on" : "Turn \(c.name) off")
         }
     }
 
+    private var hasFields: Bool { !(Fields.self is EmptyView.Type) }
+
     @ViewBuilder private var detailLine: some View {
+        if verdict == .notSetUp {
+            Text(hasFields ? "Add a token below to start" : "Signed in via gh/local — nothing to set up").klNote()
+        }
         if let h = health, !h.detail.isEmpty {
-            Text(h.detail).font(.system(size: 11)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            Text(h.detail).klNote().textSelection(.enabled)
         }
         // The freshness line is the whole point: it separates "quiet" from "broken".
         if health?.configured == true {
-            Text("Last new data: " + ageText(m.status.age(c.ageKey)))
-                .font(.system(size: 11)).foregroundStyle(.secondary)
+            let age = m.status.age(c.ageKey)
+            Text("Last new data: " + ageText(age)).klNote()
+            if let age { FreshnessBar(age: age, tint: verdict.color) }
         }
-        if let h = health, h.ok == false || !h.hint.isEmpty, !h.hint.isEmpty {
+        if let h = health, !h.hint.isEmpty {
             HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Image(systemName: "lightbulb.fill").font(.system(size: 9)).foregroundStyle(.orange)
-                Text(h.hint).font(.system(size: 11)).foregroundStyle(.primary)
+                Image(systemName: "lightbulb.fill").font(.system(size: 10)).foregroundStyle(.orange)
+                Text(h.hint).font(.klMeta).foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(8)
@@ -234,40 +301,96 @@ struct ConnectorCard<Fields: View>: View {
         HStack(spacing: 8) {
             Button("Test") { m.refresh([c.id]) }.disabled(isChecking)
             if let d = onDisconnect, health?.configured == true {
-                Button("Disconnect", role: .destructive, action: d)
+                Button("Disconnect", role: .destructive) { confirmDisconnect = true }
+                    .confirmationDialog("Disconnect \(c.name)?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
+                        Button("Disconnect \(c.name)", role: .destructive, action: d)
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("This removes the \(c.name) token from ~/.claude/.env, a file shared with other tools. You will need to paste it again to reconnect.")
+                    }
             }
             Spacer(minLength: 0)
         }
     }
 }
 
+/// Freshness as a thin capsule: full at 0h, empty at the 96h Quiet threshold.
+/// The "Last new data" text already states the age, so this is hidden from AX.
+private struct FreshnessBar: View {
+    let age: Double
+    let tint: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var fraction: Double { max(0, min(1, 1 - age / 96)) }
+
+    var body: some View {
+        Capsule().fill(Color.primary.opacity(0.1))
+            .frame(height: 3)
+            .overlay(alignment: .leading) {
+                GeometryReader { g in
+                    Capsule().fill(tint).frame(width: g.size.width * fraction)
+                }
+            }
+            .frame(maxWidth: 200)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.4), value: fraction)
+            .accessibilityHidden(true)
+    }
+}
+
 /// Summary bar atop the Connectors page (moved out of SettingsView).
 struct ConnectorsSummary: View {
     @ObservedObject var conn: ConnectorsModel
+    @State private var showLegend = false
 
     /// The one-glance answer: how many are actually working, and is the loop running
-    /// at all. A connector page that cannot say "3 of 5" makes you open five cards.
+    /// at all. "Working" = reachable and not failing (flowing or quiet).
     var body: some View {
         let on = Connector.all.filter { !conn.off.contains($0.id) }
-        let live = on.filter { conn.health[$0.id]?.ok == true }.count
-        let broken = on.filter { conn.health[$0.id]?.ok == false }.count
+        let verdicts = on.map {
+            connVerdict($0, health: conn.health[$0.id], status: conn.status, checking: conn.checking.contains($0.id))
+        }
+        let settling = verdicts.contains(.checking)
+        let live = verdicts.filter(\.isWorking).count
+        let broken = verdicts.filter(\.needsAttention).count
         let offCount = Connector.all.count - on.count
+        let head = settling ? "Checking…"
+            : "\(live) of \(on.count) connectors working" + (broken > 0 ? " · \(broken) need attention" : "")
         return HStack(spacing: 8) {
-            Image(systemName: broken > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                .foregroundStyle(broken > 0 ? .orange : .green)
+            Image(systemName: settling ? "arrow.triangle.2.circlepath" : broken > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(settling ? Color.secondary : broken > 0 ? .orange : .green)
             VStack(alignment: .leading, spacing: 1) {
-                Text("\(live) of \(on.count) connectors working"
-                     + (broken > 0 ? " · \(broken) need attention" : "")
-                     + (offCount > 0 ? " · \(offCount) off" : ""))
-                    .font(.system(size: 12, weight: .medium))
+                Text(head + (offCount > 0 ? " · \(offCount) off" : ""))
+                    .font(.klLabel.weight(.medium))
                 if let mins = conn.status.staleMinutes {
-                    Text("Last ingest run \(mins) min ago").font(.system(size: 10.5)).foregroundStyle(.secondary)
+                    Text("Last ingest run \(mins) min ago").klNote()
                 }
             }
             Spacer(minLength: 0)
+            Button { showLegend.toggle() } label: { Image(systemName: "info.circle") }
+                .buttonStyle(.borderless)
+                .help("What the statuses mean")
+                .accessibilityLabel("What the statuses mean")
+                .popover(isPresented: $showLegend, arrowEdge: .bottom) { legend }
             Button("Test all") { conn.refresh() }.disabled(!conn.checking.isEmpty)
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
+    }
+
+    private var legend: some View {
+        let all: [ConnVerdict] = [.flowing, .quiet, .noData, .lastRunFailed, .failing, .notSetUp, .off]
+        return VStack(alignment: .leading, spacing: 8) {
+            ForEach(all, id: \.label) { v in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: v.symbol).foregroundStyle(v.color).frame(width: 16)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(v.label).font(.klLabel.weight(.semibold))
+                        Text(v.meaning).klNote()
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .padding(12).frame(width: 300)
     }
 }

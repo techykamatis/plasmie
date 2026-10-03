@@ -6,13 +6,15 @@ no prior context beyond the repo at `~/.plasmie` and vault at `~/knowledge`.
 
 ## Why this exists
 
-`app-setup.sh` installs the runtime, models, qmd, vault scaffold, and launchd
-loops — but it captures **no history**. The hourly ingest (`loop-ingest.py`) only
-looks back **1 hour** on its first run (`last_run` defaults to `NOW - 3600`), so a
-fresh vault sits nearly empty until enough hours pass. A first-time user opening
-"Ask anything" gets "nothing in the wiki covers this yet." This goal fixes that
-with a one-time historical crawl across every configured source, then hands off
-to the normal incremental loop.
+A fresh install has no history. A bare hourly ingest would see only new activity,
+so a vault would sit nearly empty and "Ask anything" would answer "nothing in the
+wiki covers this yet." The fix is a one-time historical crawl across every
+configured source, then a hand-off to the normal incremental loop. **This is now
+implemented:** on a genuine first run (no `.loop-state.json`) `loop-ingest.py`
+seeds every source's watermark at `NOW - PLASMIE_BOOTSTRAP_DAYS` (default 30), and
+`app-setup.sh` step 5b runs the crawl. The terminal wizard (`install.sh`) does
+**not** run the crawl; after it, run steps 3-6 below by hand. This doc remains the
+spec and the checklist for verifying a seeded install.
 
 ## End state (definition of done)
 
@@ -32,14 +34,17 @@ to the normal incremental loop.
 | Source | Credential (in `~/.claude/.env`) | First-time crawl |
 |--------|----------------------------------|------------------|
 | Slack | `SLACK_USER_TOKEN` (`xoxp-…`) | ingest with the bootstrap window — `search.messages` already queries by date from `last_run - 86400`, so a wide `last_run` pulls the window |
-| Claude sessions | none (local `~/.claude/projects`) | ingest picks up every `*.jsonl` modified inside the window |
+| Claude Code sessions | none (local `~/.claude/projects`) | ingest picks up every `*.jsonl` modified inside the window (capped per run) |
+| AgentCLI sessions | none (local SQLite, `PLASMIE_AGENTCLI_DB`) | ingest reads sessions inside the window into `raw/claude/` |
+| GitHub | `gh` CLI signed in; orgs in `PLASMIE_GITHUB_ORGS` | ingest covers the window; run `github-backfill.py` for full contributor history (`raw/github/<org>-<repo>/`) |
+| Local git | none (`PLASMIE_GIT_ROOTS`, default `~/code`) | ingest reads your own commits in the window from local clones |
 | Confluence | `JIRA_BASE_URL` / `JIRA_EMAIL` / `JIRA_API_TOKEN` (or `CONFLUENCE_*`) | run `confluence-backfill.py` — full mirror of `contributor = currentUser()` into `raw/confluence/<space>/` |
 | Outlook | `MS_REFRESH_TOKEN` (shelved; usually absent) | if present, ingest pulls mail+calendar in the window; if absent, skip silently |
 
 ## Steps
 
 0. **Preflight.** Source `~/.claude/.env` and `~/.plasmie/config.env`.
-   Print which sources are configured (token present) vs skipped. Confirm qmd is
+   Print which sources are configured (token present) vs skipped (`plasmie-doctor.py` does this). Confirm qmd is
    on PATH, the vault exists, and the mlx model is present. Do NOT fail on a
    missing source — only fail if *zero* sources are available.
 
@@ -50,16 +55,21 @@ to the normal incremental loop.
 
 2. **Look-back is built in.** `loop-ingest.py` handles this itself: on a genuine
    first run (no `.loop-state.json`) it seeds `last_run = NOW - PLASMIE_BOOTSTRAP_DAYS`
-   days, so the first ingest treats the whole window as "new" for Slack + Claude
-   sessions + Outlook. No manual state-file poke needed. (Claude sessions use the
+   days, so the first ingest treats the whole window as "new" for every source (Slack,
+   GitHub, local git, Confluence changes, Outlook, Claude + AgentCLI sessions). No manual state-file poke needed. (Claude sessions use the
    same window rather than "all local" — a full-history dump would exceed what one
    promote pass can distill; the loop compounds older context forward.)
 
-3. **Confluence full backfill** (independent of the state file):
-   `python3 confluence-backfill.py ~/knowledge` — rebuilds `raw/confluence/`.
+3. **Full-history backfills** (independent of the state file; `app-setup.sh` runs
+   both):
+   - `python3 confluence-backfill.py ~/knowledge` — rebuilds `raw/confluence/`.
+   - `python3 github-backfill.py ~/knowledge` — rebuilds the per-repo mirror in `raw/github/`.
+   These two scripts do not read `PLASMIE_DISABLED_SOURCES`; the connector On/Off switch
+   gates only the hourly ingest, so skip them by hand for a source that is Off.
 
 4. **Run the seeded ingest:** `./run-ingest.sh` (sources `.env`, sets `PLASMIE_VAULT`,
-   writes per-source `raw/<source>/YYYY-MM-DD.md` + a `log.md` line).
+   writes per-source `raw/<source>/YYYY-MM-DD.md` + a `log.md` line; sources listed in
+   `PLASMIE_DISABLED_SOURCES` are skipped).
 
 5. **Condense + promote the seed:**
    - `./summarize.sh` → rolling `meta/digests/<today>.md`
@@ -98,7 +108,7 @@ to the normal incremental loop.
 
 ```bash
 # raw seeded across sources
-for s in slack claude outlook; do echo "$s: $(ls ~/knowledge/raw/$s/*.md 2>/dev/null | wc -l)"; done
+for s in slack claude github git; do echo "$s: $(ls ~/knowledge/raw/$s/*.md 2>/dev/null | wc -l)"; done
 ls ~/knowledge/raw/confluence | wc -l                 # confluence spaces mirrored
 # wiki got starter notes
 python3 ~/.plasmie/reindex.py --check ~/knowledge   # "<n> wiki notes"
@@ -118,12 +128,12 @@ loops are running.
 
 - **Implemented:** the first-run look-back lives in `loop-ingest.py`
   (`PLASMIE_BOOTSTRAP_DAYS`, default 30), and `app-setup.sh` runs the first-time crawl
-  (confluence-backfill → seeded ingest → reindex → qmd embed) during setup, so a
+  (confluence-backfill → github-backfill → seeded ingest → reindex → qmd embed) during setup, so a
   fresh install finishes with a seeded, indexed vault. `summarize`/`promote` are
   left to the loop (or the app's "Run promote now" button) so setup isn't gated on
   the guarded local model. Everything else composes existing scripts.
 - Slack's `search.messages` is date-bounded and paginated (`count=100`); a 30-day
   window across many channels may need the loop to page rather than truncate at 25
   per channel — check coverage and widen if the seed looks thin.
-- Consider surfacing bootstrap progress through the app's `PROGRESS:` channel (like
-  `app-setup.sh`) so first-run crawl shows in the menu-bar UI, not just logs.
+- The crawl reports a single `PROGRESS:85` line through `app-setup.sh`'s channel;
+  finer-grained per-source progress in the menu-bar UI is not implemented.

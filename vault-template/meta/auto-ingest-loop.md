@@ -1,76 +1,77 @@
 ---
 type: reference
 title: Auto-ingest loop
-description: The hourly background loop that logs Slack + Claude sessions to the journal and auto-promotes durable knowledge into the vault.
+description: The launchd pipeline that ingests Slack, GitHub, git, Confluence, Claude/AgentCLI sessions into raw/, digests them hourly, promotes durable notes into the flat wiki nightly, and maintains the vault.
 tags: [meta, automation]
-timestamp: 2026-06-22T00:00:00Z
+timestamp: 2026-10-03T00:00:00Z
 ---
 
 # Auto-ingest loop
 
-A background loop keeps this vault current without manual capture. Set up 2026-06-22. It has **two independent halves** that run on separate schedules:
+A set of macOS LaunchAgents keeps this vault current with no Claude session open. They survive logout/reboot and coalesce missed runs on wake. Tooling lives **outside the vault** in `~/.plasmie/` (the vault is data only); schedules are in `launchd/*.plist`, installed by `launchd/install.sh`.
 
-## 1. Ingest — always-on (launchd, no Claude needed)
-A macOS **LaunchAgent** (`com.plasmie.dev-ingest`) fires hourly at :07 whether or not a Claude session — or even Terminal — is open. It survives logout/reboot (loaded at login) and coalesces a missed run on wake. It runs `~/.plasmie/loop-ingest.py`, which pulls, since the last high-water mark:
-- recent **Slack** (personal user token, `search.messages`: your sent + to-you messages — `users.conversations` is scope-blocked, `search:read` works),
-- newly created / recently updated **Claude Code sessions** (`~/.claude/projects/**/*.jsonl` by mtime),
+| Agent | Runs | Does |
+|-------|------|------|
+| `com.plasmie.dev-ingest` | hourly :07 | `run-ingest.sh` → `loop-ingest.py` appends scrubbed activity to `raw/<source>/YYYY-MM-DD.md`, one line to `log.md`; then `qmd update` + `qmd embed` so it's searchable |
+| `com.plasmie.dev-summarize` | hourly :15 | `summarize.sh` condenses today's `raw/{slack,claude,outlook}` into 4-8 bullets → `meta/digests/YYYY-MM-DD.md` (Apple on-device model first, local Gemma fallback; skipped if the input is unchanged) |
+| `com.plasmie.dev-improve` | hourly :17 | `plasmie-improve.py`: retag, regenerate `wiki/mocs/` + `index.md`, archive resolved drafts, prune raw past retention, close coverage gaps, add `## Related` links, propose duplicate merges, retire stale event notes |
+| `com.plasmie.dev-promote` | nightly 02:30 | `promote.sh` (local Gemma drafts) → `dedupe.py` → `promote-apply.py --auto` → `reindex.py` |
+| `com.plasmie.mlx-server` | on demand | Gemma server on `127.0.0.1:8091`, started/stopped by `gen.sh` via `mlx-ctl.sh` |
+| `plasmie-snapshot.sh` | daily 00:47 | commits the vault to its own git repo (pushes only if a remote exists); agent `com.plasmie.dev-snapshot` |
 
-then appends a timestamped section to `02 Areas/journal/<date>.md` and advances the mark. Fully deterministic — no model, so it can run headless.
+## Sources
 
-## 2. Promote — fully local, automated (propose → dedupe → auto-apply → reindex)
-The model only *proposes*; deterministic Python dedupes, applies, and indexes — so a small local model is enough and tool-use reliability is a non-issue. Runs nightly, no clicks.
+| Source | Lands in | Notes |
+|--------|----------|-------|
+| Slack | `raw/slack/` | user token; your sent + to-you messages via `search.messages` |
+| Claude Code + AgentCLI sessions | `raw/claude/` | local `~/.claude/projects/**/*.jsonl` and the AgentCLI SQLite DB; no network |
+| GitHub | `raw/github/` | `gh` CLI, orgs from `PLASMIE_GITHUB_ORGS` (default `fabrikam`); per-repo backfill mirror in `raw/github/<repo>/` |
+| Local git | `raw/git/` | your own commits from clones under `PLASMIE_GIT_ROOTS` (default `~/code`); low-signal commits are dropped |
+| Confluence | `raw/confluence/` | backfill mirror; needs `JIRA_*` credentials (run `confluence-backfill.py`) |
+| Outlook | `raw/outlook/` | optional; needs a Microsoft 365 refresh token (tenant-admin approval may be required) |
+| Manual | `raw/inbox/` | `plasmie-capture.sh`; the nightly promote reads inbox content |
 
-**2a — propose + dedupe (launchd, local Gemma):** `com.plasmie.dev-promote` runs `promote.sh` daily at 02:30 — feeds recent journal + the `00 Inbox` listing to Gemma → `99 Meta/promotion-drafts/<date>.md`, then `dedupe.py` tags each item with a suggested `Action:` via **TF-IDF cosine** (stdlib, no deps) against all concept/people/project notes, plus a `Near:` line of top matches + scores.
+Per-connector On/Off: `PLASMIE_DISABLED_SOURCES="github,confluence"` in `~/.plasmie/config.env` (or the app's Settings → Connectors). Off means no fetch, watermark still advances (re-enabling does not backfill), summarize/promote ignore its raw files, `plasmie-doctor.py` reports `enabled:false`. The env var overrides `config.env`.
 
-**2b — auto-apply (launchd, no human):** `promote-apply.py --auto` applies the confident items and **holds the uncertain**:
-- confident merge (cosine ≥ 0.45) → merged into the nearest note
-- new note → created, target **normalized to `03 Resources/concepts/`** (the model's folder guesses are unreliable)
-- inbox file → moved (default `03 Resources/clippings/`)
-- borderline merge (0.30–0.45) → **held** in `<date>.hold.md`
+## Promote: propose → dedupe → auto-apply → reindex
 
-Then `reindex.py` recounts concepts, fixes `index.md`, parks unlinked notes under `## Unfiled`, reports dead links. A notification says `auto-promoted N · M held`.
+The model only *proposes*; deterministic Python does the rest, so a small local model suffices.
 
-**2c — held review (you, only if something's held):** the menu-bar app shows held items — **Approve all** (apply as suggested + clear), **Review** (open in Obsidian to edit/skip), or **Dismiss**. Most nights nothing is held.
+1. `promote.sh` feeds yesterday+today's `raw/{slack,claude,outlook}` and the `raw/inbox` contents (scrubbed) to local Gemma → `meta/promotion-drafts/<date>.md`.
+2. `dedupe.py` tags each item with `Action:` (merge/create/move) and a `Near:` line via TF-IDF cosine against existing notes.
+3. `promote-apply.py --auto`: confident merge (cosine >= 0.45) merges into the nearest note; new notes are created **flat in `wiki/`** (the draft's `Target:` becomes a tag, `Source:` is carried into the note); borderline merges and refusals are **held** in `<date>.hold.md`. Then `reindex.py`.
+4. A notification reads `auto-promoted N · M held`.
 
-Safe by construction: paths confined to the vault, bodies scrubbed (incl. emails), `create` never overwrites, `merge` is idempotent (content-hash marker), nothing is ever deleted.
+**Held drafts must be reviewed.** They sit in `meta/promotion-drafts/` until resolved (a ✅ marker moves them to `archive/`). The menu-bar app shows pending drafts: Approve all, Review, or Dismiss; by hand: `promote-apply.py <draft> --apply`.
 
-> ⚠️ History: 2b was once a *session-only* cron (`e78c8d15`) that expired silently, leaving drafts un-actioned and `00 Inbox` undrained. Auto-apply replaced it — if notes stop appearing in PARA, check the menu-bar app's activity line / `feed.log`.
+Safe by construction: paths confined to the vault, bodies scrubbed (emails too), `create` never overwrites, `merge` is idempotent (content-hash marker), nothing is deleted. Weak link is the 4B proposer, which mis-targets and restates known facts, hence the hold path. Adversarial suite: `test_pipeline.py`.
 
-> **Upgrade path (dedupe):** TF-IDF catches lexical dups (shared identifiers/proper nouns) — proven on the real vault (Xet-CDN 0.41, ElastiCache 0.49). If it starts missing *semantic* dups (same idea, different words), swap `dedupe.py::nearest()` for a local embedding model; nothing else changes.
+## Retention
 
-## Safety
-- **Secret scrubber** in the script redacts gh/AWS/Slack tokens, `sk-`/Bearer keys, connection-string passwords, and private keys → `«redacted»` before anything is written. Promotion step also never writes secrets/PII.
-- **Promote path is hardened against the untrusted local model** (battle-tested): `promote-apply.py` confines every draft path to the vault root (rejects `../`, absolute paths, symlink escapes), scrubs secrets **and emails** from written bodies via [[scrub.py]], refuses to overwrite/delete, and merges idempotently (content-hash marker). Adversarial suite: `python3 ~/.plasmie/test_pipeline.py` (runs on a `cp -r` vault copy; 6/6). Known weak link is the **proposer**: the 4B mis-targets the PARA folder/granularity (~40%) and restates already-captured facts — which is why auto-apply normalizes new notes into `concepts/` and **holds** borderline merges for review rather than trusting the model blindly.
-- **Work-only** (laptop): personal finance/family/health is skipped.
-- Promotes only durable, reusable items — one-off debugging and chatter stay in the journal.
-- **TODO (security):** the worker sources `~/.claude/.env` — a plaintext pile of real secrets (AWS MFA, DB passwords, GH PAT, Jira, Datadog, Sonar…). A keychain migration scoped to just `SLACK_USER_TOKEN` was attempted and reverted (zsh `${!k}` mismatch wrote 0 bytes); parked. The scrubber protects the *vault*, but the source `.env` stays plaintext for now.
-
-## Moving parts
-Tooling lives **outside the vault** (`~/.plasmie/`) — the vault holds only markdown knowledge, never scripts or state.
-- Worker: `~/.plasmie/loop-ingest.py` (stdlib only; needs `SLACK_USER_TOKEN`, `SLACK_MY_USER_ID` from `~/.claude/.env`).
-- Wrapper: `~/.plasmie/run-ingest.sh` (sources env, runs the worker via homebrew python3.12).
-- State / high-water mark: `~/.plasmie/.loop-state.json` (`{last_run}` epoch).
-- Logs (two views of each hourly run):
-  - `~/.plasmie/logs/ingest-<YYYYMMDD-HHMMSS>.log` — **full detail** per run: window, per-channel Slack counts, per-project session counts, journal path. Pruned after 14 days. Use to audit a specific hour.
-  - `~/.plasmie/feed.log` — **one summary line per run** (`<ts> | exit <rc> | slack N convos / M msgs · sessions K files`), rolling, capped 2000 lines. `tail -f ~/.plasmie/feed.log` to follow live (don't `tail -f` a per-run file — each run is a new filename, so it'd freeze).
-  - `~/.plasmie/launchd.log` — launchd-level errors only (before the wrapper runs).
-- LaunchAgents: `com.plasmie.dev-ingest` (hourly ingest), `com.plasmie.dev-summarize` (hourly Gemma bullets), `com.plasmie.dev-promote` (daily 02:30 → draft). Plists + `launchd/install.sh` under `~/.plasmie/launchd/`.
-- Promote pipeline (step 2, all in `~/.plasmie/`, stdlib-only):
-  - `promote.sh` — proposer (local Gemma) → draft; then calls `dedupe.py`.
-  - `dedupe.py` — TF-IDF dedupe; enriches the draft with `Action:`/`Merge-into:`/`Near:`. (`--selfcheck`)
-  - `promote-apply.py` — `--auto` (nightly: apply confident, hold uncertain, normalize targets) or `<draft> --apply` (apply a reviewed/held draft); vault-path containment + secret/email scrub + idempotent merge; auto-runs reindex. (`--selfcheck`)
-  - `reindex.py` — recounts concepts, fixes index counts, flags orphans/dead links. (`--check`, `--selfcheck`)
-  - `scrub.py` — the single secret/PII redactor, shared by ingest + promote (`redact(s, emails=)`; promote passes `emails=True`). (`--selfcheck` via `python3 scrub.py`)
-  - `test_pipeline.py` — adversarial battle-test (path escape, no-data-loss, malformed input, idempotency, scrub, reindex) on a `cp -r` vault copy.
-- Menu-bar app: `~/.plasmie/app/` — native SwiftUI `MenuBarExtra` cockpit (live activity heartbeat via `plasmie-status.py` + `.status`, held-review, in-process actions). Build: `app/make-app.sh` → `app/make-dmg.sh`.
-- Output: digests land at `02 Areas/journal/<date>.md`; promoted notes land in People / Projects / Concepts.
+- `raw/{slack,claude,outlook,github,git}/YYYY-MM-DD.md` pruned after `PLASMIE_RAW_RETENTION_DAYS` (14) by `plasmie-improve.py`; each prune is logged to `log.md`. Backfill mirrors (`raw/confluence/`, `raw/github/<repo>/`) are exempt.
+- `log.md` and `meta/digests/` are never pruned. The vault's git history (daily snapshot) is the safety net for a prune.
 
 ## Operate it
-- **Ingest fire-now:** `launchctl kickstart -p gui/$(id -u)/com.plasmie.dev-ingest`
-- **Look back N hours:** `python3 -c "import json,time;json.dump({'last_run':time.time()-3600*N},open('$HOME/.plasmie/.loop-state.json','w'))"` then kickstart.
-- **Stop ingest:** `launchctl bootout gui/$(id -u)/com.plasmie.dev-ingest`  ·  **(re)start:** `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.plasmie.dev-ingest.plist`
-- **Stop promote:** `CronDelete e78c8d15` (or just close Claude — it's session-only).
-- **Promote after being away:** open a Claude session; the cron's next :12 fire (or re-run `/loop`) catches up on the journal backlog. Promotion only happens with a session open — the ingest never stops.
+
+- **Fire ingest now:** `launchctl kickstart -p gui/$(id -u)/com.plasmie.dev-ingest` (same for summarize/improve/promote).
+- **Stop / start:** `launchctl bootout gui/$(id -u)/com.plasmie.dev-ingest` · `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.plasmie.dev-ingest.plist` (or `launchd/install.sh` to refresh all).
+- **Look back N hours:** `.loop-state.json` holds per-source watermarks: `{"last_run": <epoch>, "sources": {"slack": <epoch>, "confluence": ..., "github": ..., "outlook": ..., "claude": ..., "git": ...}}`. A source that errors keeps its old watermark so the next run re-covers the gap. To re-read the last N hours for every source:
+  `python3 -c "import json,time,os;t=time.time()-3600*N;p=os.path.expanduser('~/.plasmie/.loop-state.json');json.dump({'last_run':t,'sources':{s:t for s in ['slack','confluence','github','outlook','claude','git']}},open(p,'w'))"` then kickstart ingest. **Ingest appends, so re-reading duplicates already-captured blocks** — only look back over a window you know was missed. A bare legacy `{"last_run": ...}` also works (it seeds every source). Missing file = first run: last `PLASMIE_BOOTSTRAP_DAYS` (30) days.
+- **Bounded backfill without touching the watermark:** `PLASMIE_SINCE=2026-10-01T09:00 PLASMIE_UNTIL=2026-10-01T18:00 ~/.plasmie/run-ingest.sh` (raw files are dated by the window end).
+- **Health:** `tail ~/.plasmie/feed.log` (one line per ingest, `QMD-ERR`/`*-ERR` mark failures); `python3 ~/.plasmie/plasmie-doctor.py` for per-connector reachability and freshness.
+
+## Logs
+
+`~/.plasmie/feed.log` (last 2000 lines), `logs/ingest-*.log` (14 days), `logs/audit-*.log` (90 days; summarize, promote, improve), `logs/transcript-*.log` and `logs/wire-*.log` (exact prompts to the local model), `launchd.log` (launchd-level errors only).
+
+## Safety
+
+- `scrub.py` redacts tokens, keys, connection-string passwords and PEM keys → `«redacted»` before anything is written; the promote path also strips emails.
+- Work-only: personal finance/family/health is skipped.
+- Network calls: Slack (user token), GitHub (`gh`), Confluence (Atlassian API, when credentialed), Outlook/Graph (if connected). All summarization/generation is on-device.
+- **TODO (security):** the worker sources `~/.claude/.env`, a plaintext file of real secrets. A keychain migration for just `SLACK_USER_TOKEN` was attempted and reverted; parked.
+- The vault must stay on local disk: launchd agents cannot read `~/Library/CloudStorage` (TCC). Do not point `VAULT_DIR` at OneDrive/iCloud.
 
 ## Related
 - [[README]] — vault conventions
+- [[tags]] — tag rules

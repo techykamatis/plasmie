@@ -1,42 +1,50 @@
 # How this vault works
 
-One vault, **work-only** (laptop — no personal finances, family, health, or interests). **PARA** decides the folder. **OKF** decides the file format. **Obsidian** is the editor.
+One vault, **work-only** (laptop — no personal finances, family, or health). **Obsidian** is the editor; a local loop in `~/.plasmie` keeps it current. The full contract for LLM sessions is `../CLAUDE.md`; this page is the human-sized version.
 
-## PARA — folders track status, not topic
-- `00 Inbox/` — everything lands here first, sort later.
-- `01 Projects/` — active work, has an end state. Done → move the folder to `04 Archive/`.
-- `02 Areas/` — ongoing work duties with no end:
-  - `work/` — general work knowledge, reports, decisions
-  - `career/` — professional growth in the role (work context)
-  - `journal/` — work daily notes
-- `03 Resources/` — work things you know/collect + entities:
-  - `people/` — colleagues and work contacts
-  - `concepts/` — atomic technical/domain ideas you understand
-  - `tech/` — code projects, tools, patterns
-  - `clippings/` — work reference docs and saved material
-- `04 Archive/` — done/dead, out of sight, never deleted.
-- `99 Meta/` — templates + this guide + tag list.
+## Layers
 
-**Filing rule:** homeless note? *Driving a current outcome?* → Projects. *Standing duty?* → Areas. *Just stuff I know?* → Resources. *Done?* → Archive.
+| Path | What | Who writes it |
+|------|------|---------------|
+| `raw/` | Captured source material, one subdir per source (`slack`, `claude`, `outlook`, `github`, `git`, `confluence`, `inbox`). Transient: dated activity dumps are pruned after 14 days. | the hourly loop; you only drop files in `raw/inbox/` (or run `plasmie-capture.sh "thought"`) |
+| `wiki/` | The durable, synthesized notes. **Flat** — no subfolders. | promotion (nightly) and you |
+| `wiki/mocs/` | Generated map of content per tag (a tag shared by 4+ notes gets one). | `reindex.py` — never hand-edit |
+| `wiki/attachments/` | PDFs/HTML/SVG that notes refer to. | you |
+| `archive/` | Done or dead material; never deleted. | tooling (`archive/retired/`) and you |
+| `meta/` | Templates, promotion drafts, digests, coverage gaps, loop changelog, this guide. Not knowledge. | tooling |
+| `index.md`, `log.md` | Generated catalog; append-only audit of every ingest/promotion/prune. | tooling — never hand-edit |
 
-**Depth rule:** go deeper only while the path is unambiguous (a real container: a project, a person, attachments). The moment a level is "just a narrower topic", stop — use a tag or `[[link]]` instead. Projects/Areas can reach 3 levels; Resources stays at 1–2.
+`raw/` is staging, so **durable knowledge only exists once it is a wiki note**; `log.md` is the permanent record of what happened.
 
-## OKF — Open Knowledge Format (Google Cloud knowledge-catalog)
-Every note is plain markdown + YAML frontmatter. Recommended fields:
-`type` (required), `title`, `description`, `resource`, `tags`, `timestamp`.
-- `index.md` files (no frontmatter) are per-folder maps: sections of `* [Title](path) - desc`. They double as Obsidian MOCs.
-- Concept ID = file path minus `.md`.
-- Relationships are normal markdown links / `[[wikilinks]]`; Obsidian computes backlinks + the graph.
-- `index.md` and `log.md` are reserved — never use them for a concept.
+## Structure = tags + maps, not folders
 
-Templates for each `type` live in `99 Meta/templates/`.
+The wiki used to be filed into PARA-style folders; since 2026-09-17 every note sits directly in `wiki/` and each one carries its old folder as a tag. Find things with tags, `[[links]]`, the `wiki/mocs/` maps, `index.md`, or `ask` / `qmd query`. Tag rules: [[tags]].
 
-## Two habits that make it pay off
-1. **Link entities the moment you name them** (`[[` → pick or create).
-2. **Link, don't co-file** — the same `[[concept]]` referenced from two notes is how topics connect in the graph.
+## Frontmatter (every wiki note)
 
-## Automation
-An hourly background loop logs Slack + Claude sessions to the journal and auto-promotes durable knowledge into the vault — see [[auto-ingest-loop]].
+```yaml
+---
+type: note | gotcha | project | reference | decision | concept | pattern | person | convention | clipping | index | moc
+title: Human Title
+description: one line — shown in the catalog and drives retrieval
+tags: [kebab-case, ...]
+source: where it came from (optional; promoted notes carry it)
+timestamp: 2026-10-03T00:00:00Z
+---
+```
+
+`title` + `description` are what qmd embeds — write them well. `moc` pages are generated, never hand-written. Starter templates are in `meta/templates/` (`note`, `concept`, `person`, `project`, `meeting`, `source`).
+
+## Linking habits
+
+1. Link entities the moment you name them: `[[basename]]` (Obsidian resolves by name, so links survive moves).
+2. Link, don't co-file — the same `[[concept]]` from two notes is how topics connect.
+3. Don't hand-write the `## Related` block at the bottom of notes: `plasmie-improve.py` regenerates it between `<!-- related:start -->` / `<!-- related:end -->` markers.
 
 ## Sensitive data
-This is a laptop. Keep personal docs out. Even for work data, do **not** store credentials, payroll, or PII here — reference originals by path if you must. `.gitignore` blocks `*.csv` and PDFs; never commit secrets.
+
+Laptop. Keep personal docs out. Even for work data, don't store credentials, payroll, or PII — reference originals by path. Everything the loop captures is passed through `scrub.py` (tokens, keys, passwords; emails too on the promotion path), but scrubbing is a backstop, not permission. Never commit secrets.
+
+## Automation
+
+The ingest/summarize/promote/improve loop is described in [[auto-ingest-loop]]. Held promotion drafts need a human look (menu-bar app).

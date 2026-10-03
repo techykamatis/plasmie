@@ -43,7 +43,8 @@ extension NotchMode {
         hover ? .expanded : banner ? .celebrating : working ? .working : .resting
     }
     func size(_ g: NotchGeometry) -> CGSize {
-        let rest = CGSize(width: g.notchW + 56, height: g.notchH + (g.hasNotch ? 10 : 2))
+        // flush with the hardware notch: the character sits on the left ear, the dot on the right
+        let rest = CGSize(width: g.notchW + 84, height: g.notchH + (g.hasNotch ? 0 : 2))
         switch self {
         case .resting:     return rest
         case .working:     return CGSize(width: rest.width + 140, height: rest.height)
@@ -130,15 +131,30 @@ struct NotchView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var size: CGSize { mode.size(geo) }
-    private var anim: Animation { reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.32, dampingFraction: 0.86) }
+    // Opening pops out of the notch (fast, a small bounce on halt); closing glides back in
+    // (fast-to-slow). Content follows the shape: it grows from the notch a beat later on the
+    // way out, and leaves first on the way in, so the island reads as coming out of the notch.
+    private var opening: Bool { mode == .expanded || mode == .celebrating }
+    private var anim: Animation {
+        if reduceMotion { return .easeInOut(duration: 0.15) }
+        return opening ? .spring(response: 0.38, dampingFraction: 0.66)
+                       : .timingCurve(0.16, 1, 0.3, 1, duration: 0.34)
+    }
+    private var fromNotch: AnyTransition {
+        reduceMotion ? .opacity : .asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.4, anchor: .top))
+                .animation(.spring(response: 0.38, dampingFraction: 0.7).delay(0.07)),
+            removal: .opacity.combined(with: .scale(scale: 0.6, anchor: .top))
+                .animation(.easeIn(duration: 0.1)))
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
             switch mode {
             case .resting:     resting.transition(.opacity)
             case .working:     working.transition(.opacity)
-            case .expanded:    expanded.transition(.opacity)
-            case .celebrating: banner.transition(.opacity)
+            case .expanded:    expanded.transition(fromNotch)
+            case .celebrating: banner.transition(fromNotch)
             }
         }
         .frame(width: size.width, height: size.height, alignment: .top)
@@ -153,19 +169,17 @@ struct NotchView: View {
 
     private var ear: CGFloat { (size.width - geo.notchW) / 2 - mode.topRadius }
 
-    // Only Plasmie's top and eyes peek under the notch line; the body is clipped by the shape.
+    // Resting sits beside the notch, not under it: the character on the left ear
+    // (wearing its stage accessory), the status dot on the right ear.
     private var resting: some View {
-        ZStack(alignment: .top) {
-            if geo.hasNotch {
-                PlasmieView(state: info.hero, size: 36, accessory: info.accessory)
-                    .offset(y: geo.notchH - 15)
-            } else {
-                PlasmieView(state: info.hero, size: 18).offset(y: 3)
-            }
-            HStack { Spacer(); Circle().fill(info.dot).frame(width: 6, height: 6) }
-                .padding(.trailing, mode.topRadius + 6)
-                .frame(height: geo.notchH)
+        HStack(spacing: 0) {
+            PlasmieView(state: info.hero, size: geo.hasNotch ? 26 : 18, accessory: geo.hasNotch ? info.accessory : nil)
+                .frame(width: ear)
+            Spacer(minLength: geo.hasNotch ? geo.notchW : 4)
+            Circle().fill(info.dot).frame(width: 6, height: 6).frame(width: ear)
         }
+        .padding(.horizontal, mode.topRadius)
+        .frame(height: geo.notchH)
         .accessibilityHidden(true)
     }
 

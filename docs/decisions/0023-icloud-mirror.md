@@ -13,6 +13,11 @@ mirrors the vault to `iCloud Drive/Plasmie/<vault>`:
   beside the fresh copy, and a vault deletion only removes an unedited mirror copy;
 - change detection is size + mtime (never reads mirror contents, so offloaded files
   are not forced to download);
+- **only what's worth reading on a phone leaves the Mac** (an allowlist): `wiki/`,
+  `archive/`, `meta/digests/`, `index.md`, `log.md`, Obsidian display settings. Never
+  `raw/` (unredacted captures), the rest of `meta/` (Ask queries, drafts), Obsidian plugin
+  data (API keys live in plugin `data.json`) or `.git`; any file the secret redactor
+  would change is held back and reported;
 - the **app** runs it (every 30 min and on demand); its iCloud Drive permission covers
   its child processes, which launchd jobs can't get.
 

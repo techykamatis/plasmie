@@ -51,7 +51,7 @@ final class OverlayController {
     }
 
     private func show() {
-        let st = loadStatus()
+        let st = Model.shared.s                  // already refreshed; running plasmie-status here blocked the main thread
         let root = AskOverlay(vault: st.vault, notes: st.notes) { [weak self] in self?.panel?.orderOut(nil) }
         let p = panel ?? makePanel()
         panel = p
@@ -298,7 +298,7 @@ struct AskOverlay: View {
         busy = true; answer = ""; status = ""; answerHeight = 0; gapLogged = false
         AskActivity.shared.answering = true
         // The venv holds apple_fm_sdk (on-device answers); system python can't import it.
-        runStreaming(PlasmiePaths.python, [PlasmiePaths.script("ask.py"), q, vault],
+        runStreaming(PlasmiePaths.python, [PlasmiePaths.script("ask.py"), q, vault], timeout: 180,
                      onStatus: { status = $0; if $0.contains("coverage gap") { gapLogged = true } },
                      onChunk: { answer = $0 },
                      onDone: {

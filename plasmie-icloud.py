@@ -30,11 +30,18 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths  # noqa: E402
+from scrub import redact  # noqa: E402
 
 ICLOUD = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs"
 MANIFEST = Path(paths.DATA_DIR) / "icloud-manifest.json"
-SKIP_DIRS = {".git", ".trash", ".DS_Store", "node_modules"}
-SKIP_FILES = {".DS_Store", "workspace.json", "workspace-mobile.json"}   # Obsidian's per-device layout
+# What leaves the Mac is an allowlist of what's worth reading on a phone: the curated wiki,
+# the archive, daily digests, the index and log, and Obsidian's display settings. Never
+# raw/ (unredacted captures: Slack messages, sessions), the rest of meta/ (Ask queries,
+# drafts), plugin data (plugins keep API keys in data.json), or git internals.
+MIRROR = ("wiki/", "archive/", "meta/digests/", "index.md", "log.md", ".obsidian/")
+NEVER = (".obsidian/plugins/", ".obsidian/workspace")
+SKIP_FILES = {".DS_Store"}
+TEXT = {".md", ".json", ".css", ".txt", ".canvas"}
 
 
 def default_dest(vault: Path) -> Path:
@@ -46,13 +53,29 @@ def _sig(p: Path) -> list:
     return [st.st_size, st.st_mtime_ns]
 
 
+def mirrored(rel: str) -> bool:
+    return rel.startswith(MIRROR) and not rel.startswith(NEVER)
+
+
+def looks_secret(p: Path) -> bool:
+    """A text file the redactor would change holds something that looks like a secret."""
+    if p.suffix not in TEXT:
+        return False
+    try:
+        text = p.read_text(errors="replace")
+    except OSError:
+        return True
+    return redact(text) != text
+
+
 def _files(vault: Path):
     for root, dirs, files in os.walk(vault):
-        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        rel_root = Path(root).relative_to(vault).as_posix()
+        dirs[:] = [d for d in dirs if d != ".git" and (rel_root != "." or any(m.startswith(d) for m in MIRROR))]
         for f in files:
-            if f not in SKIP_FILES:
-                p = Path(root) / f
-                yield p.relative_to(vault).as_posix(), p
+            rel = (Path(root) / f).relative_to(vault).as_posix()
+            if f not in SKIP_FILES and mirrored(rel):
+                yield rel, Path(root) / f
 
 
 def _keep_edit(dst: Path) -> Path:
@@ -71,15 +94,19 @@ def sync(vault: Path, dest: Path, manifest_path: Path = MANIFEST) -> dict:
     except (OSError, ValueError):
         old = {}
     files = old.get("files", {})          # rel -> {"src": sig of source copied, "dst": sig we left}
-    copied, kept, removed = 0, [], 0
+    copied, kept, removed, held = 0, [], 0, []
     seen = set()
     for rel, src in _files(vault):
-        seen.add(rel)
         dst = dest / rel
         rec = files.get(rel)
         src_sig = _sig(src)
         if rec and rec["src"] == src_sig and dst.exists():
+            seen.add(rel)
             continue                                             # unchanged since last sync
+        if looks_secret(src):
+            held.append(rel)                                     # never upload what looks like a secret
+            continue
+        seen.add(rel)
         if dst.exists() and (not rec or _sig(dst) != rec["dst"]):
             kept.append(str(_keep_edit(dst).relative_to(dest)))  # edited in iCloud (or unknown): keep it
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -95,7 +122,7 @@ def sync(vault: Path, dest: Path, manifest_path: Path = MANIFEST) -> dict:
             kept.append(rel)                                     # edited there: leave it
         del files[rel]
     result = {"ok": True, "dest": str(dest), "copied": copied, "removed": removed,
-              "kept_edits": kept, "files": len(files), "at": datetime.now().isoformat(timespec="seconds")}
+              "kept_edits": kept, "held_back": held, "files": len(files), "at": datetime.now().isoformat(timespec="seconds")}
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps({"files": files, "last": result}))
     return result

@@ -36,7 +36,9 @@ extension Status {
 
 // MARK: - shell helpers
 
-func runCapture(_ launch: String, _ args: [String]) -> String {
+/// Run to completion and return combined output. Blocking: never call on the main thread.
+/// A hung script is terminated after `timeout` so no caller waits forever.
+func runCapture(_ launch: String, _ args: [String], timeout: TimeInterval = 120) -> String {
     let p = Process()
     p.executableURL = URL(fileURLWithPath: launch)
     p.arguments = args
@@ -44,15 +46,24 @@ func runCapture(_ launch: String, _ args: [String]) -> String {
     p.standardOutput = out
     p.standardError = out
     do { try p.run() } catch { return "error: \(error.localizedDescription)" }
+    let watchdog = killAfter(p, timeout)
     let data = out.fileHandleForReading.readDataToEndOfFile()
     p.waitUntilExit()
+    watchdog.cancel()
     return String(data: data, encoding: .utf8) ?? ""
+}
+
+/// Terminates `p` if it is still running after `seconds`; cancel it once `p` exits.
+func killAfter(_ p: Process, _ seconds: TimeInterval) -> DispatchWorkItem {
+    let w = DispatchWorkItem { if p.isRunning { p.terminate() } }
+    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + seconds, execute: w)
+    return w
 }
 
 /// Run a process and stream it live: stdout chunks via onChunk, stderr lines via
 /// onStatus, and onDone at exit. Used by the ask overlay so the answer appears
 /// token-by-token and the status row shows what the pipeline is doing.
-func runStreaming(_ launch: String, _ args: [String],
+func runStreaming(_ launch: String, _ args: [String], timeout: TimeInterval? = nil,
                   onStatus: @escaping (String) -> Void,
                   onChunk: @escaping (String) -> Void,
                   onDone: @escaping () -> Void) {
@@ -88,6 +99,7 @@ func runStreaming(_ launch: String, _ args: [String],
             DispatchQueue.main.async { onStatus("error: \(error.localizedDescription)"); onDone() }
             return
         }
+        let watchdog = timeout.map { killAfter(p, $0) }    // nil: long by design (setup downloads)
         var outBuf = Data()
         while true {
             let d = oh.availableData
@@ -96,6 +108,7 @@ func runStreaming(_ launch: String, _ args: [String],
             if let s = String(data: outBuf, encoding: .utf8) { DispatchQueue.main.async { onChunk(s) } }
         }
         p.waitUntilExit()
+        watchdog?.cancel()
         eh.readabilityHandler = nil
         DispatchQueue.main.async { onDone() }
     }

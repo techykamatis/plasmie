@@ -150,8 +150,10 @@ func loadAchievements() -> Achievements? {
         p.standardOutput = out
         p.standardError = FileHandle.nullDevice
         guard (try? p.run()) != nil else { continue }
+        let watchdog = killAfter(p, 120)
         let data = out.fileHandleForReading.readDataToEndOfFile()    // stdout only: stderr must not corrupt the JSON
         p.waitUntilExit()
+        watchdog.cancel()
         guard p.terminationStatus == 0, let start = data.firstIndex(of: UInt8(ascii: "{")) else { continue }
         if let r = try? JSONDecoder().decode(Achievements.self, from: data[start...]) { return r }
     }

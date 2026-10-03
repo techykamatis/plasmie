@@ -63,11 +63,13 @@ final class ICloudSync: ObservableObject {
                 : (err.isEmpty ? "iCloud sync failed. Copy diagnostics and send them over." : err)
         }
         let kept = (r["kept_edits"] as? [Any])?.count ?? 0
+        let held = (r["held_back"] as? [Any])?.count ?? 0
+        let heldNote = held > 0 ? " · \(held) note\(held == 1 ? "" : "s") kept off iCloud (looked like a secret)" : ""
         let when = (r["at"] as? String).flatMap { ISO8601DateFormatter.local.date(from: $0) }
             .map { RelativeDateTimeFormatter().localizedString(for: $0, relativeTo: Date()) } ?? "just now"
         return kept > 0
             ? "Synced \(when) · \(kept) note\(kept == 1 ? "" : "s") edited in iCloud kept beside the fresh copy"
-            : "Synced \(when) · \(r["files"] as? Int ?? 0) files in iCloud Drive › Plasmie"
+            : "Synced \(when) · \(r["files"] as? Int ?? 0) files in iCloud Drive › Plasmie\(heldNote)"
     }
 }
 

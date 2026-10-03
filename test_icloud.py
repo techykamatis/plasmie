@@ -21,6 +21,13 @@ def setup(tmp_path):
     (v / "wiki").mkdir(parents=True)
     (v / ".git").mkdir()
     (v / ".git" / "HEAD").write_text("ref")
+    (v / "raw" / "slack").mkdir(parents=True)
+    (v / "raw" / "slack" / "2026-10-01.md").write_text("a private DM")
+    (v / "meta").mkdir()
+    (v / "meta" / "usage.tsv").write_text("what did I ask")
+    (v / ".obsidian" / "plugins" / "x").mkdir(parents=True)
+    (v / ".obsidian" / "plugins" / "x" / "data.json").write_text('{"apiKey": "k"}')
+    (v / ".obsidian" / "app.json").write_text("{}")
     (v / "wiki" / "a.md").write_text("A1")
     (v / "wiki" / "b.md").write_text("B1")
     return v, tmp_path / "mirror", tmp_path / "manifest.json"
@@ -36,8 +43,10 @@ def test_mirrors_and_skips_git(monkeypatch, tmp_path):
     ic = load(monkeypatch, tmp_path)
     v, d, m = setup(tmp_path)
     r = ic.sync(v, d, m)
-    assert r["copied"] == 2 and (d / "wiki" / "a.md").read_text() == "A1"
-    assert not (d / ".git").exists()
+    assert r["copied"] == 3 and (d / "wiki" / "a.md").read_text() == "A1"
+    assert (d / ".obsidian" / "app.json").exists()
+    for never in (".git", "raw", "meta/usage.tsv", ".obsidian/plugins"):
+        assert not (d / never).exists(), never
     assert ic.sync(v, d, m)["copied"] == 0                       # nothing changed: no work
 
 
@@ -90,3 +99,11 @@ def test_cli_refuses_to_upload_without_the_users_switch(monkeypatch, tmp_path, c
     monkeypatch.setattr(ic, "sync", lambda *a, **k: called.append(1) or {"ok": True})
     assert ic.main(["sync"]) == 1 and not called
     assert "off" in capsys.readouterr().out
+
+
+def test_a_note_that_looks_like_it_holds_a_secret_stays_home(monkeypatch, tmp_path):
+    ic = load(monkeypatch, tmp_path)
+    v, d, m = setup(tmp_path)
+    (v / "wiki" / "creds.md").write_text("token xoxp-1234567890-abcdefghijkl")
+    r = ic.sync(v, d, m)
+    assert not (d / "wiki" / "creds.md").exists() and r["held_back"] == ["wiki/creds.md"]

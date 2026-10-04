@@ -101,6 +101,26 @@ struct Panel: View {
     @State private var confirm: Confirm?
     @AppStorage(NotchPrefs.key) private var notchOn = true
     private var working: Bool { m.s.state == "running" || m.busy }
+    @State private var egg = OriginEgg()
+    @State private var showOrigin = false
+
+    /// The small version line at the bottom. In the app window it is also, quietly, a button
+    /// (Origin.swift): nothing says so, and to VoiceOver it is just the version.
+    @ViewBuilder private var versionLine: some View {
+        let line = Text("\(Brand.name) \(Self.version)").font(.klMeta).foregroundStyle(.tertiary)
+            .padding(.horizontal, 12).padding(.bottom, 8)
+        if inWindow {
+            Button {
+                guard egg.click() else { return }
+                showOrigin = true
+                OriginEgg.found(m)
+            } label: { line.contentShape(Rectangle()) }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Version \(Self.version)")
+        } else {
+            line.textSelection(.enabled)
+        }
+    }
 
     private func groupLabel(_ t: String) -> some View {
         Text(t).font(.klMeta).foregroundStyle(.tertiary)
@@ -132,11 +152,10 @@ struct Panel: View {
             Divider().padding(.horizontal, 12)
             ActionRow(title: "Quit \(Brand.name)", symbol: "power", key: "q", compact: true) { NSApp.terminate(nil) }
                 .padding(.horizontal, 6).padding(.vertical, 3)
-            Text("\(Brand.name) \(Self.version)").font(.klMeta).foregroundStyle(.tertiary)
-                .padding(.horizontal, 12).padding(.bottom, 8)
-                .textSelection(.enabled)
+            versionLine
         }
         .frame(width: 320)
+        .sheet(isPresented: $showOrigin) { OriginStoryCard(m: m) { showOrigin = false } }
         // ⌘R: refresh has no row (status auto-refreshes every 60s) but keeps its shortcut;
         // it is surfaced as a hint on the panel.
         .help("Status refreshes every minute · ⌘R to refresh now")

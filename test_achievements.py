@@ -99,7 +99,7 @@ def test_evolution_reported_with_next_stage_needs(tmp_path):
 
 def test_every_trophy_is_within_the_first_year_and_unique():
     ids = [t[0] for t in A.TROPHIES]
-    assert len(ids) == len(set(ids)) and len(ids) >= 30
+    assert len(ids) == len(set(ids)) and len(ids) == 35
     assert all(t[5] <= 365 for t in A.TROPHIES if t[4] == "age")
     assert {t[2] for t in A.TROPHIES} == {"bronze", "silver", "gold"}
 
@@ -131,3 +131,42 @@ def test_every_stage_reports_when_it_was_reached_and_dates_stick(tmp_path):
     assert by["scholar"]["reached"] is None and by["scholar"]["notesLeft"] == 130
     r2, _ = A.evaluate(v, today=D(2026, 12, 1), state=st)
     assert {s["id"]: s["reached"] for s in r2["stages"]}["sprout"] == "2026-07-09"
+
+
+# --- the secret trophy: found by opening the hidden "Why Plasmie?" card ------------------------
+def test_the_secret_trophy_says_nothing_while_locked(tmp_path):
+    v = _vault(tmp_path, ingest_days=["2026-07-02"])
+    r, st = A.evaluate(v, today=D(2026, 10, 4), origin=tmp_path / "no-marker")
+    t = _by_id(r)["origin-story"]
+    assert not t["unlocked"] and t["secret"]
+    assert t["name"] == "???" and t["description"] == "Some things are hidden. Look closely."
+    assert not {"progress", "current", "target"} & t.keys()                  # no progress bar
+    shown = {k: v for k, v in t.items() if k != "id"}
+    assert not any(s in str(list(shown.values())).lower() for s in ("origin", "plasm", "slime", "name", "version"))
+    assert "origin-story" not in st["unlocked"] and "origin-story" not in r["newly"]
+
+
+def test_the_secret_trophy_unlocks_on_the_marker_date_and_sticks(tmp_path):
+    v = _vault(tmp_path, ingest_days=["2026-07-02"])
+    marker = tmp_path / ".found-origin"
+    marker.write_text("2026-10-04\n")
+    r, st = A.evaluate(v, today=D(2026, 10, 6), origin=marker)
+    t = _by_id(r)["origin-story"]
+    assert t["unlocked"] and t["date"] == "2026-10-04" and t["name"] == "Origin Story"
+    assert "origin-story" in r["newly"] and t["progress"] == 1
+    assert "teammates" in t["description"] and A.paths.APP_NAME in t["description"]
+    marker.unlink()                                                        # sticky, like the others
+    r2, _ = A.evaluate(v, today=D(2026, 12, 1), state=st, origin=marker)
+    assert _by_id(r2)["origin-story"]["unlocked"] and _by_id(r2)["origin-story"]["date"] == "2026-10-04"
+
+
+def test_a_marker_without_a_date_unlocks_on_the_day_it_was_written(tmp_path):
+    v = _vault(tmp_path, ingest_days=["2026-07-02"])
+    marker = tmp_path / ".found-origin"
+    marker.write_text("")
+    r, _ = A.evaluate(v, today=D(2026, 10, 6), origin=marker)
+    assert _by_id(r)["origin-story"]["date"] == dt.date.fromtimestamp(marker.stat().st_mtime).isoformat()
+
+
+def test_only_the_origin_story_is_secret():
+    assert A.SECRET == {"origin-story"} and "origin-story" in {t[0] for t in A.TROPHIES}

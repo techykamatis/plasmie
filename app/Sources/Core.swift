@@ -205,6 +205,7 @@ final class Model: ObservableObject {
     @Published var celebrating: String? = nil      // name of a just-unlocked trophy, for a few seconds
     private var achLoadedAt = Date.distantPast
     private var achLoading = false
+    private var achAgain = false                   // a forced refresh asked for while one was loading
     private var celebrated = Set<String>()
     var stage: AchStage? { ach?.stage }
     var trophies: [Trophy] { ach?.trophyList ?? [] }
@@ -239,13 +240,16 @@ final class Model: ObservableObject {
         }
     }
 
-    func refreshAchievements() {
-        guard !achLoading, Date().timeIntervalSince(achLoadedAt) > 290 else { return }
+    /// `force`: now, not at most every ~5 minutes (a trophy the app itself just made reachable).
+    func refreshAchievements(force: Bool = false) {
+        if achLoading { achAgain = achAgain || force; return }   // a forced one runs right after
+        guard force || Date().timeIntervalSince(achLoadedAt) > 290 else { return }
         achLoading = true
         DispatchQueue.global(qos: .utility).async {
             let r = loadAchievements()
             DispatchQueue.main.async {
                 self.achLoading = false
+                if self.achAgain { self.achAgain = false; self.refreshAchievements(force: true) }
                 guard let r else { return }          // keep the last good report on failure
                 self.achLoadedAt = Date()
                 self.ach = r

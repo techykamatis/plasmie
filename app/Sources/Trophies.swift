@@ -53,9 +53,12 @@ struct Trophy: Decodable, Identifiable {
     var progress: Double?
     var current: Double?
     var target: Double?
+    var secret: Bool?                  // a locked secret: "???", no hint, no progress
 
     var title: String { name ?? id }
     var isUnlocked: Bool { unlocked ?? false }
+    var isHiddenSecret: Bool { (secret ?? false) && !isUnlocked }
+    var hasProgress: Bool { !isHiddenSecret && (target ?? 0) > 0 }
     var tierName: String { ["bronze", "silver", "gold"].contains(tier ?? "") ? tier ?? "bronze" : "bronze" }
     var tierHue: PlasmieHue {
         switch tierName {
@@ -70,6 +73,7 @@ struct Trophy: Decodable, Identifiable {
         if isUnlocked {
             return "\(title), \(tierName) trophy, unlocked" + (AchDate.long(date).map { " \($0)" } ?? "")
         }
+        if isHiddenSecret { return "Secret trophy, locked" }
         let c = Int(current ?? 0), t = Int(target ?? 0)
         return "\(title), \(tierName) trophy, locked" + (t > 0 ? ", \(c) of \(t)" : "")
     }
@@ -350,7 +354,7 @@ private struct TrophyTile: View {
                 }
                 if trophy.isUnlocked {
                     if let when = AchDate.short(trophy.date) { Text(when).font(.klMeta).foregroundStyle(.tertiary) }
-                } else {
+                } else if trophy.hasProgress {
                     SlimBar(value: trophy.fraction, tint: trophy.tierHue.color(scheme)).padding(.vertical, 3)
                     Text("\(Int(trophy.current ?? 0)) / \(Int(trophy.target ?? 0))").font(.klMeta).foregroundStyle(.secondary)
                 }

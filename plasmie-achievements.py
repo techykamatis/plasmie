@@ -20,6 +20,8 @@ from pathlib import Path
 import paths
 
 STATE = Path(paths.LOOP_DIR) / ".achievements.json"
+# Written by the app (the date, once) when someone finds the hidden "Why Plasmie?" card.
+ORIGIN = Path(paths.DATA_DIR) / ".found-origin"
 DAY = dt.timedelta(days=1)
 
 # (id, name, accessory, min age in days, min wiki notes)
@@ -68,7 +70,15 @@ TROPHIES = [
     ("pattern-spotter", "Pattern Spotter", "silver", f"{paths.APP_NAME} noticed a pattern and you kept it.", "noticed", 1, "binoculars.fill"),
     ("pattern-collector", "Pattern Collector", "gold", f"10 patterns {paths.APP_NAME} noticed made it into your wiki.", "noticed", 10, "binoculars"),
     ("clean-bill", "Clean Bill", "silver", "No dead links and every recent note has a source.", "clean", 1, "checkmark.seal.fill"),
+    ("origin-story", "Origin Story", "silver",
+     f"Found where {paths.APP_NAME}'s name comes from. Someday your {paths.APP_ID} might wave hello to your "
+     "teammates' and swap the good things each of them found.", "origin", 1, "leaf.fill"),
 ]
+
+# Secret trophies: until unlocked, the report says nothing about them (no name, no hint of
+# what to do, no progress), so the Trophies window can't spoil the surprise.
+SECRET = {"origin-story"}
+SECRET_LOCKED = {"name": "???", "description": "Some things are hidden. Look closely.", "symbol": "questionmark"}
 
 # "<name> noticed": today's name and every earlier one (Plasmie, Plasmie, Plasmie), so older
 # pattern notes keep counting after a rename.
@@ -189,7 +199,18 @@ def birthday(vault, saved=None):
     return min(cands) if cands else dt.date.today()
 
 
-def metrics(vault, today, born):
+def _origin_date(marker=None):
+    """When the hidden origin card was first opened (the app writes the date), else None."""
+    p = Path(marker or ORIGIN)
+    if not p.is_file():
+        return None
+    try:
+        return dt.date.fromisoformat(p.read_text(errors="replace").strip()[:10])
+    except (OSError, ValueError):                 # unreadable or not a date: when it was written
+        return dt.date.fromtimestamp(p.stat().st_mtime)
+
+
+def metrics(vault, today, born, origin=None):
     """metric -> (current value, {target: date reached}) — dates let old milestones keep their day."""
     ev = _events(vault)
     ingests, promotes, prunes = (_dates_of(ev, k) for k in ("ingest", "promote", "prune"))
@@ -208,6 +229,8 @@ def metrics(vault, today, born):
     out["streak"] = (max(streak) if streak else 0, lambda n: streak.get(n))
     age = (today - born).days
     out["age"] = (age, lambda n: born + DAY * n if n <= age else None)
+    found = _origin_date(origin)
+    out["origin"] = (1 if found else 0, lambda n, d=found: d if n <= 1 else None)
     for name, value in (("sources", _sources_recent(vault, today)),
                         ("links", _link_density(vault)), ("clean", _clean(vault))):
         out[name] = (value, lambda n, v=value: today if v >= n else None)
@@ -224,11 +247,19 @@ def stage_for(age, notes):
     return current, nxt
 
 
-def evaluate(vault, today=None, state=None):
+def _trophy(tid, name, tier, desc, symbol, value, target, unlocked):
+    if tid in SECRET and tid not in unlocked:
+        return {"id": tid, "tier": tier, "secret": True, "unlocked": False, "date": None, **SECRET_LOCKED}
+    return {"id": tid, "name": name, "tier": tier, "description": desc, "symbol": symbol,
+            "unlocked": tid in unlocked, "date": unlocked.get(tid),
+            "progress": round(min(1.0, value / target), 3), "current": round(value, 2), "target": target}
+
+
+def evaluate(vault, today=None, state=None, origin=None):
     today = today or dt.date.today()
     state = dict(state or {})
     born = birthday(vault, state.get("birthday"))
-    m = metrics(vault, today, born)
+    m = metrics(vault, today, born, origin)
     unlocked = dict(state.get("unlocked", {}))
     newly, trophies = [], []
     for tid, name, tier, desc, metric, target, symbol in TROPHIES:
@@ -237,9 +268,7 @@ def evaluate(vault, today=None, state=None):
             reached = when(int(target)) or today
             unlocked[tid] = reached.isoformat()
             newly.append(tid)
-        trophies.append({"id": tid, "name": name, "tier": tier, "description": desc, "symbol": symbol,
-                         "unlocked": tid in unlocked, "date": unlocked.get(tid),
-                         "progress": round(min(1.0, value / target), 3), "current": round(value, 2), "target": target})
+        trophies.append(_trophy(tid, name, tier, desc, symbol, value, target, unlocked))
     # every evolution and when it was reached (saved like trophy dates, so they never move)
     reached = dict(state.get("stages", {}))
     stages = []

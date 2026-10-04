@@ -103,39 +103,61 @@ def sample(sdf, cx, cy, reach=70.0):
     return pts
 
 
-def trace(sdf, cx, step=0.25, eps=1e-3):
+def _grad(sdf, x, y, eps=1e-3):
+    return ((sdf(x + eps, y) - sdf(x - eps, y)) / (2 * eps),
+            (sdf(x, y + eps) - sdf(x, y - eps)) / (2 * eps))
+
+
+def _top(sdf, cx):
+    """Where the vertical through cx first enters the shape, from above."""
+    lo, hi = 0.0, 100.0
+    for _ in range(50):
+        mid = (lo + hi) / 2
+        if sdf(cx, mid) < 0:
+            hi = mid
+        else:
+            lo = mid
+    return (cx, hi)
+
+
+def _walk(sdf, start, step):
+    """Dense points along the zero line, clockwise (y down), back to `start`."""
+    p, pts, walked = start, [start], 0.0
+    while walked <= 4 * step or math.dist(p, start) >= step:
+        gx, gy = _grad(sdf, *p)
+        g = math.hypot(gx, gy) or 1
+        q = (p[0] - gy / g * step, p[1] + gx / g * step)        # along the tangent
+        for _ in range(3):                                       # then back onto the line
+            d = sdf(*q)
+            gx, gy = _grad(sdf, *q)
+            g2 = gx * gx + gy * gy or 1
+            q = (q[0] - d * gx / g2, q[1] - d * gy / g2)
+        walked += math.dist(p, q)
+        p = q
+        pts.append(p)
+        if walked > 2000:
+            raise RuntimeError("contour didn't close")
+    pts[-1] = start
+    return pts
+
+
+def trace(sdf, cx, step=0.25):
     """N anchors evenly by arc length along the SDF's zero line, clockwise from its top point on
     x=cx. For shapes rays from one centre can't sample: an armpit hides from every ray, so
     `sample` webs it over."""
-    lo, hi = 0.0, 100.0                       # top crossing on the vertical through cx (outside above)
-    for _ in range(50):
-        mid = (lo + hi) / 2
-        if sdf(cx, mid) < 0: hi = mid
-        else: lo = mid
-    def grad(x, y):
-        return ((sdf(x + eps, y) - sdf(x - eps, y)) / (2 * eps), (sdf(x, y + eps) - sdf(x, y - eps)) / (2 * eps))
-    start = (cx, hi); p = start; pts = [p]; walked = 0.0
-    while True:
-        gx, gy = grad(*p); g = math.hypot(gx, gy) or 1
-        q = (p[0] - gy / g * step, p[1] + gx / g * step)       # along the tangent, clockwise (y down)
-        for _ in range(3):                                      # back onto the line
-            d = sdf(*q); gx, gy = grad(*q); g2 = gx * gx + gy * gy or 1
-            q = (q[0] - d * gx / g2, q[1] - d * gy / g2)
-        walked += math.dist(p, q); p = q; pts.append(p)
-        if walked > 4 * step and math.dist(p, start) < step: break
-        if walked > 2000: raise RuntimeError("contour didn't close")
-    pts[-1] = start
+    pts = _walk(sdf, _top(sdf, cx), step)
     seg = [0.0]
-    for a, b in zip(pts, pts[1:]): seg.append(seg[-1] + math.dist(a, b))
-    total, out, j = seg[-1], [], 0
+    for a, b in zip(pts, pts[1:]):
+        seg.append(seg[-1] + math.dist(a, b))
+    out, j = [], 0
     for i in range(N):
-        s = total * i / N
-        while seg[j + 1] < s: j += 1
+        s = seg[-1] * i / N
+        while seg[j + 1] < s:
+            j += 1
         t = (s - seg[j]) / ((seg[j + 1] - seg[j]) or 1)
         a, b = pts[j], pts[j + 1]
         out.append((round(a[0] + (b[0] - a[0]) * t, 2), round(a[1] + (b[1] - a[1]) * t, 2)))
     return out
-
 
 MOCHI = ellipse(50, 56, 36, 32)
 

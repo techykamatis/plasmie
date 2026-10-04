@@ -299,13 +299,17 @@ final class Model: ObservableObject {
     func nextFunFact() {
         guard !funFactLoading else { return }
         funFactLoading = true
-        pondering = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.pondering = false }
+        pondering = true                      // held until the new fact lands (the model takes a few s)
+        let started = Date()
         DispatchQueue.global(qos: .utility).async {
-            let f = loadFunFact(next: true)
-            DispatchQueue.main.async {
+            let f = loadFunFact(next: true)    // runCapture's timeout bounds this
+            // at least a beat of pondering so a fast answer doesn't flicker, then the
+            // pose and the new fact change together
+            let wait = max(0, 0.8 - Date().timeIntervalSince(started))
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
                 self.funFactLoading = false
                 if let f { self.funFact = f }
+                self.pondering = false
             }
         }
     }

@@ -73,10 +73,10 @@ def _check(name, value):
         raise KeychainError(f"{name}: empty, or contains control characters")
 
 
-def get(name):
+def get(name, service=None):
     """The stored value, or None when absent (or the keychain can't be read)."""
     try:
-        r = subprocess.run([SECURITY, "find-generic-password", "-s", SERVICE, "-a", name, "-w",
+        r = subprocess.run([SECURITY, "find-generic-password", "-s", service or SERVICE, "-a", name, "-w",
                             *_keychain()], capture_output=True, text=True, timeout=TIMEOUT)
     except (OSError, subprocess.TimeoutExpired, KeychainError):
         return None
@@ -101,6 +101,20 @@ def put(name, value):
         raise KeychainError(f"{name}: {e}") from None
     if get(name) != value:                     # `security -i` exits 0 even on failure
         raise KeychainError(f"{name}: the Keychain did not keep it (locked, or access denied?)")
+
+
+def adopt_service(old="Plasmie"):
+    """Copy sign-ins saved under the app's old name (ADR 0027) to SERVICE. Copy only:
+    the old items stay, and a value already under SERVICE is never overwritten. Raises
+    KeychainError if any copy fails (a locked keychain), so a migration retries."""
+    copied = []
+    for name in SECRETS:
+        if get(name) is None:
+            v = get(name, old)
+            if v:
+                put(name, v)
+                copied.append(name)
+    return copied
 
 
 def delete(name):

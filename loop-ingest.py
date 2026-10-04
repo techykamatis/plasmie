@@ -102,6 +102,10 @@ def name_of(uid):
 slack_lines = []
 slack_counts = []
 slack_err = None
+if "slack" not in OFF and not TOKEN:
+    # switched on but no sign-in: say so (the island shows it) instead of skipping
+    # silently, and hold Slack's watermark so a restored token catches up the gap
+    slack_err = "not signed in; add your Slack token in Plasmie > Connectors"
 if TOKEN and "slack" not in OFF:
     try:
         uname = slack("auth.test").get("user", "")

@@ -71,11 +71,19 @@ def m4_retire_plasmie_jobs() -> None:
         raise RuntimeError(f"still loaded: {', '.join(left)}")
 
 
+def m5_adopt_plasmie_signins() -> None:
+    """Sign-ins saved in the Keychain as "Plasmie" before the rename move to "Plasmie"
+    (copy only). Without this, an enabled connector silently loses its token."""
+    import keychain
+    keychain.adopt_service("Plasmie")
+
+
 STEPS = [
     (1, "move data out of ~/.plasmie", m1_move_out_of_dotfolder),
     (2, "seed ingest watermarks from the vault", m2_seed_watermarks_from_vault),
     (3, "retire the old com.legacy background jobs", m3_retire_legacy_jobs),
     (4, "retire Plasmie's com.plasmie background jobs", m4_retire_plasmie_jobs),
+    (5, "copy Plasmie sign-ins to Plasmie in the Keychain", m5_adopt_plasmie_signins),
 ]
 LATEST = STEPS[-1][0]
 

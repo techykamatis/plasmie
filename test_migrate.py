@@ -112,13 +112,13 @@ def test_step4_fails_while_a_plasmie_job_stays_loaded_so_it_is_retried(monkeypat
     assert not r["ok"] and r["failed"] == 4 and "com.plasmie.ingest" in r["error"] and km.current(vf) == 3
 
 
-def test_an_install_at_version_3_runs_only_step4(monkeypatch, tmp_path):
+def test_an_install_at_version_3_runs_step4_onward(monkeypatch, tmp_path):
     km = load(monkeypatch, tmp_path)
     state = fake_launchd(monkeypatch, tmp_path, loaded=["com.plasmie.summarize"])
     vf = tmp_path / "v"
     vf.write_text("3\n")
     r = km.migrate(km.STEPS, vf)
-    assert r == {"ok": True, "version": 4, "latest": 4, "applied": ["retire Plasmie's com.plasmie background jobs"]}
+    assert r["ok"] and r["version"] == 5 and r["applied"][0] == "retire Plasmie's com.plasmie background jobs"
     assert loaded_now(state) == []
 
 

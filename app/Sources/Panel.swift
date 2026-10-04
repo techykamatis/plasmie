@@ -154,11 +154,37 @@ struct Panel: View {
             Text("Plasmie").font(.klTitle)
             stageLine
             StatusPill(state: m.s.state, reason: m.s.reason)
+            if inWindow { latestTrophies }
         }
         .frame(maxWidth: .infinity)
         .padding(.bottom, 12)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.plasmieBody.opacity(0.12)))
         .padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 8)
+    }
+
+    /// The three most recently won trophies, newest first; a door into the Trophies window.
+    @ViewBuilder private var latestTrophies: some View {
+        let latest = (m.ach?.trophies ?? []).filter(\.isUnlocked)
+            .sorted { ($0.date ?? "") > ($1.date ?? "") }.prefix(3)
+        if !latest.isEmpty {
+            Button { TrophiesController.shared.show(m) } label: {
+                HStack(alignment: .top, spacing: 14) {
+                    ForEach(Array(latest)) { t in
+                        VStack(spacing: 4) {
+                            TrophyBadge(trophy: t, width: 30)
+                            Text(t.title).font(.klMeta).foregroundStyle(.secondary)
+                                .lineLimit(2).multilineTextAlignment(.center)
+                                .frame(width: 76)
+                        }
+                    }
+                }
+                .padding(.top, 6)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Your latest trophies · open all")
+            .accessibilityLabel("Latest trophies: " + latest.map(\.title).joined(separator: ", ") + ". Open trophies.")
+        }
     }
 
     // Only present when something is wrong or waiting.

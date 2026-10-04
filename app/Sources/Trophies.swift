@@ -362,17 +362,95 @@ private struct TrophyTile: View {
         .accessibilityHint(trophy.description ?? "")
     }
 
-    private var medal: some View {
+    private var medal: some View { TrophyBadge(trophy: trophy) }
+}
+
+/// A trophy cup in its tier's metal, the achievement's icon engraved on the bowl. Locked:
+/// a faint dashed outline of the cup you haven't won yet. Used by the Trophies window
+/// and the latest-trophies row in the Plasmie window.
+struct TrophyBadge: View {
+    let trophy: Trophy
+    var width: CGFloat = 46
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
         let hue = trophy.tierHue.color(scheme)
+        let ink = PlasmieHues.ink.color(scheme)
+        let won = trophy.isUnlocked
+        let k = width / 46
         return ZStack {
-            Circle().fill(trophy.isUnlocked ? hue : hue.opacity(0.22))
-            Circle().strokeBorder(PlasmieHues.ink.color(scheme).opacity(trophy.isUnlocked ? 0.85 : 0.25), lineWidth: 1.6)
+            if won {
+                TrophyCup.handles.stroke(hue, style: StrokeStyle(lineWidth: 4.2 * k, lineCap: .round))
+                TrophyCup.handles.stroke(ink.opacity(0.85), style: StrokeStyle(lineWidth: 1.4 * k, lineCap: .round))
+                TrophyCup.body.fill(hue)
+                TrophyCup.sheen.fill(Color.white.opacity(0.38))
+                TrophyCup.body.stroke(ink.opacity(0.85), lineWidth: 1.4 * k)
+            } else {
+                TrophyCup.handles.stroke(Color.secondary.opacity(0.45),
+                                         style: StrokeStyle(lineWidth: 1.3 * k, lineCap: .round, dash: [2.5, 2.5]))
+                TrophyCup.body.fill(hue.opacity(0.10))
+                TrophyCup.body.stroke(Color.secondary.opacity(0.45), style: StrokeStyle(lineWidth: 1.3 * k, dash: [2.5, 2.5]))
+            }
             Image(systemName: trophy.symbol ?? "rosette")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(trophy.isUnlocked ? PlasmieHues.ink.color(scheme) : Color.secondary)
+                .font(.system(size: 12 * k, weight: .bold))
+                .foregroundStyle(won ? ink.opacity(0.8) : Color.secondary.opacity(0.6))
+                .offset(y: -9 * k)
         }
-        .frame(width: 44, height: 44)
-        .shadow(color: .black.opacity(trophy.isUnlocked ? 0.18 : 0), radius: 3, x: 0, y: 1.5)
+        .frame(width: width, height: width * 52 / 46)
+        .shadow(color: .black.opacity(won ? 0.2 : 0), radius: 2.5 * k, x: 0, y: 1.5 * k)
+        .accessibilityHidden(true)
+    }
+}
+
+/// The cup, drawn on a 100×100 canvas and scaled to the frame: bowl + stem + stepped base
+/// (one filled shape), handles (stroked), and a highlight that reads as polished metal.
+private enum TrophyCup {
+    static let body = Cup(part: .body)
+    static let handles = Cup(part: .handles)
+    static let sheen = Cup(part: .sheen)
+
+    struct Cup: Shape {
+        enum Part { case body, handles, sheen }
+        let part: Part
+        func path(in r: CGRect) -> Path {
+            let sx = r.width / 100, sy = r.height / 100
+            func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: r.minX + x * sx, y: r.minY + y * sy) }
+            var p = Path()
+            switch part {
+            case .body:
+                p.move(to: pt(20, 6))                                         // bowl rim
+                p.addLine(to: pt(80, 6))
+                p.addCurve(to: pt(56, 56), control1: pt(80, 38), control2: pt(68, 52))
+                p.addLine(to: pt(54, 70))                                     // stem
+                p.addQuadCurve(to: pt(66, 78), control: pt(54, 76))
+                p.addLine(to: pt(70, 78))                                     // collar
+                p.addLine(to: pt(70, 84))
+                p.addLine(to: pt(78, 84))                                     // plinth
+                p.addQuadCurve(to: pt(80, 88), control: pt(80, 84))
+                p.addLine(to: pt(80, 94))
+                p.addLine(to: pt(20, 94))
+                p.addLine(to: pt(20, 88))
+                p.addQuadCurve(to: pt(22, 84), control: pt(20, 84))
+                p.addLine(to: pt(30, 84))
+                p.addLine(to: pt(30, 78))
+                p.addLine(to: pt(34, 78))
+                p.addQuadCurve(to: pt(46, 70), control: pt(46, 76))
+                p.addLine(to: pt(44, 56))
+                p.addCurve(to: pt(20, 6), control1: pt(32, 52), control2: pt(20, 38))
+                p.closeSubpath()
+            case .handles:
+                p.move(to: pt(21, 14))
+                p.addCurve(to: pt(28, 42), control1: pt(2, 12), control2: pt(4, 40))
+                p.move(to: pt(79, 14))
+                p.addCurve(to: pt(72, 42), control1: pt(98, 12), control2: pt(96, 40))
+            case .sheen:
+                p.move(to: pt(29, 12))
+                p.addCurve(to: pt(38, 44), control1: pt(28, 28), control2: pt(31, 39))
+                p.addCurve(to: pt(34, 12), control1: pt(35, 36), control2: pt(33, 24))
+                p.closeSubpath()
+            }
+            return p
+        }
     }
 }
 

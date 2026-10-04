@@ -16,7 +16,8 @@ BUILD_NO="$(git -C "$SELF/.." rev-list --count HEAD 2>/dev/null || echo 1)"   # 
 APP="$SELF/build/$APP_NAME.app"
 ARCH="$(uname -m)"
 
-rm -rf "$SELF/build"
+# ponytail: rename first (atomic): Finder can drop a .DS_Store in mid-delete and fail "rm -rf"
+if [ -e "$SELF/build" ]; then mv "$SELF/build" "$SELF/build.old.$$" && rm -rf "$SELF/build.old.$$" || true; fi
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 swiftc -O -parse-as-library -target "${ARCH}-apple-macos13.0" \

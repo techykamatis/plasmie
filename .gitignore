@@ -29,3 +29,4 @@ app/*.iconset
 .achievements.json
 .funfacts.json
 .patterns.json
+app/build.old.*

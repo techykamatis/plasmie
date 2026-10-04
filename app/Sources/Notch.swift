@@ -143,7 +143,6 @@ struct NotchActions {
     var trophies: () -> Void = {}
     var openFact: () -> Void = {}
     var nextFact: () -> Void = {}
-    var vault: () -> Void = {}
     var map: () -> Void = {}          // Plasmie's map (MapWindow.swift)
     var openApp: () -> Void = {}      // the Plasmie window: every other option + settings
     var quit: () -> Void = {}
@@ -273,7 +272,7 @@ struct NotchView: View {
     // with a tight header-to-fact gap and a wider break before the actions.
     private var expanded: some View {
         HStack(alignment: .center, spacing: 16) {
-            InteractivePlasmie(state: info.hero, size: 68, accessory: info.accessory)
+            InteractivePlasmie(state: info.hero, size: 68, accessory: info.accessory, onTap: actions.map)
                 .help("Click to say hi · drag to pet")
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 6) {
@@ -297,7 +296,7 @@ struct NotchView: View {
                     } else {
                         NotchChip(title: "Ingest", symbol: "tray.and.arrow.down", label: "Ingest now", action: actions.ingest)
                     }
-                    NotchChip(title: "Vault", symbol: "folder", label: "Open the vault in Obsidian", action: actions.vault)
+                    NotchChip(title: "Map", symbol: "point.3.connected.trianglepath.dotted", label: "Open \(Brand.name)'s map", action: actions.map)
                     NotchChip(title: "More", symbol: "ellipsis.circle", label: "Open \(Brand.name): all options and settings",
                               action: actions.openApp)
                 }
@@ -577,7 +576,6 @@ final class NotchController {
                 if let model, let path = model.funFact?.path, !path.isEmpty { openInObsidian("\(model.s.vault)/\(path)") }
             },
             nextFact: { [weak model] in model?.nextFunFact() },
-            vault: { [weak model] in if let model { openInObsidian(model.s.vault) } },
             map: { [weak model] in if let model { MapController.shared.show(model) } },
             openApp: { SettingsController.shared.show() },
             quit: { NSApp.terminate(nil) },

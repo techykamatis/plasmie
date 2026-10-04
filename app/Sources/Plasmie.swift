@@ -534,6 +534,7 @@ struct InteractivePlasmie: View {
     let state: PlasmieState
     var size: CGFloat = 104
     var accessory: String? = nil
+    var onTap: (() -> Void)? = nil               // the island's Plasmie opens the map (still waves hi)
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var reaction: PlasmieState?
@@ -600,6 +601,7 @@ struct InteractivePlasmie: View {
     }
 
     private func tap() {
+        onTap?()
         let now = Date()
         taps = taps.filter { now.timeIntervalSince($0) < Timing.burstWindow } + [now]
         if !reduceMotion {

@@ -77,6 +77,12 @@ enum PlasmieHues {
     static let agentcli = PlasmieHue(0x2BB3A0)
     static let outlook = PlasmieHue(0x5B8DEF)
     static let eggshell = PlasmieHue(0xFFF7EC)
+    /// Plasmie's map (DESIGN.md › Plasmie's map): pink is Plasmie's alone, so the map around
+    /// it is neutral. Ground, the ordinary note (>= 3:1 on the ground at its palest), and ink
+    /// for labels, how-tos and veins. Accents reuse sparkle, sweat and leaf.
+    static let mapGround = PlasmieHue(0xF4F4F2, dark: 0x17171A)
+    static let mapNote = PlasmieHue(0x6B7285, dark: 0xA3AABA)
+    static let mapInk = PlasmieHue(0x2A2E3A, dark: 0xDADDE4)
     static let leaf = PlasmieHue(0x6CC18E)
     static let bronze = PlasmieHue(0xC98A5B)
     static let silver = PlasmieHue(0xA7B1C2)

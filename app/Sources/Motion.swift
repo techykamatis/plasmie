@@ -32,6 +32,26 @@ enum Motion {
         return 1 - exp(-damping * w0 * t) * (cos(wd * t) + damping * w0 / wd * sin(wd * t))
     }
 
+    /// The `glide` curve, sampled: progress 0...1 (time / glideSeconds) -> eased 0...1.
+    /// The same cubic Bézier (0.16, 1, 0.3, 1), for things a Canvas moves itself (the map camera).
+    static func glideValue(_ p: Double) -> Double {
+        guard p > 0 else { return 0 }
+        guard p < 1 else { return 1 }
+        let (x1, y1, x2, y2) = (0.16, 1.0, 0.3, 1.0)
+        func bez(_ t: Double, _ a: Double, _ b: Double) -> Double {
+            let u = 1 - t
+            return 3 * u * u * t * a + 3 * u * t * t * b + t * t * t
+        }
+        var t = p
+        for _ in 0..<8 {                                   // Newton on x(t) = p
+            let u = 1 - t
+            let dx = 3 * u * u * x1 + 6 * u * t * (x2 - x1) + 3 * t * t * (1 - x2)
+            guard abs(dx) > 1e-6 else { break }
+            t = min(max(t - (bez(t, x1, x2) - p) / dx, 0), 1)
+        }
+        return bez(t, y1, y2)
+    }
+
     /// Decaying cosine, 1 at t = 0 (an impact: starts at full squash, rebounds, settles).
     static func impulse(_ t: Double, freq: Double, decay: Double) -> Double {
         t < 0 ? 0 : exp(-decay * t) * cos(2 * .pi * freq * t)

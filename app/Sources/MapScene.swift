@@ -41,6 +41,8 @@ final class MapScene: ObservableObject {
     private(set) var camera = MapCamera()
     var size = CGSize(width: 900, height: 640)
     var reduceMotion = false
+    var introAt = Date.distantPast             // the opening (MapIntro.swift)
+    var introPose: MapIntroPose?
     var vault: () -> String = { NSString(string: "~/knowledge").expandingTildeInPath }
 
     // clocks
@@ -92,6 +94,7 @@ final class MapScene: ObservableObject {
                     self.kindsPresent = MapKind.allCases.filter { k in g.nodes.contains { $0.kind == k } }
                     self.camera = self.fitCamera(padding: 0.82)
                     self.autoFitted = false; self.userMovedCamera = false
+                    self.startIntro()
                     self.load = .ready(g)
                     self.wake()
                 }
@@ -103,6 +106,7 @@ final class MapScene: ObservableObject {
 
     func screen(_ wx: Double, _ wy: Double, _ c: MapCamera? = nil) -> CGPoint {
         let c = c ?? camera
+        let (wx, wy) = introApply(wx, wy)
         return CGPoint(x: size.width / 2 + (wx - c.x) * c.zoom, y: size.height / 2 + (wy - c.y) * c.zoom)
     }
 
@@ -110,7 +114,12 @@ final class MapScene: ObservableObject {
         (camera.x + (p.x - size.width / 2) / camera.zoom, camera.y + (p.y - size.height / 2) / camera.zoom)
     }
 
-    var plasmieSize: Double { min(max(72 * camera.zoom, 56), 132) }
+    var plasmieSize: Double {
+        let normal = min(max(72 * camera.zoom, 56), 132)
+        guard let p = introPose else { return normal }
+        let huge = Self.loadingSize + (introHugeSize - Self.loadingSize) * p.swell
+        return huge + (normal - huge) * p.snap
+    }
 
     func visible(_ i: Int) -> Bool { graph.map { !hidden.contains($0.nodes[i].kind) } ?? false }
 
@@ -125,6 +134,7 @@ final class MapScene: ObservableObject {
             if l.settled && !autoFitted && !userMovedCamera { autoFitted = true; glide(to: fitCamera()) }
         }
         lastTick = now
+        introPose = pose(at: now)
         let t1 = perf.enabled ? CFAbsoluteTimeGetCurrent() : 0
         if let g = glide {
             let p = now.timeIntervalSince(g.start) / (reduceMotion ? 0.15 : Motion.glideSeconds)
@@ -147,7 +157,7 @@ final class MapScene: ObservableObject {
 
     private func needsFrames(_ now: Date) -> Bool {
         if let l = layout, !l.settled { return true }
-        if glide != nil { return true }
+        if glide != nil || introPose != nil { return true }
         if case .node = grab, dragged { return true }
         if now.timeIntervalSince(focusAt) < 0.6 || now.timeIntervalSince(matchAt) < 2.6 { return true }
         if now < waveUntil { return true }
@@ -227,6 +237,7 @@ final class MapScene: ObservableObject {
     func mouseExited() { setHovered(nil); plasmieHover = false }
 
     func mouseDown(_ p: CGPoint, clicks: Int) {
+        skipIntro()
         downAt = p; downCamera = camera; dragged = false
         if overMascot(p) { grab = .plasmie } else if let i = hit(p) { grab = .node(i) } else { grab = .background }
         if clicks == 2, case .background = grab { fit() }
@@ -264,6 +275,7 @@ final class MapScene: ObservableObject {
     /// Mouse wheel zooms toward the pointer; a trackpad's two-finger scroll pans (pinch
     /// zooms, in `magnify`); holding ⌘ makes a trackpad scroll zoom too.
     func scroll(dx: Double, dy: Double, precise: Bool, command: Bool, at p: CGPoint) {
+        skipIntro()
         if precise && !command {
             glide = nil; userMovedCamera = true
             camera.x -= dx / camera.zoom; camera.y -= dy / camera.zoom
@@ -273,7 +285,7 @@ final class MapScene: ObservableObject {
         wake()
     }
 
-    func magnify(_ m: Double, at p: CGPoint) { zoom(by: 1 + m, at: p); wake() }
+    func magnify(_ m: Double, at p: CGPoint) { skipIntro(); zoom(by: 1 + m, at: p); wake() }
 
     func zoom(by f: Double, at p: CGPoint? = nil) {
         glide = nil; userMovedCamera = true

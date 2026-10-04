@@ -21,6 +21,7 @@ extension MapScene {
         var w = ctx
         w.translateBy(x: size.width / 2 - camera.x * camera.zoom, y: size.height / 2 - camera.y * camera.zoom)
         w.scaleBy(x: camera.zoom, y: camera.zoom)
+        if let p = introPose { w.rotate(by: .radians(p.spin)); w.scaleBy(x: p.spread, y: p.spread) }
         let view = worldViewport(margin: 40)
         let breath = breathAmplitude(now)
 
@@ -40,6 +41,8 @@ extension MapScene {
         drawPulses(ctx, g, l, scheme, now: now)
         drawMatchRing(ctx, g, l, scheme, now: now)
         drawLabels(ctx, g, l, scheme, focusSet: dim > 0.3 ? focusSet : [], focus: shownFocus, dim: dim)
+        drawIntroWave(ctx, scheme)
+        drawIntroArms(ctx, scheme)
         perf.frame(draw: CFAbsoluteTimeGetCurrent() - t0, nodes: g.nodes.count, edges: g.edges.count)
     }
 
@@ -64,6 +67,7 @@ extension MapScene {
     }
 
     private func worldViewport(margin: Double) -> CGRect {
+        if introPose != nil { return .infinite }       // mid-burst, off-screen notes fly in
         let (x0, y0) = world(CGPoint(x: -margin, y: -margin))
         let (x1, y1) = world(CGPoint(x: size.width + margin, y: size.height + margin))
         return CGRect(x: x0, y: y0, width: x1 - x0, height: y1 - y0)

@@ -122,7 +122,7 @@ private struct MapArea: View {
 
     private func message(_ state: PlasmieState, _ title: String, _ detail: String?, retry: Bool = false) -> some View {
         VStack(spacing: 12) {
-            PlasmieView(state: state, size: 96, accessory: m.ach?.accessory)
+            PlasmieView(state: state, size: MapScene.loadingSize, accessory: m.ach?.accessory)
             Text(title).font(.klHeading).multilineTextAlignment(.center)
             if let detail { Text(detail).klNote().multilineTextAlignment(.center).frame(maxWidth: 360) }
             if retry { Button("Try again") { scene.reload() }.keyboardShortcut(.defaultAction) }

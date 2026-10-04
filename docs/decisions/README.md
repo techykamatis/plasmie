@@ -40,6 +40,7 @@ work is from 2026-10-04. Product truth lives in `/PRODUCT.md`, the visual system
 ## Design
 | # | Decision | Status |
 |---|---|---|
+| [0029](0029-plasmies-map.md) | Plasmie's map: the vault as a living network, one Canvas, pink is Plasmie's alone | Accepted |
 
 ## Adding a record
 Copy the shape of any file above, take the next number, and add a row here. Supersede

@@ -1,0 +1,58 @@
+# 0029 · Plasmie's map: the vault as a living network, drawn natively
+
+- **Status:** Accepted · 2026-10-04
+- **Area:** Design, architecture
+
+## Context
+The owner asked for "a cute graph flow like Obsidian's graph view but cuter, more
+interactible, and Plasmie in the middle; zoom in and out, hover to see a node". The name
+already says what such a map should look like: Plasmie comes from *plasmodium*, a slime
+mold that grows a network of veins and passes nutrients along it (0028). The vault is
+~400 curated notes and ~1,900 wikilinks today and should stay smooth into the low
+thousands. Obsidian's own graph is grey dots on hairlines; the app is native SwiftUI,
+macOS 13+, built with swiftc (no Xcode, no packages).
+
+## Decision
+1. **Engine: `plasmie-graph.py`** (stdlib, read-only, caches nothing) prints the wiki as JSON:
+   nodes (vault-relative path, title, type, tags, date, link count, hub flag, two-line
+   excerpt) and undirected edges. Wikilinks resolve the way Obsidian does: by file name
+   (case-insensitive, folder prefix ignored), else by title; `|alias`, `#heading` and
+   `^block` point at the note; missing targets and attachments are dropped. Maps of content
+   (`type: moc|index` or under `wiki/mocs/`) are hubs. Every displayable string passes
+   `scrub.redact(emails=True)` on its final form, before truncation; no absolute paths are
+   emitted. ~0.1–0.16 s on the real vault.
+2. **Rendering: one SwiftUI `Canvas`**, not a view per note, inside a `TimelineView` that
+   is paused whenever nothing moves. Everything of one look is batched into one `Path`
+   (all veins; each kind × freshness bucket of blobs), so a frame is a few dozen fills.
+   The real `PlasmieView` is overlaid at the world origin (frozen while the map sleeps).
+   Input (wheel, pinch, hover, drag) comes from a thin AppKit view, since SwiftUI on 13
+   can't reach all of it.
+3. **Layout: a Swift force simulation** in the d3-force tradition: Barnes-Hut repulsion,
+   degree-biased spring edges, springs from Plasmie (pinned at the origin) to the maps,
+   gentle gravity, grid-bucketed collision. Alpha cools over ~300 ticks; once settled the
+   map stops ticking (0 % CPU idle). Initial positions come from each note's path hash and
+   ticks (not wall time) drive it, so the same vault always settles into the same map.
+4. **Look: pink is Plasmie's alone** (the owner, after the first render). The ground is a
+   neutral (`mapGround`); notes are minute graphite blobs (2–5 pt, maps 5.5–6.5 pt with a
+   ring, sqrt of links); accents reuse tokens that already mean something: sparkle gold
+   decisions, sweat blue gotchas, leaf green patterns, ink how-tos. Veins are curved,
+   tapered, translucent ink, thicker only near Plasmie. The one lit effect is a faint
+   sparkle-gold glow on lit veins and on the nutrient pulses that walk downhill to Plasmie.
+5. **Accessibility:** the canvas is one labelled element; the notes list (toolbar, or open
+   automatically when VoiceOver is on) lists every note by type as buttons that open it,
+   with a "Show on map" action; hovering a row lights the note on the map. Reduce Motion:
+   no pulses or breathing, the layout arrives settled, every move is a 0.15 s ease.
+6. **Entry points:** the Plasmie window's Open group ("Map", ⌘G), the notch's right-click
+   menu ("Open map"), and `--map` at launch: a map-only viewer (no migrations, jobs, notch,
+   hotkey or status polling) used for render checks.
+
+## Consequences
+- Measured on Apple silicon with the real vault (411 notes, 1,888 links): 120 fps while
+  animating (the display's cap), ~1.4 ms to record a frame, physics ~0.3 ms/tick while
+  settling, 0 % CPU once asleep (~8 s after the last touch).
+- The engine is the only reader of note content; the app never opens vault files.
+- Rejected: a WebView with d3/sigma (a browser engine and JS bundle for one window, and a
+  second rendering stack to keep on brand); SpriteKit (heavier, and its text and
+  accessibility are worse than SwiftUI's); a view per note (doesn't scale past a few
+  hundred); caching the graph on disk (it is fast enough to compute on open, and a cache
+  is one more copy of note text).

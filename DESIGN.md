@@ -165,6 +165,34 @@ chrome. No drop shadows, glass, glows or gradients.
   inline in the menu-bar panel, `confirmationDialog` in Settings cards,
   `NSAlert` for closing with unsaved changes.
 
+## Plasmie's map
+
+The vault as the network Plasmie grew (ADR 0029). Plasmie (from *plasmodium*) is the living,
+pink heart; everything around it is calm and neutral, so the mascot reads at a glance.
+`MapPalette.swift` holds every colour; `MapRender.swift` draws.
+
+- **Pink is Plasmie's alone.** No body/belly/blush anywhere else on the map. Ground
+  `mapGround` (`#F4F4F2` / `#17171A`) with a faint ink dot grid that drifts at half the
+  camera's speed. Notes are graphite (`mapNote` `#6B7285` / `#A3AABA`, >= 3:1 on the ground
+  even at their palest); decisions sparkle gold, gotchas sweat blue, patterns leaf green,
+  how-tos ink; maps (mocs) light graphite with a full-graphite ring. Older notes ease toward
+  the ground (recency); fresh accents glow softly.
+- **Minute blobs, big mascot.** At zoom 1: notes 2–5 pt radius (sqrt of links), maps 5.5–6.5 pt
+  plus ring, Plasmie 72 pt (never under 56). Hover pops a note to ~4x (`pop`), lights its
+  veins and neighbours, dims the rest (`glide`), and shows a native card by the cursor
+  (title, type chip, date, links, two-line excerpt). Hit radius >= 10 pt.
+- **Veins**, not hairlines: curved, tapered, translucent ink, 0.5–1 pt, thicker only on
+  Plasmie's own veins to the maps. The one lit effect: a faint sparkle-gold glow on lit veins,
+  and gold nutrient pulses walking downhill to Plasmie (a few at a time).
+- **Labels** only on hover, or once zoomed in (maps from 1.4x, every note from 2x), 11 pt
+  floor, greedy collision so they never stack.
+- **Motion:** camera moves glide; hover grows pop; physics settles and then everything sleeps
+  (~8 s after the last touch). Reduce Motion: no pulses or breathing, the layout arrives
+  settled, 0.15 s eases.
+- **Native chrome:** toolbar = notes-list toggle, find (type to glide to a match, Return opens
+  it), type chips (only kinds the vault has), zoom −/+/fit. The notes list is also the
+  VoiceOver route.
+
 ## Do's and Don'ts
 
 - **Do** let the shape carry the status; the face carries the mood; one prop at most.
@@ -175,3 +203,4 @@ chrome. No drop shadows, glass, glows or gradients.
 - **Don't** add new hues for states; reuse sparkle/sweat/off.
 - **Don't** invent per-view curves, or bounce things that are leaving, collapsing or resizing (those glide); don't animate when nothing is running in the menu bar.
 - **Don't** hand-place anchors or edit `PlasmieShapes.swift` / `plasmie-shapes.json` directly.
+- **Don't** put pink on the map anywhere but Plasmie, or let notes grow toward Plasmie's size.

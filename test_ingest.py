@@ -318,3 +318,23 @@ def test_session_project_labels_come_from_home_and_git_roots_not_a_hardcoded_use
     assert sp("-Users-jane-doe", home, roots) == "home"
     assert sp("-Users-jane-doe-Documents-notes", home, roots) == "home-Documents-notes"
     assert sp("-Users-jane-doe-code-app", home, []) == "home-code-app"   # no roots chosen
+
+
+# --- no network is not a broken connector (the 2026-10-05 07:07 run after wake) -------------
+@pytest.mark.parametrize("err", [
+    "<urlopen error [Errno 8] nodename nor servname provided, or not known>",      # Slack
+    "network: [Errno 8] nodename nor servname provided, or not known",             # GitHub token path
+    "error connecting to api.github.com\ncheck your internet connection or https://githubstatus.com",
+    "<urlopen error [Errno 51] Network is unreachable>",
+])
+def test_no_network_reads_as_offline(err):
+    assert paths.is_offline(err)
+
+
+@pytest.mark.parametrize("err", [
+    None, "", "token rejected (expired or revoked?)", "HTTP 500", "forbidden or rate-limited",
+    "gh not authenticated (`gh auth login`)", "The read operation timed out",
+    "not signed in; add your Slack token in Plasmie > Connectors",
+])
+def test_a_real_connector_failure_is_not_offline(err):
+    assert not paths.is_offline(err)

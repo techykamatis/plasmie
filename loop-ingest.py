@@ -557,7 +557,24 @@ summary = (f"slack {len(slack_counts)} convo / {sum(n for _, n in slack_counts)}
            + (f" · confluence {conf_count} page(s)" if conf_count else "")
            + (f" · outlook {sum(n for _, n in mail_counts)} mail" if mail_counts else "")
            + (f" · github {sum(n for _, n in gh_counts)} item(s)" if gh_counts else ""))
+# No network is not a broken connector: hold those watermarks (the next run re-reads the
+# window) but report OFFLINE, not SOURCE-ERR, so the app doesn't mark them failed.
+offline = []
+for _src, _err in (("slack", slack_err), ("outlook", ms_err), ("github", gh_err), ("confluence", conf_err)):
+    if paths.is_offline(_err):
+        offline.append(_src)
+        failed.add(_src)
+if "slack" in offline:
+    slack_err = None
+if "outlook" in offline:
+    ms_err = None
+if "github" in offline:
+    gh_err = None
+if "confluence" in offline:
+    conf_err = None
 bullets = [summary]
+if offline:
+    bullets.append(f"_offline: {', '.join(offline)} (no network; picked up next run)_")
 bullets += [ln[2:] if ln.startswith("- ") else ln for ln in conf_lines]   # changed Confluence pages
 if slack_err:
     bullets.append(f"_slack: {slack_err}_")
@@ -652,6 +669,7 @@ agentcli_seg = f" · agentcli {len(agentcli_sids)} session(s)" if (agentcli_sids
 git_seg = (f" · git {gitn} commit(s)" + (f" ({git_dropped} filtered)" if git_dropped else "")) if (git_counts or git_err) else ""
 print(f"SUMMARY: slack {len(slack_counts)} convos / {msgs} msgs{outlook_seg}{github_seg}{git_seg}{agentcli_seg} · confluence {conf_count} pages · sessions {len(updated)} files · raw {len(written)} file(s)"
       + (f" · off {','.join(sorted(OFF))}" if OFF else "")
+      + (f" · OFFLINE {','.join(offline)} (no network; picked up next run)" if offline else "")
       + (f" · SLACK-ERR {slack_err}" if slack_err else "")
       + (f" · MS-ERR {ms_err}" if ms_err else "")
       + (f" · GH-ERR {gh_err}" if gh_err else "")

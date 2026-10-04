@@ -66,7 +66,10 @@ def _gh(path, params):
         args += ["-f", f"{k}={v}"]
     r = subprocess.run(args, capture_output=True, text=True, timeout=60)
     if r.returncode != 0:
-        last = (r.stderr or "gh failed").strip().splitlines()[-1]
+        err = (r.stderr or "gh failed").strip()
+        if paths.is_offline(err):                # offline gh can mention auth; it isn't signed out
+            raise GitHubError(f"network: {err.splitlines()[-1]}")
+        last = err.splitlines()[-1]
         raise GitHubError("gh not authenticated (`gh auth login`)" if "auth" in last.lower() else last)
     return json.loads(r.stdout or "null")
 

@@ -240,6 +240,18 @@ _LOG_HEADER = (
     "this log is the durable record. Grep it: `grep '^## \\[' log.md | tail`.\n")
 
 
+# The Mac had no network (a run that starts before Wi-Fi is back after wake): the source is
+# fine, nothing reached it. Timeouts and HTTP errors are NOT here; those can be the source.
+_OFFLINE = ("nodename nor servname", "[errno 8]", "network is unreachable", "[errno 51]",
+            "[errno 50]", "internet connection appears to be offline",
+            "check your internet connection", "error connecting to")
+
+
+def is_offline(err) -> bool:
+    """True when a source's error means "no network", not "this connector is broken"."""
+    return bool(err) and any(m in str(err).lower() for m in _OFFLINE)
+
+
 def ingest_worth_logging(written, conf_count, errors=(), truncated=()):
     """Policy for log_event: is this ingest run an event, or just a quiet hour?
 

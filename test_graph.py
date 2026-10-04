@@ -90,8 +90,31 @@ def test_excerpt_skips_headings_and_is_redacted(tmp_path):
 
 
 def test_no_wiki_is_an_empty_graph_and_cli_prints_json(tmp_path, monkeypatch):
-    assert G.graph(tmp_path) == {"vault": str(tmp_path), "nodes": [], "edges": []}
+    assert G.graph(tmp_path) == {"nodes": [], "edges": []}
     _note(tmp_path, "a.md", "type: note")
     monkeypatch.setenv("PLASMIE_VAULT", str(tmp_path))
     out = subprocess.run([sys.executable, str(HERE / "plasmie-graph.py")], capture_output=True, text=True, check=True)
     assert json.loads(out.stdout)["nodes"][0]["id"] == "wiki/a.md"
+
+
+def test_title_tags_and_type_are_redacted(tmp_path):
+    _note(tmp_path, "t.md", 'type: note\ntitle: "Key AKIAABCDEFGHIJKLMNOP for bob@example.com"\n'
+          'tags: [ghp_abcdefghijklmnopqrstuvwxyz0123, ok]\nsecret_field: hunter2')
+    n = G.graph(tmp_path)["nodes"][0]
+    assert n["title"] == "Key «redacted:aws-key» for «redacted:email»"
+    assert n["tags"] == ["«redacted:gh-token»", "ok"]
+    assert "hunter2" not in json.dumps(n) and set(n) == {"id", "title", "type", "tags", "date", "links", "hub", "excerpt"}
+
+
+def test_secret_split_across_excerpt_lines_is_redacted(tmp_path):
+    # the label is on line 1, the credential on line 2: redacting per line would miss it
+    _note(tmp_path, "s.md", "type: note", "The staging password is\nZx9vQ2mLp7Rt for now.")
+    ex = G.graph(tmp_path)["nodes"][0]["excerpt"]
+    assert "Zx9vQ2mLp7Rt" not in ex and "«redacted:credential»" in ex
+
+
+def test_truncation_happens_after_redaction(tmp_path):
+    pad = "x " * ((G.EXCERPT_CHARS - 12) // 2)
+    _note(tmp_path, "u.md", "type: note", pad + "ghp_abcdefghijklmnopqrstuvwxyz0123456789 tail")
+    ex = G.graph(tmp_path)["nodes"][0]["excerpt"]
+    assert len(ex) <= G.EXCERPT_CHARS and "ghp_" not in ex and "abcdefgh" not in ex

@@ -2,7 +2,7 @@
 """Plasmie's map: the wiki as a graph, for the app's map window.
 
   plasmie-graph.py            -> JSON on stdout:
-     {"vault": ..., "nodes": [{id, title, type, tags, date, links, hub, excerpt}], "edges": [[i, j], ...]}
+     {"nodes": [{id, title, type, tags, date, links, hub, excerpt}], "edges": [[i, j], ...]}
 
 Nodes are the curated notes in wiki/ (raw/ captures are not in the graph). `id` is the
 vault-relative path. Edges are undirected [[wikilinks]] resolved the way Obsidian does: by
@@ -10,8 +10,10 @@ file name (case-insensitive, a folder prefix ignored), else by title; `[[note|al
 `[[note#heading]]` and `[[note^block]]` point at `note`; links to missing notes and to
 attachments are dropped. Maps of content (type moc/index, or under wiki/mocs/) are hubs.
 `links` is the number of distinct neighbours. The excerpt is the first two body lines that
-are not frontmatter, headings, HTML comments or bare link lists, scrubbed with
-scrub.redact. Read-only; caches nothing.
+are not frontmatter, headings, HTML comments or bare link lists. Every displayable string
+(title, type, tags, excerpt) passes scrub.redact(emails=True) on its final form, redacted
+before it is truncated; only title/type/tags/date are read from frontmatter and no absolute
+path is emitted. Read-only; caches nothing.
 """
 import datetime as dt
 import json
@@ -91,12 +93,21 @@ def excerpt(body):
             continue
         if not re.sub(r"[-*+\d.,;\s]", "", WIKILINK.sub("", s)):   # a bare link list ("## Related")
             continue
-        c = _clean(s)
-        if c:
-            out.append(c[:EXCERPT_CHARS])
+        if _clean(s):
+            out.append(s)
         if len(out) == EXCERPT_LINES:
             break
-    return scrub.redact("\n".join(out), emails=True)
+    # Redact the raw joined lines (a secret split across them still matches, and markdown
+    # clean-up can't first mangle a token out of shape: ghp_... loses its "_"), clean, redact
+    # the final text again, THEN truncate, so a cut can never leave half a token showing.
+    raw = safe("\n".join(out))
+    final = safe("\n".join(_clean(ln) for ln in raw.split("\n")))
+    return "\n".join(ln[:EXCERPT_CHARS] for ln in final.split("\n"))
+
+
+def safe(s):
+    """The one sanitizer for every displayable string this script emits."""
+    return scrub.redact(s, emails=True) if s else s
 
 
 def _date(meta, path):
@@ -136,9 +147,9 @@ def notes(vault):
         tags = meta.get("tags") if isinstance(meta.get("tags"), list) else []
         out.append({
             "id": rel,
-            "title": _title(meta, body, p),
-            "type": (typ or "note").lower(),
-            "tags": [t for t in tags if t],
+            "title": safe(_title(meta, body, p)),
+            "type": safe((typ or "note").lower()),
+            "tags": [safe(t) for t in tags if t],
             "date": _date(meta, p),
             "links": 0,
             "hub": (typ or "").lower() in HUB_TYPES or rel.startswith(paths.MOCS + "/"),
@@ -164,13 +175,13 @@ def graph(vault):
     for i, j in edges:
         ns[i]["links"] += 1
         ns[j]["links"] += 1
-    return {"vault": str(vault), "nodes": ns, "edges": sorted([i, j] for i, j in edges)}
+    return {"nodes": ns, "edges": sorted([i, j] for i, j in edges)}
 
 
 def main():
     v = paths.vault()
     if not os.path.isdir(v):
-        print(json.dumps({"vault": v, "nodes": [], "edges": [], "error": f"no vault at {v}"}))
+        print(json.dumps({"nodes": [], "edges": [], "error": "no vault folder"}))
         return 0
     json.dump(graph(v), sys.stdout, ensure_ascii=False, separators=(",", ":"))
     print()

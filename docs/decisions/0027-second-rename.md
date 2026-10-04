@@ -1,6 +1,6 @@
 # 0027 · Rename: Plasmie (app and mascot)
 
-- **Status:** Accepted · 2026-10-04 · supersedes the name in 0020; renames 0026's job labels
+- **Status:** Name superseded by 0028 (Plasmie); the migration approach stands · 2026-10-04 · supersedes the name in 0020; renames 0026's job labels
 - **Area:** Design, architecture, distribution
 
 ## Context

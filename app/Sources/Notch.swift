@@ -477,7 +477,7 @@ private struct NotchRoot: View {
     var body: some View {
         let info = NotchInfo(hero: m.heroPlasmie, pipeline: m.plasmie, status: m.s.state, reason: m.s.reason,
                              stageName: m.stage?.name, accessory: m.stage?.accessory, fact: m.funFact,
-                             activity: m.s.activity, celebrating: nm.bannerText, pending: m.s.pending,
+                             activity: m.s.activity, celebrating: nm.bannerText, pending: m.s.pending, tourStep: nm.tourStep,
                              vault: m.s.vault, notes: m.s.notes,
                              notice: BackgroundJobs.needsApproval ? Self.jobsNotice : (m.s.notice ?? ""),
                              noticeIsJobs: BackgroundJobs.needsApproval)

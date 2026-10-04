@@ -70,7 +70,7 @@ TROPHIES = [
     ("pattern-spotter", "Pattern Spotter", "silver", f"{paths.APP_NAME} noticed a pattern and you kept it.", "noticed", 1, "binoculars.fill"),
     ("pattern-collector", "Pattern Collector", "gold", f"10 patterns {paths.APP_NAME} noticed made it into your wiki.", "noticed", 10, "binoculars"),
     ("clean-bill", "Clean Bill", "silver", "No dead links and every recent note has a source.", "clean", 1, "checkmark.seal.fill"),
-    ("origin-story", "Origin Story", "silver",
+    ("origin-story", "Origin Story", "legendary",   # the one secret: better than gold
      f"Found where {paths.APP_NAME}'s name comes from. Someday your {paths.APP_ID} might wave hello to your "
      "teammates' and swap the good things each of them found.", "origin", 1, "leaf.fill"),
 ]

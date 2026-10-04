@@ -101,7 +101,8 @@ def test_every_trophy_is_within_the_first_year_and_unique():
     ids = [t[0] for t in A.TROPHIES]
     assert len(ids) == len(set(ids)) and len(ids) == 35
     assert all(t[5] <= 365 for t in A.TROPHIES if t[4] == "age")
-    assert {t[2] for t in A.TROPHIES} == {"bronze", "silver", "gold"}
+    assert {t[2] for t in A.TROPHIES if t[0] not in A.SECRET} == {"bronze", "silver", "gold"}
+    assert {t[2] for t in A.TROPHIES if t[0] in A.SECRET} == {"legendary"}   # secrets outrank gold
 
 
 def test_pattern_spotter_counts_only_patterns_plasmie_noticed(tmp_path):

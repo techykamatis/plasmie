@@ -59,10 +59,10 @@ struct Trophy: Decodable, Identifiable {
     var isUnlocked: Bool { unlocked ?? false }
     var isHiddenSecret: Bool { (secret ?? false) && !isUnlocked }
     var hasProgress: Bool { !isHiddenSecret && (target ?? 0) > 0 }
-    var tierName: String { ["bronze", "silver", "gold"].contains(tier ?? "") ? tier ?? "bronze" : "bronze" }
+    var tierName: String { ["bronze", "silver", "gold", "legendary"].contains(tier ?? "") ? tier ?? "bronze" : "bronze" }
     var tierHue: PlasmieHue {
         switch tierName {
-        case "gold": return PlasmieHues.gold
+        case "gold", "legendary": return PlasmieHues.gold
         case "silver": return PlasmieHues.silver
         default: return PlasmieHues.bronze
         }
@@ -382,7 +382,8 @@ struct TrophyBadge: View {
         let ink = PlasmieHues.ink.color(scheme)
         let won = trophy.isUnlocked
         let k = width / 46
-        return ZStack {
+        if won && trophy.tierName == "legendary" { return AnyView(LegendaryCup(trophy: trophy, width: width)) }
+        return AnyView(ZStack {
             if won {
                 TrophyCup.handles.stroke(hue, style: StrokeStyle(lineWidth: 4.2 * k, lineCap: .round))
                 TrophyCup.handles.stroke(ink.opacity(0.85), style: StrokeStyle(lineWidth: 1.4 * k, lineCap: .round))
@@ -402,7 +403,62 @@ struct TrophyBadge: View {
         }
         .frame(width: width, height: width * 52 / 46)
         .shadow(color: .black.opacity(won ? 0.2 : 0), radius: 2.5 * k, x: 0, y: 1.5 * k)
+        .accessibilityHidden(true))
+    }
+}
+
+/// The secret trophy's tier, above gold: a rich gradient metal, a brighter polish, a warm
+/// glow, twinkling sparkles and a slow glint sweeping across the cup (still under Reduce
+/// Motion). Only ever drawn once earned; locked, it stays a spoiler-free "???".
+private struct LegendaryCup: View {
+    let trophy: Trophy
+    let width: CGFloat
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var glint = false
+    @State private var twinkle = false
+
+    private let metal = LinearGradient(
+        colors: [Color(red: 1.0, green: 0.96, blue: 0.70), Color(red: 1.0, green: 0.80, blue: 0.24),
+                 Color(red: 0.86, green: 0.58, blue: 0.05), Color(red: 1.0, green: 0.88, blue: 0.45)],
+        startPoint: .topLeading, endPoint: .bottomTrailing)
+
+    var body: some View {
+        let k = width / 46
+        let ink = PlasmieHues.ink.color(scheme)
+        ZStack {
+            TrophyCup.handles.stroke(metal, style: StrokeStyle(lineWidth: 4.8 * k, lineCap: .round))
+            TrophyCup.handles.stroke(ink.opacity(0.8), style: StrokeStyle(lineWidth: 1.3 * k, lineCap: .round))
+            TrophyCup.body.fill(metal)
+            TrophyCup.sheen.fill(Color.white.opacity(0.6))
+            // the glint: a soft white band sweeping across, clipped to the cup
+            LinearGradient(colors: [.clear, .white.opacity(0.75), .clear], startPoint: .leading, endPoint: .trailing)
+                .frame(width: 14 * k)
+                .rotationEffect(.degrees(20))
+                .offset(x: glint ? 30 * k : -30 * k)
+                .mask(TrophyCup.body)
+                .opacity(reduceMotion ? 0 : 1)
+            TrophyCup.body.stroke(ink.opacity(0.8), lineWidth: 1.3 * k)
+            Image(systemName: trophy.symbol ?? "sparkles")
+                .font(.system(size: 12 * k, weight: .bold))
+                .foregroundStyle(ink.opacity(0.75))
+                .offset(y: -9 * k)
+            ForEach(Array([(-21.0, -18.0, 7.0), (20.0, -22.0, 9.0), (22.0, 6.0, 6.0)].enumerated()), id: \.offset) { i, s in
+                Image(systemName: "sparkle")
+                    .font(.system(size: s.2 * k, weight: .bold))
+                    .foregroundStyle(PlasmieHues.sparkle.color(scheme))
+                    .offset(x: s.0 * k, y: s.1 * k)
+                    .opacity(reduceMotion ? 1 : (twinkle == (i % 2 == 0) ? 1 : 0.35))
+            }
+        }
+        .frame(width: width, height: width * 52 / 46)
+        .shadow(color: Color(red: 1.0, green: 0.78, blue: 0.2).opacity(0.55), radius: 5 * k)
         .accessibilityHidden(true)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: false).delay(0.6)) { glint = true }
+            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { twinkle = true }
+        }
     }
 }
 

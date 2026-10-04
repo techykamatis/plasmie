@@ -38,7 +38,7 @@ fi
 
 # Connector credentials live in the login Keychain (service "Plasmie", account = the
 # variable name), never in a file. Mirrors keychain.SECRETS / Keychain.secrets.
-PLASMIE_SECRETS="SLACK_USER_TOKEN JIRA_API_TOKEN CONFLUENCE_API_TOKEN MS_REFRESH_TOKEN JIRA_EMAIL CONFLUENCE_EMAIL"
+PLASMIE_SECRETS="SLACK_USER_TOKEN JIRA_API_TOKEN CONFLUENCE_API_TOKEN MS_REFRESH_TOKEN JIRA_EMAIL CONFLUENCE_EMAIL GITHUB_TOKEN"
 # plasmie_secrets: export the stored ones, for the jobs that call a connector (not every
 # script gets them). Missing ones are skipped quietly; an already-set variable wins.
 # PLASMIE_KEYCHAIN=<file> reads another keychain instead of the login one (tests).

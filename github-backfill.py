@@ -28,6 +28,7 @@ import paths
 from scrub import redact as _scrub
 
 # launchd / cron run with a minimal PATH — resolve the gh binary explicitly.
+import github_api  # noqa: E402  (token path; gh CLI below is the fallback)
 GH_BIN = shutil.which("gh") or next((p for p in ("/opt/homebrew/bin/gh", "/usr/local/bin/gh") if os.path.exists(p)), "gh")
 
 
@@ -51,6 +52,11 @@ def repo_full(item):
 def gh(path, paginate=True):
     """GET a gh api endpoint; returns parsed JSON (a list of page bodies when
     paginated). Returns [] on error (missing repo, 409 empty repo, etc.)."""
+    if github_api.token():                      # a Keychain token: no gh CLI needed
+        try:
+            return github_api.pages(path, max_pages=100) if paginate else github_api.get(path)
+        except github_api.GitHubError:
+            return []
     cmd = [GH_BIN, "api", "-H", "Accept: application/vnd.github+json"]
     if paginate:
         cmd += ["--paginate", "--slurp"]

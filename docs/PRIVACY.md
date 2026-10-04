@@ -7,7 +7,7 @@ Plasmie is built so your work record stays on your Mac. This is what it does, fr
 Only sources you switch on, and only your own:
 
 - **Slack**: messages you sent and received (your Slack user token).
-- **GitHub**: pull requests and issues you opened or commented on (signed in as you).
+- **GitHub**: pull requests and issues you opened or commented on, read with a GitHub token you paste in (read-only is enough; kept in the Keychain).
 - **Local git commits**: your own commit messages from repositories on your Mac, in the folders you list. No network.
 - **Confluence**: pages you created or edited (your Atlassian address, email and API token).
 - **Outlook** (mail and calendar): only after you click Connect and approve the sign-in.

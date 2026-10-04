@@ -90,28 +90,27 @@ def check_github():
     """Also validates each org. An org you cannot search returns 422 forever and
     the summary line looks identical to a quiet hour — the exact failure that
     went unnoticed from 2026-08-05 to 2026-09-17."""
-    gh = shutil.which("gh") or next(
-        (p for p in ("/opt/homebrew/bin/gh", "/usr/local/bin/gh") if os.path.exists(p)), "")
-    if not gh:
-        return _result(False, None, "The `gh` CLI is not installed.", "brew install gh")
-    who = subprocess.run([gh, "api", "user", "--jq", ".login"],
-                         capture_output=True, text=True, timeout=30)
-    user = who.stdout.strip()
-    if who.returncode != 0 or not user:
-        msg = (who.stderr or "").strip().splitlines()[-1:] or ["gh is not authenticated"]
-        # `gh api user` reports a DNS failure as an auth error; don't send people
-        # to `gh auth login` when the real problem is that the network is down.
-        detail = "Not signed in, or the network is down." if "not authenticated" in msg[0] else msg[0]
-        return _result(True, False, detail, "Run `gh auth login` if this persists while online.")
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import github_api
+    if not github_api.available():
+        return _result(False, None, "Not signed in.", "Paste a GitHub token (read-only is enough) and press Test.")
+    try:
+        user = github_api.login()
+    except github_api.GitHubError as e:
+        # a DNS failure reads like an auth error through gh; say both
+        return _result(True, False, f"Can't sign in: {e}.", "Check the token, or that you're online.")
+    if not user:
+        return _result(True, False, "Not signed in.", "Paste a GitHub token and press Test.")
     orgs = paths.csv_setting("PLASMIE_GITHUB_ORGS")
     if not orgs:
         return _result(True, True, f"Signed in as {user} — searching all your activity.")
     good, bad = [], []
     for org in orgs:
-        r = subprocess.run([gh, "api", "search/issues", "-X", "GET",
-                            "-f", f"q=author:{user} org:{org}", "-f", "per_page=1"],
-                           capture_output=True, text=True, timeout=30)
-        (good if r.returncode == 0 else bad).append(org)
+        try:
+            github_api.get("search/issues", {"q": f"author:{user} org:{org}", "per_page": 1})
+            good.append(org)
+        except github_api.GitHubError:
+            bad.append(org)
     if bad:
         return _result(True, False,
                        f"Signed in as {user}, but cannot search: {', '.join(bad)}.",

@@ -43,7 +43,7 @@ SECURITY = "/usr/bin/security"
 # Keychain.secrets in app/Sources/Keychain.swift (a test keeps the three equal).
 # The Atlassian email is half of a Basic-auth credential, so it counts as one.
 SECRETS = ("SLACK_USER_TOKEN", "JIRA_API_TOKEN", "CONFLUENCE_API_TOKEN", "MS_REFRESH_TOKEN",
-           "JIRA_EMAIL", "CONFLUENCE_EMAIL")
+           "JIRA_EMAIL", "CONFLUENCE_EMAIL", "GITHUB_TOKEN")
 # Plasmie's non-secret keys that used to share ~/.claude/.env; they move to config.env.
 SETTINGS = ("JIRA_BASE_URL", "CONFLUENCE_BASE_URL", "PLASMIE_GITHUB_ORGS", "PLASMIE_GIT_ROOTS",
             "MS_CLIENT_ID", "MS_TENANT")

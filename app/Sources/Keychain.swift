@@ -19,7 +19,7 @@ enum Keychain {
     static let tool = "/usr/bin/security"
     /// Mirrors keychain.SECRETS and PLASMIE_SECRETS in plasmie-env.sh (a test keeps them equal).
     static let secrets = ["SLACK_USER_TOKEN", "JIRA_API_TOKEN", "CONFLUENCE_API_TOKEN", "MS_REFRESH_TOKEN",
-                          "JIRA_EMAIL", "CONFLUENCE_EMAIL"]
+                          "JIRA_EMAIL", "CONFLUENCE_EMAIL", "GITHUB_TOKEN"]
     private static let maxLine = 4000
 
     enum Failure: LocalizedError {

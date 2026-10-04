@@ -163,6 +163,7 @@ struct SettingsView: View {
     @State private var gitRoots = ""
     // secret (write-only — blank means "keep")
     @State private var slackToken = ""
+    @State private var githubToken = ""
     @State private var jiraToken = ""
     // transient
     @State private var saved = false
@@ -173,7 +174,7 @@ struct SettingsView: View {
     private var current: Fields {
         Fields(vaultDir: vaultDir, jiraBase: jiraBase, jiraEmail: jiraEmail, githubOrgs: githubOrgs, gitRoots: gitRoots)
     }
-    private var dirty: Bool { current != baseline || !slackToken.isEmpty || !jiraToken.isEmpty }
+    private var dirty: Bool { current != baseline || !slackToken.isEmpty || !jiraToken.isEmpty || !githubToken.isEmpty }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -277,12 +278,16 @@ struct SettingsView: View {
                     .textFieldStyle(.roundedBorder)
             }
         case "github":
-            ConnectorCard(c: c, m: conn, onDisconnect: nil) {
+            ConnectorCard(c: c, m: conn, onDisconnect: { disconnect(["GITHUB_TOKEN"]) }) {
+                SecureField(conn.health["github"]?.configured == true
+                            ? "Connected — paste a new token to replace"
+                            : "Paste a GitHub token (github_pat_… or ghp_…)", text: $githubToken)
+                    .textFieldStyle(.roundedBorder)
                 labeled("Organisations (comma-separated, optional)") {
                     TextField("Blank = all your activity, or e.g. my-org, other-org", text: $githubOrgs)
                         .textFieldStyle(.roundedBorder)
                 }
-                Text("Signed in with the `gh` CLI. List organisations to narrow it; an org you are not a member of fails every run — Test names it.")
+                Text("Make a fine-grained token at github.com › Settings › Developer settings with read-only access; Plasmie only reads your issues and pull requests. List organisations to narrow it; one you aren't a member of fails every run, and Test names it.")
                     .klNote()
             }
         case "git":
@@ -426,6 +431,7 @@ struct SettingsView: View {
         var put: [String: String] = [:]
         var drop: [String] = []
         if !slackToken.isEmpty { put["SLACK_USER_TOKEN"] = trim(slackToken) }
+        if !githubToken.isEmpty { put["GITHUB_TOKEN"] = trim(githubToken) }
         if !jiraToken.isEmpty { put["JIRA_API_TOKEN"] = trim(jiraToken) }
         if now.jiraEmail != was.jiraEmail {
             if trim(now.jiraEmail).isEmpty { drop.append("JIRA_EMAIL") } else { put["JIRA_EMAIL"] = trim(now.jiraEmail) }
@@ -438,7 +444,7 @@ struct SettingsView: View {
             }
             drop.forEach(Keychain.delete)
             DispatchQueue.main.async {
-                if let failure { saveError = failure } else { slackToken = ""; jiraToken = "" }
+                if let failure { saveError = failure } else { slackToken = ""; jiraToken = ""; githubToken = "" }
                 load()
                 saved = failure == nil
                 conn.refresh()

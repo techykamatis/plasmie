@@ -35,7 +35,7 @@ Then Plasmie shows you around the notch in three short steps.
 
 ## Connectors
 
-In the Plasmie window, each source has an On/Off switch: Slack, GitHub, local git commits, Confluence, Outlook, Claude Code and AgentCLI sessions. Network ones start **off**; local ones start on only if they exist on your Mac. Off means nothing is read. Sign-ins are kept in your Mac's Keychain.
+In the Plasmie window, each source has an On/Off switch: Slack, GitHub, local git commits, Confluence, Outlook, Claude Code and AgentCLI sessions. Network ones start **off**; local ones start on only if they exist on your Mac. Off means nothing is read. Sign-ins are kept in your Mac's Keychain. For GitHub, paste a token from github.com › Settings › Developer settings (read-only access is enough); nothing else to install.
 
 ## Where things live
 

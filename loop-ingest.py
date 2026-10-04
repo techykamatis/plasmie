@@ -282,8 +282,9 @@ elif "confluence" not in OFF:
     failed.add("confluence")  # not set up (e.g. Disconnected): silent, like outlook — but hold the watermark
 
 # ---- github (recent PRs/issues/commits I authored or commented on) ----
-# Incremental slice via `gh` search with date qualifiers; the full historical
-# tree (raw/github/<repo>/) is owned by github-backfill.py. Auth via gh CLI.
+# Incremental slice via GitHub search with date qualifiers; the full historical
+# tree (raw/github/<repo>/) is owned by github-backfill.py. Auth: a GITHUB_TOKEN from
+# the Keychain (friends), else a signed-in gh CLI (github_api.py).
 gh_lines = []
 gh_counts = []   # (repo, n)
 gh_err = None
@@ -292,36 +293,24 @@ GH_ORGS = paths.csv_setting("PLASMIE_GITHUB_ORGS")
 # launchd runs with a minimal PATH, so resolve the gh binary explicitly.
 import shutil
 GIT_BIN = shutil.which("git") or next((p for p in ("/opt/homebrew/bin/git", "/usr/bin/git") if os.path.exists(p)), "git")
-GH_BIN = shutil.which("gh") or next((p for p in ("/opt/homebrew/bin/gh", "/usr/local/bin/gh") if os.path.exists(p)), "gh")
+import github_api  # noqa: E402
 
 
 def _gh_search(q):
     """All matching items, newest-updated first, paged past the 100/request cap."""
-    items, page = [], 1
-    while page <= MAX_PAGES:
-        r = subprocess.run([GH_BIN, "api", "-H", "Accept: application/vnd.github+json",
-                            "search/issues", "-X", "GET", "-f", f"q={q}",
-                            "-f", "sort=updated", "-f", "order=desc",
-                            "-f", "per_page=100", "-f", f"page={page}"],
-                           capture_output=True, text=True, timeout=60)
-        if r.returncode != 0:
-            raise RuntimeError((r.stderr or "gh search failed").strip().splitlines()[-1])
-        batch = json.loads(r.stdout).get("items", [])
-        items += batch
-        if len(batch) < 100:
-            return items
-        page += 1
-    truncated.append("github")
+    bodies = github_api.pages("search/issues", {"q": q, "sort": "updated", "order": "desc",
+                                                "per_page": 100}, max_pages=MAX_PAGES)
+    items = [it for b in bodies for it in (b or {}).get("items", [])]
+    if len(bodies) >= MAX_PAGES and len((bodies[-1] or {}).get("items", [])) == 100:
+        truncated.append("github")
     return items
 
 
 if "github" not in OFF:
     try:
-        _who = subprocess.run([GH_BIN, "api", "user", "--jq", ".login"],
-                              capture_output=True, text=True, timeout=30)
-        _guser = _who.stdout.strip()
-        if _who.returncode != 0 or not _guser:
-            raise RuntimeError("gh not authenticated (`gh auth login`)")
+        _guser = github_api.login()
+        if not _guser:
+            raise RuntimeError("not signed in: add a GitHub token in Plasmie > Connectors")
         _gmark = SRC_MARK["github"]
         since_d = datetime.datetime.fromtimestamp(_gmark).strftime("%Y-%m-%d")
         _upper = f" updated:<={datetime.datetime.fromtimestamp(UNTIL).strftime('%Y-%m-%d')}" if BACKFILL else ""

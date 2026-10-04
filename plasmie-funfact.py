@@ -27,6 +27,9 @@ from pathlib import Path
 
 import paths
 
+# today's name and the earlier ones, so pattern notes from before a rename still count
+NOTICED_BY = tuple(f"{n} noticed" for n in (paths.APP_NAME, "Plasmie", *paths.PREVIOUS_NAMES))
+
 HERE = Path(__file__).resolve().parent
 _spec = importlib.util.spec_from_file_location("dedupe", HERE / "dedupe.py")
 dedupe = importlib.util.module_from_spec(_spec)
@@ -85,7 +88,7 @@ def _notes(vault):
         notes.append({"path": f"{paths.WIKI}/{f.name}", "title": fm.get("title", f.stem), "tags": tags,
                       "body": _body(raw), "text": re.sub(r"`([^`]*)`", r"\1", fm["description"]),
                       "type": fm.get("type", "note"),
-                      "noticed": any(n in fm.get("source", "") for n in ("Plasmie noticed", "Plasmie noticed", "Plasmie noticed")),
+                      "noticed": any(n in fm.get("source", "") for n in NOTICED_BY),
                       "date": dt.date.fromisoformat(m.group(1))})
     return notes
 
@@ -261,7 +264,7 @@ def candidates(vault, today):
     asked = _asked(vault)
     for n in notes:                                        # useful: knowledge you may have forgotten
         if n["type"] in RESURFACE_TYPES and (today - n["date"]).days >= 14:
-            kicker = "A pattern Plasmie noticed" if n["noticed"] else KICKER[n["type"]]
+            kicker = f"A pattern {paths.APP_NAME} noticed" if n["noticed"] else KICKER[n["type"]]
             out.append({"id": f"re:{n['path']}", "kind": "resurface", "type": n["type"], "kicker": kicker,
                         "text": n["text"], "title": n["title"], "path": n["path"], "date": n["date"].isoformat(),
                         "fresh": n["path"] not in asked, **ctx(n)})
@@ -356,7 +359,7 @@ UNGROUNDED_MAX = 1      # long words the source never hints at, tolerated per ph
 SUBJECT_MAX = 36       # a longer title reads like a citation inside a lead-in: drop it
 FRAME_DEFAULT = "From your notes on {s}:"
 
-PROMPT = """You are Plasmie, a small friendly blob chatting with the person whose work notes these are.
+PROMPT = """You are {name}, a small friendly blob chatting with the person whose work notes these are.
 Tell them the fact below like a warm, playful friend would: out loud, to "you", never like a citation.
 Rules:
 - One or two short sentences, under 35 words. No emoji, no hashtags, no quotation marks.
@@ -373,29 +376,29 @@ Rules:
 Example (throwback)
 Subject: Orbit · Leave balance calculation
 Fact: Balances are recomputed nightly from the accrual job.
-Plasmie says: Remember this one? Orbit leave balances get recomputed by a nightly accrual job, so your edits show up the next day.
+{name} says: Remember this one? Orbit leave balances get recomputed by a nightly accrual job, so your edits show up the next day.
 
 Example (nudge)
 Subject: Helm
 Fact: Release names must be DNS-1123 (no underscores).
-Plasmie says: Little reminder for Helm: release names have to be DNS-1123, so no underscores.
+{name} says: Little reminder for Helm: release names have to be DNS-1123, so no underscores.
 
 Example (throwback)
 Subject: Redis ACL fix
 Fact: Deployed v1.0.0-pilot-28 to production after the Redis ACL fix.
-Plasmie says: Remember this one? v1.0.0-pilot-28 went to production right after the Redis ACL fix.
+{name} says: Remember this one? v1.0.0-pilot-28 went to production right after the Redis ACL fix.
 
 Example (nudge)
 Subject: Secure token generation
 Fact: Tokens must be generated using 256 bits of randomness.
-Plasmie says: Turns out secure tokens need 256 bits of randomness, so don't skimp on it.
+{name} says: Turns out secure tokens need 256 bits of randomness, so don't skimp on it.
 
 {context}
 Fact: {text}
-Plasmie says:"""
+{name} says:"""
 RETRY = """ {last}
 (Too stiff. Retell the same Fact again, warmer, to "you", in different words.)
-Plasmie says:"""
+{name} says:"""
 _LEAK = re.compile(r"\b(?:last|previous|latest) (?:try|attempt|move)\b|your attempt|retell|copied|too stiff", re.I)
 
 
@@ -490,11 +493,11 @@ def _voice(chosen, cache):
     if key in cache:
         return cache[key], cache
     prompt = PROMPT.format(mood=MOOD.get(chosen.get("kind"), MOOD["resurface"]), lead=_lead(chosen), context=_context_block(chosen),
-                           text=chosen["quote"])
+                           text=chosen["quote"], name=paths.APP_NAME)
     out = _ask(prompt)
     why = _verdict(out, chosen) if out else "empty"
     if out and why:                                        # greedy sampling: only a changed prompt changes the answer
-        out = _ask(prompt + RETRY.format(last=out))
+        out = _ask(prompt + RETRY.format(last=out, name=paths.APP_NAME))
         why = _verdict(out, chosen) if out else "empty"
     text = out if out and not why else framed(chosen)
     cache = {**cache, key: text}

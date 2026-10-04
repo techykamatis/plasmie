@@ -26,7 +26,7 @@ from scrub import redact  # noqa: E402
 
 HOME = str(Path.home())
 TAIL = {"feed.log": 10, "launchd.log": 25}           # metadata lines, newest last
-JOB_PREFIXES = ("com.plasmie.knowledge", "com.plasmie.mlx", "com.plasmie.", "com.plasmie.")   # older labels too
+JOB_PREFIXES = ("com.plasmie.knowledge", "com.plasmie.mlx", "com.plasmie.", "com.plasmie.", f"com.{paths.APP_ID}.")   # older labels too
 
 
 def clean(s: str) -> str:
@@ -71,7 +71,7 @@ def app_version() -> str:
 def system() -> list[str]:
     chip = run(["sysctl", "-n", "machdep.cpu.brand_string"], 5).strip() or platform.machine()
     free = shutil.disk_usage(HOME).free // 2**30
-    return [f"Plasmie    {app_version()}",
+    return [f"{paths.APP_NAME:<10} {app_version()}",
             f"macOS      {platform.mac_ver()[0]} · {chip}",
             f"Python     {platform.python_version()}",
             f"Disk free  {free} GB"]
@@ -112,7 +112,7 @@ def jobs() -> list[str]:
         if len(parts) == 3 and parts[2].startswith(JOB_PREFIXES):
             pid, status, label = parts
             rows.append(f"{label:<34} last exit {status}{' · running' if pid != '-' else ''}")
-    return rows or ["(no Plasmie jobs loaded)"]
+    return rows or [f"(no {paths.APP_NAME} jobs loaded)"]
 
 
 def config_keys() -> list[str]:
@@ -161,7 +161,7 @@ def report() -> str:
         ("Last ingest run (summary and errors, masked)", last_ingest()),
         ("launchd.log (errors, masked)", tail(Path(paths.LOG_DIR) / "launchd.log", TAIL["launchd.log"], clean_stderr)),
     ]
-    out = [f"Plasmie diagnostics · {datetime.now():%Y-%m-%d %H:%M}",
+    out = [f"{paths.APP_NAME} diagnostics · {datetime.now():%Y-%m-%d %H:%M}",
            "No notes, messages or secrets are included.", ""]
     for title, rows in sections:
         out += [f"## {title}", *rows, ""]

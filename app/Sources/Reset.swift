@@ -7,14 +7,14 @@ import AppKit
 enum ResetPlasmie {
     static func confirmAndRun(vault: String) {
         let alert = NSAlert()
-        alert.messageText = "Reset Plasmie?"
+        alert.messageText = "Reset \(Brand.name)?"
         alert.informativeText = """
-        This removes Plasmie's background jobs, settings, logs and trophies, then quits. \
+        This removes \(Brand.name)'s background jobs, settings, logs and trophies, then quits. \
         Your notes are not touched: \((vault as NSString).abbreviatingWithTildeInPath) stays exactly as it is. \
-        Open Plasmie again to set it up fresh.
+        Open \(Brand.name) again to set it up fresh.
         """
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Reset Plasmie").hasDestructiveAction = true
+        alert.addButton(withTitle: "Reset \(Brand.name)").hasDestructiveAction = true
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }

@@ -35,8 +35,11 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+import paths
+
 SELF = Path(__file__).resolve().parent
-LOGS = Path(os.path.expanduser(os.environ.get("PLASMIE_LOGS") or "~/Library/Logs/Plasmie"))
+LOGS = Path(paths.LOG_DIR)
+HELPER = f"{paths.APP_ID}-fm"          # the bundled model bridge (app/build-fm.sh)
 
 # Helper status word -> reason name (plasmie-doctor and the setup check key off these).
 _STATUS_REASON = {
@@ -49,13 +52,13 @@ _REASON_HINT = {
     "APPLE_INTELLIGENCE_NOT_ENABLED":
         "Turn on Apple Intelligence in System Settings > Apple Intelligence & Siri.",
     "DEVICE_NOT_ELIGIBLE":
-        "This Mac can't run Apple Intelligence, so Plasmie can't summarize, file or answer.",
+        f"This Mac can't run Apple Intelligence, so {paths.APP_NAME} can't summarize, file or answer.",
     "MODEL_NOT_READY":
         "Apple Intelligence is on but the model is still downloading — retry later.",
     "UNSUPPORTED_OS":
         "Apple's on-device model needs macOS 26 or later. Update macOS in System Settings.",
     "HELPER_MISSING":
-        "Plasmie's model bridge (plasmie-fm) is missing: reinstall Plasmie from the DMG. "
+        f"{paths.APP_NAME}'s model bridge ({HELPER}) is missing: reinstall {paths.APP_NAME} from the DMG. "
         "In a dev checkout, run app/build-fm.sh.",
     "UNKNOWN":
         "No reason given. Check System Settings > Apple Intelligence & Siri.",
@@ -84,10 +87,11 @@ def helper_path() -> Optional[str]:
     env = os.environ.get("PLASMIE_FM_BIN")
     if env:
         return env if os.access(env, os.X_OK) else None
-    for p in (SELF.parent.parent / "MacOS" / "plasmie-fm",          # Contents/Resources/backend
-              SELF / "app" / "build" / "plasmie-fm",                 # app/build-fm.sh
-              SELF / "app" / "build" / "Plasmie.app" / "Contents" / "MacOS" / "plasmie-fm",
-              Path("/Applications/Plasmie.app/Contents/MacOS/plasmie-fm"),
+    for p in (SELF.parent.parent / "MacOS" / HELPER,                # Contents/Resources/backend
+              SELF / "app" / "build" / HELPER,                       # app/build-fm.sh
+              SELF / "app" / "build" / f"{paths.APP_NAME}.app" / "Contents" / "MacOS" / HELPER,
+              Path(f"/Applications/{paths.APP_NAME}.app/Contents/MacOS/{HELPER}"),
+              Path("/Applications/Plasmie.app/Contents/MacOS/plasmie-fm"),  # pre-rename install (0028)
               Path("/Applications/Plasmie.app/Contents/MacOS/plasmie-fm")):  # pre-rename install (0027)
         if os.access(p, os.X_OK):
             return str(p)
@@ -105,7 +109,7 @@ def _sdk():
 
 def _versions() -> str:
     """macOS + backend, so a quality regression can be tied to an update."""
-    via = "plasmie-fm" if helper_path() else ("apple-fm-sdk" if _sdk() else "none")
+    via = HELPER if helper_path() else ("apple-fm-sdk" if _sdk() else "none")
     return f"macOS {platform.mac_ver()[0]}, {via}"
 
 
@@ -189,7 +193,7 @@ def _call_helper(binary: str, req: dict, timeout: float,
         proc = subprocess.Popen([binary], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True)
     except OSError as e:
-        return {"error": "failed", "reason": f"could not start plasmie-fm: {e}"}
+        return {"error": "failed", "reason": f"could not start {HELPER}: {e}"}
     timed_out = threading.Event()
 
     def _kill():
@@ -220,7 +224,7 @@ def _call_helper(binary: str, req: dict, timeout: float,
         return {"error": "timeout", "reason": f"no answer within {timeout:.0f}s"}
     if not final:
         err = (proc.stderr.read() if proc.stderr else "")[-300:]
-        return {"error": "failed", "reason": f"plasmie-fm exited {proc.returncode}: {err.strip()}"}
+        return {"error": "failed", "reason": f"{HELPER} exited {proc.returncode}: {err.strip()}"}
     return final
 
 
@@ -249,15 +253,15 @@ def probe() -> dict[str, Any]:
             got = json.loads(raw or "")
         except json.JSONDecodeError:
             return {"installed": True, "available": None, "reason": "PROBE_FAILED",
-                    "detail": f"plasmie-fm --probe gave no answer ({binary})",
+                    "detail": f"{HELPER} --probe gave no answer ({binary})",
                     "hint": _REASON_HINT["HELPER_MISSING"], "context_size": None,
-                    "backend": "plasmie-fm"}
-        backend = "plasmie-fm"
+                    "backend": HELPER}
+        backend = HELPER
     else:
         sdk = _sdk()
         if not sdk:
             return {"installed": False, "available": False, "reason": "HELPER_MISSING",
-                    "detail": "plasmie-fm not found (PLASMIE_FM_BIN, the app bundle, app/build).",
+                    "detail": f"{HELPER} not found (PLASMIE_FM_BIN, the app bundle, app/build).",
                     "hint": _REASON_HINT["HELPER_MISSING"], "context_size": None,
                     "backend": None}
         got, backend = sdk.probe(), "apple-fm-sdk"

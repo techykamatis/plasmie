@@ -130,9 +130,9 @@ struct Panel: View {
             if inWindow { fullActions } else { menuActions }
             if inWindow { logs }
             Divider().padding(.horizontal, 12)
-            ActionRow(title: "Quit Plasmie", symbol: "power", key: "q", compact: true) { NSApp.terminate(nil) }
+            ActionRow(title: "Quit \(Brand.name)", symbol: "power", key: "q", compact: true) { NSApp.terminate(nil) }
                 .padding(.horizontal, 6).padding(.vertical, 3)
-            Text("Plasmie \(Self.version)").font(.klMeta).foregroundStyle(.tertiary)
+            Text("\(Brand.name) \(Self.version)").font(.klMeta).foregroundStyle(.tertiary)
                 .padding(.horizontal, 12).padding(.bottom, 8)
                 .textSelection(.enabled)
         }
@@ -151,7 +151,7 @@ struct Panel: View {
                 .frame(maxWidth: .infinity)
                 .help("Click to say hi · drag to pet")
                 .padding(.top, inWindow ? 16 : 12)
-            Text("Plasmie").font(.klTitle)
+            Text(Brand.name).font(.klTitle)
             stageLine
             StatusPill(state: m.s.state, reason: m.s.reason)
             if inWindow { latestTrophies }
@@ -244,7 +244,7 @@ struct Panel: View {
         VStack(alignment: .leading, spacing: 1) {
             ingestRow
             vaultRow
-            ActionRow(title: "Open Plasmie…", symbol: "macwindow", detail: "Everything else, logs and settings", key: ",") {
+            ActionRow(title: "Open \(Brand.name)…", symbol: "macwindow", detail: "Everything else, logs and settings", key: ",") {
                 SettingsController.shared.show()
             }
         }
@@ -278,7 +278,7 @@ struct Panel: View {
             groupLabel("Maintain").padding(.top, 4)
             ActionRow(title: "Reindex check", symbol: "magnifyingglass",
                       detail: "Rebuild catalog & flag dead links · changes nothing") { m.reindexCheck() }
-            ActionRow(title: "How Plasmie works", symbol: "questionmark.circle", compact: true) {
+            ActionRow(title: "How \(Brand.name) works", symbol: "questionmark.circle", compact: true) {
                 openExternal((Bundle.main.resourcePath ?? "") + "/docs/Quickstart.txt")
             }
             ActionRow(title: "Privacy", symbol: "hand.raised", compact: true) {
@@ -288,17 +288,17 @@ struct Panel: View {
                       detail: "A report to send when something's wrong · no notes or secrets") { copyDiagnostics() }
             ActionRow(title: "Run setup again…", symbol: "wrench.and.screwdriver",
                       detail: "Repairs a broken install · keeps your notes and settings") { SetupController.shared.show() }
-            ActionRow(title: "Reset Plasmie…", symbol: "arrow.counterclockwise",
+            ActionRow(title: "Reset \(Brand.name)…", symbol: "arrow.counterclockwise",
                       detail: "Remove jobs, settings and logs · your notes stay") { ResetPlasmie.confirmAndRun(vault: m.s.vault) }
-            ActionRow(title: "Show the tour", symbol: "sparkles", detail: "Where Plasmie lives and what it can do") {
+            ActionRow(title: "Show the tour", symbol: "sparkles", detail: "Where \(Brand.name) lives and what it can do") {
                 NotchController.shared.startTour()
             }
             ActionRow(title: "Open at login", symbol: "power.circle",
                       detail: LoginItem.needsApproval ? "Waiting for approval in System Settings › Login Items"
-                            : atLogin ? "On · Plasmie starts when you log in" : "Off") {
+                            : atLogin ? "On · \(Brand.name) starts when you log in" : "Off") {
                 LoginItem.set(!atLogin); atLogin = LoginItem.isOn
             }
-            ActionRow(title: "Plasmie in the notch", symbol: "capsule.tophalf.filled",
+            ActionRow(title: "\(Brand.name) in the notch", symbol: "capsule.tophalf.filled",
                       detail: notchOn ? "On · replaces the menu-bar icon" : "Off · using the menu-bar icon") { notchOn.toggle() }
         }
         .padding(.horizontal, 6).padding(.vertical, 4)

@@ -108,7 +108,7 @@ struct NotchInfo {
     var tourStep: Int? = nil          // the first-run tour, when it's showing
     /// Something the user should act on, in plain words, or nil when all is well.
     var attention: String? {
-        if status == "error" { return reason.isEmpty ? "Something stopped working. Open Plasmie to see what." : reason }
+        if status == "error" { return reason.isEmpty ? "Something stopped working. Open \(Brand.name) to see what." : reason }
         if pending > 0 { return "\(pending) item\(pending == 1 ? " is" : "s are") waiting for your review." }
         return notice.isEmpty ? nil : notice
     }
@@ -212,13 +212,13 @@ struct NotchView: View {
         .clipShape(NotchShape())
         .contentShape(NotchShape())
         .contextMenu {
-            Button("Ask Plasmie…", action: actions.ask)
-            Button("Open Plasmie…", action: actions.openApp)
+            Button("Ask \(Brand.name)…", action: actions.ask)
+            Button("Open \(Brand.name)…", action: actions.openApp)
             Divider()
-            Button("Quit Plasmie", action: actions.quit)
+            Button("Quit \(Brand.name)", action: actions.quit)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Plasmie, \(info.statusWord)")
+        .accessibilityLabel("\(Brand.name), \(info.statusWord)")
         .offset(x: mode.shift(geo) - panelShift)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(anim, value: target)              // retargets smoothly when the content is measured
@@ -275,7 +275,7 @@ struct NotchView: View {
                 .help("Click to say hi · drag to pet")
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 6) {
-                    Text("Plasmie").font(.klHeading).foregroundStyle(.white)
+                    Text(Brand.name).font(.klHeading).foregroundStyle(.white)
                     if let st = info.stageName {
                         Button(action: actions.trophies) {
                             Text(st).font(.klMeta).foregroundStyle(.white.opacity(0.6)).lineLimit(1)
@@ -288,7 +288,7 @@ struct NotchView: View {
                 Group { if let a = info.attention { attentionRow(a) } else { factView } }.padding(.top, 8)
                 // the few things worth doing from the notch; everything else is one click away
                 HStack(spacing: 6) {
-                    NotchChip(title: "Ask", symbol: "sparkle.magnifyingglass", label: "Ask Plasmie", action: actions.ask)
+                    NotchChip(title: "Ask", symbol: "sparkle.magnifyingglass", label: "Ask \(Brand.name)", action: actions.ask)
                     if info.pending > 0 {
                         NotchChip(title: "Review \(info.pending)", symbol: "tray.full", label: "Review \(info.pending) held items",
                                   action: actions.openApp)
@@ -296,7 +296,7 @@ struct NotchView: View {
                         NotchChip(title: "Ingest", symbol: "tray.and.arrow.down", label: "Ingest now", action: actions.ingest)
                     }
                     NotchChip(title: "Vault", symbol: "folder", label: "Open the vault in Obsidian", action: actions.vault)
-                    NotchChip(title: "More", symbol: "ellipsis.circle", label: "Open Plasmie: all options and settings",
+                    NotchChip(title: "More", symbol: "ellipsis.circle", label: "Open \(Brand.name): all options and settings",
                               action: actions.openApp)
                 }
                 .padding(.top, 14)
@@ -323,7 +323,7 @@ struct NotchView: View {
                           action: info.noticeIsJobs ? BackgroundJobs.openLoginItems : openKeychainAccess)
             } else {
                 NotchChip(title: info.status == "error" ? "Fix" : "Review", symbol: "arrow.up.forward.app",
-                          label: info.status == "error" ? "Open Plasmie to fix this" : "Open Plasmie to review", action: actions.openApp)
+                          label: info.status == "error" ? "Open \(Brand.name) to fix this" : "Open \(Brand.name) to review", action: actions.openApp)
             }
         }
         .accessibilityElement(children: .combine)
@@ -463,7 +463,7 @@ final class NotchModel: ObservableObject {
 }
 
 enum NotchRootText {
-    static let jobsNotice = "Plasmie needs your OK to work in the background. Allow it in System Settings › General › Login Items."
+    static let jobsNotice = "\(Brand.name) needs your OK to work in the background. Allow it in System Settings › General › Login Items."
 }
 
 private struct NotchRoot: View {

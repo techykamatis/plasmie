@@ -55,10 +55,11 @@ the work record — it is a private memory, not a cloud coworker.
   mascot; Grok Bot agent) and Meta Muse's mascot Jolly. References, not templates.
 - Status sprites / loading animations for the different pipeline states.
 - **Chosen 2026-10-03:** a soft blob mascot (first called Plasmie, then Plasmie = Knowledge
-  Loop, squished). **Renamed 2026-10-04: Plasmie** (Plasmie's domains were taken;
-  plasmie .com/.app/.ai/.io/.dev/.so were free). It is both the app's and the mascot's
-  name; "Plasmie" may remain a descriptor. **Plasmie is the species:** in future
-  each person personalises their own blob (name, colours, accessories), so their blob
+  Loop, squished), renamed again on 2026-10-04 (ADR 0027) and settled as **Plasmie**
+  the same day (ADR 0028; plasmie .com/.app/.ai were free). It is both the app's and the
+  mascot's name; "Plasmie" may remain a descriptor. Where the name comes from is a
+  hidden easter egg in the app, not product copy (ADR 0028). **Plasmie is the species:** in
+  future each person personalises their own blob (name, colours, accessories), so their blob
   becomes theirs (direction recorded, not built yet; ADR 0027). The owner's reason, which is the
   concept: *"a blob is nice, cause it can take any shape or form"* — Plasmie
   **shape-shifts into each pipeline state** (bowl catching source dots = ingest,

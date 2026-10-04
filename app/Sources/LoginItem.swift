@@ -14,7 +14,7 @@ enum LoginItem {
         do {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
         } catch {
-            NSLog("Plasmie login item: %@", error.localizedDescription)
+            NSLog("\(Brand.name) login item: %@", error.localizedDescription)
         }
     }
 }

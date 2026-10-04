@@ -37,7 +37,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths  # noqa: E402
 
-SERVICE = "Plasmie"
+SERVICE = paths.APP_NAME
 SECURITY = "/usr/bin/security"
 # Tokens: the Keychain only. Mirrored by PLASMIE_SECRETS in plasmie-env.sh and
 # Keychain.secrets in app/Sources/Keychain.swift (a test keeps the three equal).
@@ -68,7 +68,7 @@ def _quote(s):
 
 def _check(name, value):
     if name not in SECRETS:
-        raise KeychainError(f"not a Plasmie secret: {name}")
+        raise KeychainError(f"not a {paths.APP_NAME} secret: {name}")
     if not value or any(ord(c) < 32 or ord(c) == 127 for c in value):
         raise KeychainError(f"{name}: empty, or contains control characters")
 

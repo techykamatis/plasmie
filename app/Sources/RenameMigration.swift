@@ -25,7 +25,7 @@ enum RenameMigration {
         for (old, new) in [(legacyHome, home), (legacyLogs, logs)] {
             let r = moveFolder(from: old, to: new)
             if r != .nothingToMove && r != .alreadyMoved {
-                NSLog("Plasmie: rename migration %@ -> %@: %@", old, new, r.rawValue)
+                NSLog("\(Brand.name): rename migration %@ -> %@: %@", old, new, r.rawValue)
             }
         }
         copyDefaults(into: defaults)
@@ -46,7 +46,7 @@ enum RenameMigration {
                 try fm.moveItem(atPath: old, toPath: new)
                 return .moved
             } catch {
-                NSLog("Plasmie: couldn't move %@: %@", old, error.localizedDescription)
+                NSLog("\(Brand.name): couldn't move %@: %@", old, error.localizedDescription)
                 return .failed
             }
         }

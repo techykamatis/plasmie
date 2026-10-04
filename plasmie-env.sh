@@ -5,9 +5,13 @@
 #   PLASMIE_HOME  data: config.env, state, venv, models   (~/Library/Application Support/Plasmie)
 #   PLASMIE_LOGS  logs: audit, transcripts, launchd.log   (~/Library/Logs/Plasmie)
 # Paths contain a space ("Application Support"): always quote them.
-: "${PLASMIE_HOME:=$HOME/Library/Application Support/Plasmie}"
-: "${PLASMIE_LOGS:=$HOME/Library/Logs/Plasmie}"
-export PLASMIE_HOME PLASMIE_LOGS
+# The user-visible name, in one place for the shell (ADR 0028); twins: Brand.swift,
+# paths.APP_NAME, APP_NAME in app/make-*.sh (test_brand.py keeps them equal).
+PLASMIE_APP_NAME="Plasmie"
+PLASMIE_APP_ID="plasmie"
+: "${PLASMIE_HOME:=$HOME/Library/Application Support/$PLASMIE_APP_NAME}"
+: "${PLASMIE_LOGS:=$HOME/Library/Logs/$PLASMIE_APP_NAME}"
+export PLASMIE_HOME PLASMIE_LOGS PLASMIE_APP_NAME PLASMIE_APP_ID
 mkdir -p "$PLASMIE_HOME" "$PLASMIE_LOGS"
 # Background jobs registered by the app (SMAppService) can't name a log file in their
 # plist (no home folder there), so they pass PLASMIE_JOB_LOG and the script logs itself,
@@ -50,7 +54,7 @@ plasmie_secrets() {
     [ -n "${!k:-}" ] && continue
     # perl's alarm = a 10 s cap (macOS has no `timeout`): a keychain prompt nobody can
     # answer must never hang a background job
-    v="$(/usr/bin/perl -e 'alarm 10; exec @ARGV' /usr/bin/security find-generic-password -s Plasmie -a "$k" -w ${PLASMIE_KEYCHAIN:+"$PLASMIE_KEYCHAIN"} 2>/dev/null)" || continue
+    v="$(/usr/bin/perl -e 'alarm 10; exec @ARGV' /usr/bin/security find-generic-password -s "$PLASMIE_APP_NAME" -a "$k" -w ${PLASMIE_KEYCHAIN:+"$PLASMIE_KEYCHAIN"} 2>/dev/null)" || continue
     [ -n "$v" ] && export "$k=$v"
   done
   return 0

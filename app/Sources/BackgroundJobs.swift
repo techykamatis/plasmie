@@ -7,8 +7,8 @@ import ServiceManagement
 /// engine, and stop when the app is deleted.
 enum BackgroundJobs {
     static let names = ["ingest", "summarize", "improve", "promote", "snapshot"]
-    static func label(_ name: String) -> String { "com.plasmie.\(name)" }
-    private static func service(_ name: String) -> SMAppService { .agent(plistName: "com.plasmie.\(name).plist") }
+    static func label(_ name: String) -> String { "com.\(Brand.id).\(name)" }
+    private static func service(_ name: String) -> SMAppService { .agent(plistName: "com.\(Brand.id).\(name).plist") }
 
     /// Older installs ran com.plasmie.* jobs from ~/Library/LaunchAgents, and Plasmie (the old
     /// bundle id) registered com.plasmie.* that this app can't unregister. Both sets at once
@@ -53,7 +53,7 @@ enum BackgroundJobs {
         var failed: [String] = []
         for n in names where service(n).status != .enabled && service(n).status != .requiresApproval {
             do { try service(n).register() } catch {
-                NSLog("Plasmie: couldn't register %@: %@", n, error.localizedDescription)
+                NSLog("\(Brand.name): couldn't register %@: %@", n, error.localizedDescription)
                 failed.append(n)
             }
         }

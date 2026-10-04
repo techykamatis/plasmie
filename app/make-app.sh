@@ -5,9 +5,15 @@
 # into Contents/MacOS: building needs the macOS 26+ SDK, running needs nothing.
 set -euo pipefail
 SELF="$(cd "$(dirname "$0")" && pwd)"
+# The name, in one place for the build (ADR 0028); must match Brand.swift, paths.APP_NAME and
+# PLASMIE_APP_NAME in plasmie-env.sh (test_brand.py checks).
+APP_NAME="Plasmie"
+APP_ID="plasmie"
+BUNDLE_ID="com.$APP_ID.app"
+FM_NAME="$APP_ID-fm"
 VERSION="${PLASMIE_VERSION:-$(tr -d '[:space:]' < "$SELF/../VERSION" 2>/dev/null || echo 0.0.0)}"
 BUILD_NO="$(git -C "$SELF/.." rev-list --count HEAD 2>/dev/null || echo 1)"   # monotonic build number
-APP="$SELF/build/Plasmie.app"
+APP="$SELF/build/$APP_NAME.app"
 ARCH="$(uname -m)"
 
 rm -rf "$SELF/build"
@@ -15,10 +21,10 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 swiftc -O -parse-as-library -target "${ARCH}-apple-macos13.0" \
   -framework SwiftUI -framework AppKit \
-  -o "$APP/Contents/MacOS/Plasmie" "$SELF"/Sources/*.swift
+  -o "$APP/Contents/MacOS/$APP_NAME" "$SELF"/Sources/*.swift
 
 # the on-device model bridge (fm.py finds it at ../../MacOS/plasmie-fm from backend/)
-"$SELF/build-fm.sh" "$APP/Contents/MacOS/plasmie-fm"
+"$SELF/build-fm.sh" "$APP/Contents/MacOS/$FM_NAME"
 
 # --- bundle the backend so the app can self-install on first run -------------
 LOOP="$(cd "$SELF/.." && pwd)"
@@ -46,12 +52,12 @@ cp "$LOOP/docs/PRIVACY.md" "$RES/docs/Privacy.txt"
 # log themselves (PLASMIE_JOB_LOG; a bundled plist can't name a path in the user's home).
 LA="$APP/Contents/Library/LaunchAgents"; mkdir -p "$LA"
 job() {   # job <name> <script> <max minutes> <StartCalendarInterval dict body>
-  cat > "$LA/com.plasmie.$1.plist" <<JOB
+  cat > "$LA/com.$APP_ID.$1.plist" <<JOB
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.plasmie.$1</string>
+  <key>Label</key><string>com.$APP_ID.$1</string>
   <key>BundleProgram</key><string>Contents/Resources/backend/plasmie-job.sh</string>
   <key>ProgramArguments</key><array><string>plasmie-job.sh</string><string>$3</string><string>$2</string></array>
   <key>StartCalendarInterval</key><dict>$4</dict>
@@ -123,13 +129,13 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleName</key><string>Plasmie</string>
-  <key>CFBundleDisplayName</key><string>Plasmie</string>
-  <key>CFBundleIdentifier</key><string>com.plasmie.app</string>
+  <key>CFBundleName</key><string>${APP_NAME}</string>
+  <key>CFBundleDisplayName</key><string>${APP_NAME}</string>
+  <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
   <key>CFBundleVersion</key><string>${BUILD_NO}</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleExecutable</key><string>Plasmie</string>
+  <key>CFBundleExecutable</key><string>${APP_NAME}</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>

@@ -114,7 +114,7 @@ def test_pattern_spotter_counts_only_patterns_plasmie_noticed(tmp_path):
     assert _by_id(r)["pattern-spotter"]["unlocked"] and _by_id(r)["pattern-spotter"]["date"] == "2026-10-04"
 
 
-@pytest.mark.parametrize("name", ["Plasmie", "Plasmie"])
+@pytest.mark.parametrize("name", ["Plasmie", "Plasmie", "Plasmie"])
 def test_patterns_noticed_before_the_rename_still_count(tmp_path, name):
     v = _vault(tmp_path, ingest_days=["2026-07-02"])
     (v / "wiki" / "old.md").write_text(f"---\ntype: pattern\nsource: \"{name} noticed · 3 days\"\ntimestamp: 2026-10-03T00:00:00Z\n---\n")

@@ -15,7 +15,7 @@ import Foundation
 /// bytes are dropped by `security -i`; a longer value falls back to the argument list
 /// (same-user processes only, which could read the item through `security` anyway).
 enum Keychain {
-    static let service = "Plasmie"
+    static let service = Brand.name
     static let tool = "/usr/bin/security"
     /// Mirrors keychain.SECRETS and PLASMIE_SECRETS in plasmie-env.sh (a test keeps them equal).
     static let secrets = ["SLACK_USER_TOKEN", "JIRA_API_TOKEN", "CONFLUENCE_API_TOKEN", "MS_REFRESH_TOKEN",

@@ -23,7 +23,7 @@ struct TourStep {
         TourStep(pose: .ask, title: "Ask me anything about your work.",
                  body: "Press ⌃⌥⌘K anywhere, or hover and click Ask. Answers come from your own notes, worked out right here on this Mac."),
         TourStep(pose: .success, title: "Everything else is under More.",
-                 body: "Connectors, settings, trophies and logs live in the Plasmie window. Right-click me for quick options."),
+                 body: "Connectors, settings, trophies and logs live in the \(Brand.name) window. Right-click me for quick options."),
     ]
 }
 

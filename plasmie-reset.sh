@@ -24,7 +24,7 @@ run() { if [ "$MODE" = --dry-run ]; then say "would: $*"; else "$@"; fi; }
 
 say "vault kept: $VAULT_PATH"
 if [ "$MODE" = --yes ]; then
-  "$PY" "$SELF/plasmie-vault.py" snapshot "$VAULT_PATH" "Plasmie reset" 2>/dev/null | sed 's/^/vault: /' || true
+  "$PY" "$SELF/plasmie-vault.py" snapshot "$VAULT_PATH" "$PLASMIE_APP_NAME reset" 2>/dev/null | sed 's/^/vault: /' || true
 fi
 if [ "${PLASMIE_RESET_SKIP_JOBS:-0}" != 1 ]; then          # tests skip launchd
   run "$SELF/launchd/install.sh" uninstall
@@ -33,8 +33,8 @@ fi
 # silently mean the LOGIN keychain (tests set one), so then: skip, never guess.
 if [ -z "${PLASMIE_KEYCHAIN:-}" ] || [ -f "$PLASMIE_KEYCHAIN" ]; then
   for k in $PLASMIE_SECRETS; do
-    if [ "$MODE" = --dry-run ]; then say "would: remove Keychain item Plasmie/$k"
-    else /usr/bin/perl -e 'alarm 10; exec @ARGV' /usr/bin/security delete-generic-password -s Plasmie -a "$k" \
+    if [ "$MODE" = --dry-run ]; then say "would: remove Keychain item $PLASMIE_APP_NAME/$k"
+    else /usr/bin/perl -e 'alarm 10; exec @ARGV' /usr/bin/security delete-generic-password -s "$PLASMIE_APP_NAME" -a "$k" \
            ${PLASMIE_KEYCHAIN:+"$PLASMIE_KEYCHAIN"} >/dev/null 2>&1 || true
     fi
   done

@@ -59,7 +59,7 @@ final class ICloudSync: ObservableObject {
         if r["ok"] as? Bool == false {
             let err = r["error"] as? String ?? ""
             return err.contains("not permitted") || err.contains("Permission")
-                ? "Plasmie needs access to iCloud Drive: allow it when macOS asks, or in System Settings › Privacy & Security › Files and Folders."
+                ? "\(Brand.name) needs access to iCloud Drive: allow it when macOS asks, or in System Settings › Privacy & Security › Files and Folders."
                 : (err.isEmpty ? "iCloud sync failed. Copy diagnostics and send them over." : err)
         }
         let kept = (r["kept_edits"] as? [Any])?.count ?? 0
@@ -69,7 +69,7 @@ final class ICloudSync: ObservableObject {
             .map { RelativeDateTimeFormatter().localizedString(for: $0, relativeTo: Date()) } ?? "just now"
         return kept > 0
             ? "Synced \(when) · \(kept) note\(kept == 1 ? "" : "s") edited in iCloud kept beside the fresh copy"
-            : "Synced \(when) · \(r["files"] as? Int ?? 0) files in iCloud Drive › Plasmie\(heldNote)"
+            : "Synced \(when) · \(r["files"] as? Int ?? 0) files in iCloud Drive › \(Brand.name)\(heldNote)"
     }
 }
 

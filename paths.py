@@ -21,9 +21,17 @@ import sys
 # an installed copy (read-only, replaced on update). Everything Plasmie writes lives in
 # the per-user data and log folders, macOS-conventionally, never next to the code.
 # Shell scripts get the same three from plasmie-env.sh; the app from PlasmiePaths.
+# The user-visible name, in one place for the engine (ADR 0028): data/log folders, the
+# Keychain service, the iCloud folder, notifications and status copy all read it. Its twins:
+# Brand.swift, PLASMIE_APP_NAME in plasmie-env.sh, APP_NAME in app/make-*.sh (test_brand.py).
+# Internal names users never see (PLASMIE_* env vars, plasmie-*.py files) keep the old ones.
+APP_NAME = "Plasmie"
+APP_ID = "plasmie"
+# Earlier names, oldest first: what migrations carry an install over from (0027, 0028).
+PREVIOUS_NAMES = ("Plasmie", "Plasmie")
 ENGINE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.expanduser(os.environ.get("PLASMIE_HOME") or "~/Library/Application Support/Plasmie")
-LOG_DIR = os.path.expanduser(os.environ.get("PLASMIE_LOGS") or "~/Library/Logs/Plasmie")
+DATA_DIR = os.path.expanduser(os.environ.get("PLASMIE_HOME") or f"~/Library/Application Support/{APP_NAME}")
+LOG_DIR = os.path.expanduser(os.environ.get("PLASMIE_LOGS") or f"~/Library/Logs/{APP_NAME}")
 LOOP_DIR = DATA_DIR          # older name for the data folder (state files hang off it)
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)

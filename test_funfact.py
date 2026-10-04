@@ -131,7 +131,7 @@ def test_unfaithful_or_missing_phrasing_falls_back_to_the_quote(tmp_path, monkey
     assert f["text"] == "Throwback from your notes on Tokens: " + f["quote"]    # never a bare quote
 
 
-@pytest.mark.parametrize("name", ["Plasmie", "Plasmie", "Plasmie"])   # earlier names still count
+@pytest.mark.parametrize("name", ["Plasmie", "Plasmie", "Plasmie", "Plasmie"])   # earlier names still count
 def test_patterns_plasmie_noticed_get_their_own_kicker(tmp_path, name):
     v = _vault(tmp_path)
     (v / "wiki" / "p.md").write_text('---\ntype: pattern\ntitle: "P"\ndescription: "Green main before tagging."\n'

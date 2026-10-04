@@ -21,8 +21,8 @@ struct VaultCheck: Equatable {
     /// One sentence on what setup will do with this folder.
     var plan: String {
         if !ok { return reason }
-        if plasmie { return "Found your Plasmie vault: \(notes) notes and \(raw) captured files. I'll use it as is and never overwrite it." }
-        if exists && !isEmpty { return "This folder already has files. I'll add Plasmie's folders beside them and won't touch what's there." }
+        if plasmie { return "Found your \(Brand.name) vault: \(notes) notes and \(raw) captured files. I'll use it as is and never overwrite it." }
+        if exists && !isEmpty { return "This folder already has files. I'll add \(Brand.name)'s folders beside them and won't touch what's there." }
         return "I'll create your vault here."
     }
     var isEmpty = true
@@ -58,7 +58,7 @@ struct VaultStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Where should your notes live?").font(.klHeading)
-            Text("Plasmie keeps everything it learns as plain Markdown notes you can open in Obsidian. Pick a folder on this Mac, or point me at the vault you already have.")
+            Text("\(Brand.name) keeps everything it learns as plain Markdown notes you can open in Obsidian. Pick a folder on this Mac, or point me at the vault you already have.")
                 .klNote()
             HStack(spacing: 8) {
                 Image(systemName: "folder").foregroundStyle(.secondary)
@@ -114,14 +114,14 @@ struct ChoicesStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("A couple of choices").font(.klHeading)
-            Text("You can change these any time in the Plasmie window.").klNote()
-            choice($openAtLogin, "Open Plasmie when you log in",
+            Text("You can change these any time in the \(Brand.name) window.").klNote()
+            choice($openAtLogin, "Open \(Brand.name) when you log in",
                    "So I keep catching your work after a restart. Shows in System Settings › Login Items.")
             choice($icloud, "Mirror your notes to iCloud Drive",
                    "Read them in Obsidian on your iPhone or iPad. Only your notes and daily digests are copied, never raw captures; your notes then also live in your iCloud account.")
             HStack {
                 Spacer()
-                Button("Set up Plasmie", action: onContinue).keyboardShortcut(.defaultAction)
+                Button("Set up \(Brand.name)", action: onContinue).keyboardShortcut(.defaultAction)
             }
         }
     }

@@ -84,7 +84,7 @@ final class SettingsController: NSObject, NSWindowDelegate {
         let side: CGFloat = firstRun ? 0 : 320
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560 + side, height: 680),
                          styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        w.title = firstRun ? "Set up connectors" : "Plasmie"
+        w.title = firstRun ? "Set up connectors" : Brand.name
         w.center(); w.isReleasedWhenClosed = false
         w.contentMinSize = NSSize(width: 520 + side, height: 560)
         w.delegate = self
@@ -187,8 +187,8 @@ struct SettingsView: View {
                     connectorsPage
                     vaultPage
                     VStack(alignment: .leading, spacing: 6) {
-                        Toggle("Plasmie in the notch", isOn: $notchOn).font(.klBody)
-                        Text("Plasmie lives beside the notch and opens on hover, with Ask inside it. It replaces the menu-bar icon; turn this off to bring the icon back.").klNote()
+                        Toggle("\(Brand.name) in the notch", isOn: $notchOn).font(.klBody)
+                        Text("\(Brand.name) lives beside the notch and opens on hover, with Ask inside it. It replaces the menu-bar icon; turn this off to bring the icon back.").klNote()
                     }
                 }
                 .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 32)
@@ -220,7 +220,7 @@ struct SettingsView: View {
                 Spacer()
             }
             if firstRun {
-                Text("Every connector starts off. Switch on the ones you want Plasmie to pull into your vault; you can change this any time from the menu.")
+                Text("Every connector starts off. Switch on the ones you want \(Brand.name) to pull into your vault; you can change this any time from the menu.")
                     .klNote()
             }
         }
@@ -287,7 +287,7 @@ struct SettingsView: View {
                     TextField("Blank = all your activity, or e.g. my-org, other-org", text: $githubOrgs)
                         .textFieldStyle(.roundedBorder)
                 }
-                Text("Make a fine-grained token at github.com › Settings › Developer settings with read-only access; Plasmie only reads your issues and pull requests. List organisations to narrow it; one you aren't a member of fails every run, and Test names it.")
+                Text("Make a fine-grained token at github.com › Settings › Developer settings with read-only access; \(Brand.name) only reads your issues and pull requests. List organisations to narrow it; one you aren't a member of fails every run, and Test names it.")
                     .klNote()
             }
         case "git":

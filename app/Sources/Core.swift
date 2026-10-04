@@ -146,8 +146,8 @@ func detectObsidian() -> Bool { NSWorkspace.shared.urlForApplication(withBundleI
 /// ships inside the app and is replaced on update; data and logs are per-user, in the
 /// macOS-conventional folders, never next to the code.
 enum PlasmiePaths {
-    static let home = "\(NSHomeDirectory())/Library/Application Support/Plasmie"
-    static let logs = "\(NSHomeDirectory())/Library/Logs/Plasmie"
+    static let home = "\(NSHomeDirectory())/Library/Application Support/\(Brand.name)"
+    static let logs = "\(NSHomeDirectory())/Library/Logs/\(Brand.name)"
     static let config = "\(home)/config.env"
     /// The bundled engine. Dev override: `defaults write com.plasmie.app plasmie.engine <checkout>`.
     static var engine: String {

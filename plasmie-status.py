@@ -148,7 +148,7 @@ def _keychain_notice():
     try:
         import keychain
         if keychain.needs_migration():
-            return ("Plasmie couldn't move your sign-ins into the Keychain yet; macOS keeps it locked while "
+            return (f"{paths.APP_NAME} couldn't move your sign-ins into the Keychain yet; macOS keeps it locked while "
                     "your Mac is locked. It retries every hour, and everything keeps working meanwhile.")
     except Exception:
         pass
@@ -170,12 +170,12 @@ elif errors:
     state = "error"
     who = _names(err_sources) if err_sources else "a source"
     reason = (f"Couldn't reach {who} on the last run. I'll try again within the hour; if it keeps "
-              "happening, open Plasmie and press Test on that connector.")
+              f"happening, open {paths.APP_NAME} and press Test on that connector.")
 elif is_stale:
     state = "error"
     hours = max(1, round(stale_min / 60))
     reason = (f"I haven't caught anything for {hours} hour{'s' if hours != 1 else ''}. If your Mac was "
-              "awake, open Plasmie and choose Run setup again.")
+              f"awake, open {paths.APP_NAME} and choose Run setup again.")
 elif pending:
     state = "pending"
 # a promote skipped because the Mac was busy retries on its own: not an error

@@ -34,14 +34,14 @@ STAGES = [
 
 # (id, name, tier, description, metric, target, SF Symbol)
 TROPHIES = [
-    ("first-catch", "First Catch", "bronze", "Plasmie caught its first batch of activity.", "ingests", 1, "tray.and.arrow.down.fill"),
+    ("first-catch", "First Catch", "bronze", f"{paths.APP_NAME} caught its first batch of activity.", "ingests", 1, "tray.and.arrow.down.fill"),
     ("first-file", "First Note Filed", "bronze", "The first durable note went into the wiki.", "promotes", 1, "doc.badge.plus"),
     ("first-question", "First Question", "bronze", "You asked your vault something.", "asks", 1, "questionmark.bubble.fill"),
-    ("week-old", "One Week Old", "bronze", "Seven days of Plasmie.", "age", 7, "birthday.cake.fill"),
+    ("week-old", "One Week Old", "bronze", f"Seven days of {paths.APP_NAME}.", "age", 7, "birthday.cake.fill"),
     ("month-old", "One Month Old", "bronze", "Thirty days of remembering.", "age", 30, "birthday.cake.fill"),
     ("quarter", "Quarter Year", "silver", "Ninety days together.", "age", 90, "calendar"),
     ("half-year", "Half a Year", "silver", "Six months of your work, kept.", "age", 182, "calendar.badge.clock"),
-    ("loopiversary", "Loopiversary", "gold", "One whole year of Plasmie.", "age", 365, "party.popper.fill"),
+    ("loopiversary", "Loopiversary", "gold", f"One whole year of {paths.APP_NAME}.", "age", 365, "party.popper.fill"),
     ("unbroken-week", "Unbroken Week", "bronze", "Something was captured every day for 7 days.", "streak", 7, "flame"),
     ("steady-hum", "Steady Hum", "silver", "A capture every day for 30 days straight.", "streak", 30, "flame.fill"),
     ("shelf-starter", "Shelf Starter", "bronze", "50 notes in the wiki.", "notes", 50, "books.vertical"),
@@ -61,14 +61,19 @@ TROPHIES = [
     ("five-thousand", "Five Thousand Catches", "gold", "5,000 batches caught.", "ingests", 5000, "tray.full.fill"),
     ("digest-habit", "Digest Habit", "bronze", "30 daily digests written.", "digests", 30, "text.badge.checkmark"),
     ("digest-century", "Digest Century", "gold", "100 daily digests written.", "digests", 100, "newspaper.fill"),
-    ("spring-cleaning", "Spring Cleaning", "bronze", "Plasmie tidied up old raw files for the first time.", "prunes", 1, "sparkles"),
+    ("spring-cleaning", "Spring Cleaning", "bronze", f"{paths.APP_NAME} tidied up old raw files for the first time.", "prunes", 1, "sparkles"),
     ("well-kept", "Well Kept", "silver", "50 tidy-ups of old raw files.", "prunes", 50, "wand.and.stars"),
     ("comeback", "Comeback Kid", "bronze", "Back after three or more quiet days.", "comebacks", 1, "arrow.uturn.backward.circle"),
     ("well-connected", "Well Connected", "silver", "The wiki averages 2+ links per note.", "links", 2, "link"),
-    ("pattern-spotter", "Pattern Spotter", "silver", "Plasmie noticed a pattern and you kept it.", "noticed", 1, "binoculars.fill"),
-    ("pattern-collector", "Pattern Collector", "gold", "10 patterns Plasmie noticed made it into your wiki.", "noticed", 10, "binoculars"),
+    ("pattern-spotter", "Pattern Spotter", "silver", f"{paths.APP_NAME} noticed a pattern and you kept it.", "noticed", 1, "binoculars.fill"),
+    ("pattern-collector", "Pattern Collector", "gold", f"10 patterns {paths.APP_NAME} noticed made it into your wiki.", "noticed", 10, "binoculars"),
     ("clean-bill", "Clean Bill", "silver", "No dead links and every recent note has a source.", "clean", 1, "checkmark.seal.fill"),
 ]
+
+# "<name> noticed": today's name and every earlier one (Plasmie, Plasmie, Plasmie), so older
+# pattern notes keep counting after a rename.
+NOTICED = re.compile(r"^source:.*(?:%s) noticed" % "|".join(
+    map(re.escape, (paths.APP_NAME, "Plasmie", *paths.PREVIOUS_NAMES))), re.M)
 
 _EVENT = re.compile(r"^## \[(\d{4}-\d\d-\d\d)T[\d:]+\] (\w+)")
 
@@ -117,7 +122,7 @@ def _noticed_dates(vault):
     out = []
     for f in (Path(vault) / paths.WIKI).glob("*.md"):
         head = f.read_text(errors="replace")[:800]
-        if re.search(r"^source:.*(?:Plasmie|Plasmie|Plasmie) noticed", head, re.M):  # Plasmie, Plasmie: earlier names
+        if NOTICED.search(head):
             m = re.search(r"^timestamp:\s*(\d{4}-\d\d-\d\d)", head, re.M)
             out.append(dt.date.fromisoformat(m.group(1)) if m else dt.date.today())
     return sorted(out)
@@ -257,10 +262,10 @@ def evaluate(vault, today=None, state=None):
 
 def _notify(names):
     for n in names[:3]:                       # a retroactive first run shouldn't post 20 banners
-        subprocess.run(["osascript", "-e", f'display notification "{n}" with title "Plasmie 🏆 Trophy unlocked"'],
+        subprocess.run(["osascript", "-e", f'display notification "{n}" with title "{paths.APP_NAME} 🏆 Trophy unlocked"'],
                        capture_output=True, timeout=10)
     if len(names) > 3:
-        subprocess.run(["osascript", "-e", f'display notification "…and {len(names) - 3} more" with title "Plasmie 🏆"'],
+        subprocess.run(["osascript", "-e", f'display notification "…and {len(names) - 3} more" with title "{paths.APP_NAME} 🏆"'],
                        capture_output=True, timeout=10)
 
 

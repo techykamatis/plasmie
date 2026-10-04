@@ -62,7 +62,7 @@ def check_folder(path: Path) -> dict:
     p = path.expanduser().resolve()
     for root in CLOUD_ROOTS:
         if p == root or root in p.parents:
-            return {"ok": False, "reason": "That folder is synced by a cloud service. macOS stops Plasmie's "
+            return {"ok": False, "reason": f"That folder is synced by a cloud service. macOS stops {paths.APP_NAME}'s "
                                            "background helpers from reading it; pick a folder on this Mac."}
     if p == HOME or p in (HOME / "Library", Path("/"), Path("/Applications")) or str(p).startswith(("/System", "/usr", "/bin")):
         return {"ok": False, "reason": "Pick a dedicated folder, not a system or top-level one."}
@@ -70,7 +70,7 @@ def check_folder(path: Path) -> dict:
         return {"ok": False, "reason": "That's inside an app; it would be wiped on update."}
     probe = p if p.exists() else next((a for a in p.parents if a.exists()), None)
     if probe is None or not os.access(probe, os.W_OK):
-        return {"ok": False, "reason": "Plasmie can't write there."}
+        return {"ok": False, "reason": f"{paths.APP_NAME} can't write there."}
     return {"ok": True, "reason": ""}
 
 
@@ -83,7 +83,7 @@ def snapshot(vault: Path, why: str) -> str:
             head = _git(vault, "rev-parse", "--short", "HEAD").stdout.strip()
             return f"git clean at {head}: already a restore point"
         _git(vault, "add", "-A")
-        r = _git(vault, "commit", "-q", "-m", f"plasmie: safety snapshot before {why}")
+        r = _git(vault, "commit", "-q", "-m", f"{paths.APP_ID}: safety snapshot before {why}")
         if r.returncode != 0:
             return f"git snapshot failed: {r.stderr.strip()[:200]}"
         return f"git snapshot {_git(vault, 'rev-parse', '--short', 'HEAD').stdout.strip()}"

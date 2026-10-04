@@ -170,7 +170,7 @@ final class TrophiesController: NSObject, NSWindowDelegate {
         if let w = win { bringForward(w); return }
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 640),
                          styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        w.title = "Plasmie Trophies"
+        w.title = "\(Brand.name) Trophies"
         w.center(); w.isReleasedWhenClosed = false
         w.contentMinSize = NSSize(width: 480, height: 480)
         w.delegate = self
@@ -222,7 +222,7 @@ struct TrophiesContent: View {
                 VStack(spacing: 10) {
                     PlasmieView(state: .quiet, size: 72)
                     Text("No trophies yet").font(.klHeading)
-                    Text("Plasmie couldn't read its trophy shelf. It will try again on the next refresh.").klNote()
+                    Text("\(Brand.name) couldn't read its trophy shelf. It will try again on the next refresh.").klNote()
                         .multilineTextAlignment(.center)
                 }
                 .padding(40).frame(maxWidth: .infinity)
@@ -261,7 +261,7 @@ private struct TrophyHeader: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text(report.stageName).font(.klTitle)
                 if let d = report.ageDays {
-                    Text("Plasmie is \(d) day\(d == 1 ? "" : "s") old").font(.klLabel).foregroundStyle(.secondary)
+                    Text("\(Brand.name) is \(d) day\(d == 1 ? "" : "s") old").font(.klLabel).foregroundStyle(.secondary)
                 }
                 if let line = report.nextLine {
                     Text(line).font(.klLabel).padding(.top, 4)
@@ -328,7 +328,7 @@ private struct EvolutionStrip: View {
         let name = PlasmieStage.all[i].name
         let st = info.first { $0.id == PlasmieStage.all[i].id }
         if let when = AchDate.short(st?.reached) {
-            return i == 0 ? "\(name) · hatched \(when)" : "\(name) · reached \(when)\(i == current ? " · Plasmie's stage now" : "")"
+            return i == 0 ? "\(name) · hatched \(when)" : "\(name) · reached \(when)\(i == current ? " · \(Brand.name)'s stage now" : "")"
         }
         let d = st?.daysLeft ?? 0, n = st?.notesLeft ?? 0
         let parts = [d > 0 ? "\(d) more day\(d == 1 ? "" : "s")" : nil, n > 0 ? "\(n) more note\(n == 1 ? "" : "s")" : nil].compactMap { $0 }

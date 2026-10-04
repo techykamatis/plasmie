@@ -26,7 +26,7 @@ VENV="$PLASMIE_HOME/venv"
 PY="$VENV/bin/python3"
 NEED_GB=6           # search models 3.7 + Python runtime ~0.1 + index, with headroom
 # plasmie-fm ships in Plasmie.app/Contents/MacOS; <RESOURCES_DIR> is Contents/Resources.
-FM_BIN="${PLASMIE_FM_BIN:-$RES/../MacOS/plasmie-fm}"
+FM_BIN="${PLASMIE_FM_BIN:-$RES/../MacOS/$PLASMIE_APP_ID-fm}"
 READY="$PLASMIE_HOME/.setup-complete"   # the app's "installed" marker (Setup.swift)
 
 # make node/npm/qmd reachable even under the app's bare GUI PATH. Each dir is
@@ -49,7 +49,7 @@ node_major() { node -v 2>/dev/null | sed -E 's/^v([0-9]+).*/\1/'; }
 check_ai() {
   local st
   if [ ! -x "$FM_BIN" ]; then
-    chk ai missing required "Apple Intelligence" "Plasmie's model bridge is missing. Reinstall Plasmie from the DMG."; return
+    chk ai missing required "Apple Intelligence" "$PLASMIE_APP_NAME's model bridge is missing. Reinstall $PLASMIE_APP_NAME from the DMG."; return
   fi
   st="$("$FM_BIN" --check 2>/dev/null | head -1)"
   case "$st" in
@@ -57,9 +57,9 @@ check_ai() {
     appleIntelligenceNotEnabled)
       chk ai missing required "Apple Intelligence" "Turn it on in System Settings › Apple Intelligence & Siri, then check again." ;;
     modelNotReady)
-      chk ai warn recommended "Apple Intelligence" "On, but the model is still downloading. Plasmie starts using it once it's ready." ;;
+      chk ai warn recommended "Apple Intelligence" "On, but the model is still downloading. $PLASMIE_APP_NAME starts using it once it's ready." ;;
     deviceNotEligible)
-      chk ai missing required "Apple Intelligence" "This Mac can't run Apple Intelligence, which Plasmie uses to summarize and answer." ;;
+      chk ai missing required "Apple Intelligence" "This Mac can't run Apple Intelligence, which $PLASMIE_APP_NAME uses to summarize and answer." ;;
     unsupportedOS)
       chk macos missing required "macOS 26 or later" "Apple's on-device model needs macOS 26. Update in System Settings › General › Software Update." ;;
     *) chk ai missing required "Apple Intelligence" "Couldn't ask the on-device model (${st:-no answer}). Check System Settings › Apple Intelligence & Siri." ;;
@@ -79,7 +79,7 @@ check_all() {
   else chk net missing required "Internet" "Can't reach huggingface.co to download the search models."; fi
 
   local nm; nm="$(node_major)"
-  if [ -x "$RES/node/bin/node" ]; then chk node ok required "Search engine" "Included with Plasmie."
+  if [ -x "$RES/node/bin/node" ]; then chk node ok required "Search engine" "Included with $PLASMIE_APP_NAME."
   elif [ -n "$nm" ] && [ "$nm" -ge 22 ]; then chk node ok required "Node.js 22+" "v$(node -v | tr -d v) powers vault search (qmd)."
   elif [ -n "$nm" ]; then chk node missing required "Node.js 22+" "Found v$nm; vault search (qmd) needs 22 or newer."
   else chk node missing required "Node.js 22+" "Vault search (qmd) runs on Node.js."; fi
@@ -99,8 +99,8 @@ if blockers="$(check_all | awk -F: '$3!="ok" && $4=="required"{print $5}' | past
 fi
 
 # 1) migrate data from the old ~/.plasmie layout (older installs) -------
-p 5 "Preparing Plasmie's data folder…"
-"$ENGINE/migrate-home.sh" >/dev/null 2>&1 || fail "couldn't move older Plasmie data into place"
+p 5 "Preparing $PLASMIE_APP_NAME's data folder…"
+"$ENGINE/migrate-home.sh" >/dev/null 2>&1 || fail "couldn't move older $PLASMIE_APP_NAME data into place"
 
 # 2) python runtime (the engine is stdlib-only; nothing to pip-install) ---------
 if [ ! -x "$PY" ]; then
@@ -108,7 +108,7 @@ if [ ! -x "$PY" ]; then
   mkdir -p "$VENV"
   cp -R "$RES/python/." "$VENV/" || fail "python copy failed"
 fi
-"$PY" -c 'import sys; sys.exit(sys.version_info < (3, 10))' || fail "the bundled Python runtime is broken — reinstall Plasmie"
+"$PY" -c 'import sys; sys.exit(sys.version_info < (3, 10))' || fail "the bundled Python runtime is broken — reinstall $PLASMIE_APP_NAME"
 p 20 "Python runtime ready"
 
 # 3) vault: adopt, never overwrite (ADR 0022) -------------------------------------
@@ -122,16 +122,16 @@ case "$ok" in *'"ok": true'*) ;; *) fail "$(printf '%s' "$ok" | sed -E 's/.*"rea
 esc="$(printf '%s' "$VAULT" | sed "s/'/'\\\\''/g")"
 { grep -v '^VAULT_DIR=' "$PLASMIE_CONFIG" 2>/dev/null; printf "VAULT_DIR='%s'\n" "$esc"; } > "$PLASMIE_CONFIG.tmp" \
   && mv "$PLASMIE_CONFIG.tmp" "$PLASMIE_CONFIG"
-"$PY" "$ENGINE/plasmie-vault.py" snapshot "$VAULT" "Plasmie setup" >/dev/null 2>&1 || true
+"$PY" "$ENGINE/plasmie-vault.py" snapshot "$VAULT" "$PLASMIE_APP_NAME setup" >/dev/null 2>&1 || true
 info="$("$PY" "$ENGINE/plasmie-vault.py" inspect "$VAULT")"
 case "$info" in
-  *'"plasmie_vault": true'*) p 28 "Found your Plasmie vault; using it as is" ;;
+  *'"plasmie_vault": true'*) p 28 "Found your $PLASMIE_APP_NAME vault; using it as is" ;;
   *) mkdir -p "$VAULT" && cp -Rn "$ENGINE/vault-template/." "$VAULT/" 2>/dev/null
      find "$VAULT" -name .gitkeep -delete 2>/dev/null ;;
 esac
 # versioned data migrations, incl. seeding ingest's watermarks from an existing vault so a
 # reinstall never re-captures what's already there (ingest appends, it doesn't de-duplicate)
-"$PY" "$ENGINE/plasmie-migrate.py" >/dev/null 2>&1 || fail "couldn't prepare Plasmie's data (migration); try again"
+"$PY" "$ENGINE/plasmie-migrate.py" >/dev/null 2>&1 || fail "couldn't prepare $PLASMIE_APP_NAME's data (migration); try again"
 [ "${PLASMIE_SETUP_UNTIL:-}" = vault ] && { echo "DONE"; exit 0; }   # tests stop here (no jobs, no downloads)
 
 # 4) retrieval engine — qmd (hybrid search + MCP), Plasmie's own copy ---------------

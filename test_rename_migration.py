@@ -14,6 +14,7 @@ import pytest
 
 HERE = Path(__file__).resolve().parent
 SRC = HERE / "app" / "Sources" / "RenameMigration.swift"
+BRAND = HERE / "app" / "Sources" / "Brand.swift"
 
 DRIVER = r"""
 import Foundation
@@ -39,7 +40,7 @@ def migrate_bin(tmp_path_factory):
     d = tmp_path_factory.mktemp("rename-migration")
     (d / "main.swift").write_text(DRIVER)
     exe = d / "drive"
-    r = subprocess.run(["swiftc", "-o", str(exe), str(SRC), str(d / "main.swift")],
+    r = subprocess.run(["swiftc", "-o", str(exe), str(SRC), str(BRAND), str(d / "main.swift")],
                        capture_output=True, text=True, timeout=300)
     assert r.returncode == 0, r.stderr
     return exe

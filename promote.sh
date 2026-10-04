@@ -68,6 +68,6 @@ echo "wrote promotion draft -> $DRAFT ($n items; $plan)"
   if [ -n "$summary" ]; then
     msg="auto-promoted ${applied:-0}"
     if [ "${held:-0}" -gt 0 ] 2>/dev/null; then msg="$msg · ${held} held for review"; fi
-    osascript -e "display notification \"$msg\" with title \"Plasmie 🧠\"" 2>/dev/null || true
+    osascript -e "display notification \"$msg\" with title \"$PLASMIE_APP_NAME 🧠\"" 2>/dev/null || true
   fi
 }

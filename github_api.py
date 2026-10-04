@@ -17,6 +17,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+import paths
+
 API = "https://api.github.com"
 TIMEOUT = 30
 GH_BIN = shutil.which("gh") or next(
@@ -44,7 +46,7 @@ def _url(path, params):
 def _http(url):
     req = urllib.request.Request(url, headers={
         "Authorization": f"Bearer {token()}", "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "Plasmie"})
+        "X-GitHub-Api-Version": "2022-11-28", "User-Agent": paths.APP_NAME})
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
             return json.loads(r.read() or b"null"), r.headers.get("Link", "")
@@ -58,7 +60,7 @@ def _http(url):
 
 def _gh(path, params):
     if not GH_BIN:
-        raise GitHubError("not signed in: add a GitHub token in Plasmie > Connectors")
+        raise GitHubError(f"not signed in: add a GitHub token in {paths.APP_NAME} > Connectors")
     args = [GH_BIN, "api", "-H", "Accept: application/vnd.github+json", path, "-X", "GET"]
     for k, v in (params or {}).items():
         args += ["-f", f"{k}={v}"]

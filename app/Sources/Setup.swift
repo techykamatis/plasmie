@@ -32,7 +32,7 @@ final class SetupController {
         if let w = win { bringForward(w); return }
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 300),
                          styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        w.title = "Set up Plasmie"
+        w.title = "Set up \(Brand.name)"
         w.center()
         w.isReleasedWhenClosed = false
         w.level = .floating
@@ -144,7 +144,7 @@ struct SetupView: View {
 
     private var title: String {
         switch phase {
-        case .checking, .checklist, .vault, .choices: return "Hi, I'm Plasmie"
+        case .checking, .checklist, .vault, .choices: return "Hi, I'm \(Brand.name)"
         case .installing: return failed == nil ? "Setting things up" : "Setup hit a snag"
         case .done: return "You're all set"
         }
@@ -196,8 +196,8 @@ struct SetupView: View {
             let parsed = SetupCheck.parse(out)
             DispatchQueue.main.async {
                 checks = parsed.isEmpty
-                    ? [SetupCheck(id: "self", ok: false, required: true, label: "Plasmie's setup files",
-                                  detail: "Couldn't run the bundled setup check. Reinstall Plasmie from the DMG.")]
+                    ? [SetupCheck(id: "self", ok: false, required: true, label: "\(Brand.name)'s setup files",
+                                  detail: "Couldn't run the bundled setup check. Reinstall \(Brand.name) from the DMG.")]
                     : parsed
                 phase = .checklist
             }

@@ -17,20 +17,20 @@ enum PlasmieState: String, CaseIterable {
 
     var label: String {
         switch self {
-        case .idle:      return "Plasmie is resting. Everything is flowing"
-        case .ingest:    return "Plasmie is catching new activity"
-        case .summarize: return "Plasmie is summarising your day"
-        case .promote:   return "Plasmie is filing new notes"
-        case .ask:       return "Plasmie is looking into your question"
-        case .held:      return "Plasmie is holding items for your review"
-        case .error:     return "Plasmie hit a problem and needs attention"
-        case .busy:      return "Plasmie is waiting while the Mac is busy"
-        case .quiet:     return "Plasmie is quiet. Nothing new for a while"
-        case .off:       return "Plasmie is switched off"
-        case .success:   return "Plasmie finished successfully"
-        case .hi:        return "Plasmie waves hi"
-        case .annoyed:   return "Plasmie is annoyed"
-        case .petted:    return "Plasmie is enjoying the pets"
+        case .idle:      return "\(Brand.name) is resting. Everything is flowing"
+        case .ingest:    return "\(Brand.name) is catching new activity"
+        case .summarize: return "\(Brand.name) is summarising your day"
+        case .promote:   return "\(Brand.name) is filing new notes"
+        case .ask:       return "\(Brand.name) is looking into your question"
+        case .held:      return "\(Brand.name) is holding items for your review"
+        case .error:     return "\(Brand.name) hit a problem and needs attention"
+        case .busy:      return "\(Brand.name) is waiting while the Mac is busy"
+        case .quiet:     return "\(Brand.name) is quiet. Nothing new for a while"
+        case .off:       return "\(Brand.name) is switched off"
+        case .success:   return "\(Brand.name) finished successfully"
+        case .hi:        return "\(Brand.name) waves hi"
+        case .annoyed:   return "\(Brand.name) is annoyed"
+        case .petted:    return "\(Brand.name) is enjoying the pets"
         }
     }
 

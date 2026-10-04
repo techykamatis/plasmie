@@ -166,9 +166,9 @@ def draft(group, title, sent):
     days = sorted({g["date"] for g in group})
     body = "\n".join(f"- {g['date']:%-d %b}: {g['text'][:180]}" for g in group[:8])
     return (f"## {title}\nAction: create\nTarget: pattern\nDescription: {sent}\n"
-            f"Source: Plasmie noticed · {len(days)} days · {days[0]:%-d %b}–{days[-1]:%-d %b %Y} · "
+            f"Source: {paths.APP_NAME} noticed · {len(days)} days · {days[0]:%-d %b}–{days[-1]:%-d %b %Y} · "
             f"{', '.join(sorted({g['src'] for g in group})[:4])}\n"
-            f"Plasmie noticed this on {len(days)} different days:\n{body}\n")
+            f"{paths.APP_NAME} noticed this on {len(days)} different days:\n{body}\n")
 
 
 def run(vault, today=None, state=None, force=False):
@@ -199,7 +199,7 @@ def run(vault, today=None, state=None, force=False):
     if not found:
         return None, new_state
     head = (f"---\ntype: note\ntitle: patterns {today}\ntags: [promotion-draft, patterns]\n"
-            f"timestamp: {today}T00:00:00Z\n---\n\n# Patterns Plasmie noticed · {today}\n"
+            f"timestamp: {today}T00:00:00Z\n---\n\n# Patterns {paths.APP_NAME} noticed · {today}\n"
             "_Recurring across your last four weeks. Approve to file them as pattern notes._\n\n")
     return head + "\n".join(found), new_state
 

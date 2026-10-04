@@ -7,6 +7,9 @@ set -uo pipefail
 SELF="$(cd "$(dirname "$0")" && pwd)"
 PY312="$(command -v python3.12 || echo /opt/homebrew/opt/python@3.12/bin/python3.12)"
 VENV_PY="$SELF/.venv/bin/python"
+# the user-visible name lives in plasmie-env.sh (read, not sourced: no side effects here)
+APP_NAME="$(sed -n 's/^PLASMIE_APP_NAME="\(.*\)"$/\1/p' "$SELF/plasmie-env.sh")"
+APP_ID="$(sed -n 's/^PLASMIE_APP_ID="\(.*\)"$/\1/p' "$SELF/plasmie-env.sh")"
 
 say()  { printf '\n\033[1m== %s ==\033[0m\n' "$1"; }
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
@@ -17,12 +20,12 @@ have() { command -v "$1" >/dev/null 2>&1; }
 
 install_app() {
   "$SELF/app/make-app.sh" >/dev/null 2>&1 || { warn "app build failed (need Xcode CLT: xcode-select --install)"; return 1; }
-  rm -rf "/Applications/Plasmie.app"
-  cp -R "$SELF/app/build/Plasmie.app" /Applications/ && ok "installed to /Applications"
+  rm -rf "/Applications/$APP_NAME.app"
+  cp -R "$SELF/app/build/$APP_NAME.app" /Applications/ && ok "installed to /Applications"
   # Unsigned build → strip the quarantine flag so Gatekeeper doesn't block first launch.
-  xattr -dr com.apple.quarantine "/Applications/Plasmie.app" 2>/dev/null || true
-  yes "Launch at login?" && osascript -e 'tell application "System Events" to make login item at end with properties {path:"/Applications/Plasmie.app", hidden:true}' >/dev/null 2>&1 && ok "added login item"
-  open "/Applications/Plasmie.app"
+  xattr -dr com.apple.quarantine "/Applications/$APP_NAME.app" 2>/dev/null || true
+  yes "Launch at login?" && osascript -e 'tell application "System Events" to make login item at end with properties {path:"/Applications/'"$APP_NAME"'.app", hidden:true}' >/dev/null 2>&1 && ok "added login item"
+  open "/Applications/$APP_NAME.app"
 }
 
 # 1) preflight — detect what's already here; only offer to install what's missing
@@ -77,14 +80,14 @@ say "3/8 · Scaffold vault"
 # 4) secrets ------------------------------------------------------------------
 say "4/8 · Secrets (Slack ingest)"
 # credentials live in the login Keychain (keychain.py), never in a file
-if /usr/bin/security find-generic-password -s Plasmie -a SLACK_USER_TOKEN >/dev/null 2>&1; then
+if /usr/bin/security find-generic-password -s "$APP_NAME" -a SLACK_USER_TOKEN >/dev/null 2>&1; then
   ok "SLACK_USER_TOKEN already in the Keychain"
 elif yes "Add a Slack user token now? (enables Slack ingest)"; then
   tok="$(ask "Paste SLACK_USER_TOKEN (xoxp-…)" "")"
   [ -n "$tok" ] && printf '%s\n' "$tok" | "$PY312" "$SELF/keychain.py" set SLACK_USER_TOKEN \
     && ok "saved to the Keychain"
 else
-  warn "skipped — add it later in Plasmie's Settings (Slack card)"
+  warn "skipped — add it later in $APP_NAME's Settings (Slack card)"
 fi
 
 # 5) python env (the engine is stdlib-only; pytest for the test suite) -----------
@@ -96,10 +99,10 @@ say "5/8 · Python environment"
 say "6/8 · Apple Intelligence + retrieval"
 # 6a · generation is Apple's on-device model through plasmie-fm (built with the app in
 # step 8). Nothing to download; Apple Intelligence must be on.
-"$SELF/app/build-fm.sh" >/dev/null 2>&1 && st="$("$SELF/app/build/plasmie-fm" --check 2>/dev/null)"
+"$SELF/app/build-fm.sh" >/dev/null 2>&1 && st="$("$SELF/app/build/$APP_ID-fm" --check 2>/dev/null)"
 case "${st:-}" in
   available) ok "Apple Intelligence on; on-device model ready" ;;
-  "") warn "couldn't build plasmie-fm (needs the macOS 26+ SDK) — summaries, filing and answers stay off" ;;
+  "") warn "couldn't build $APP_ID-fm (needs the macOS 26+ SDK) — summaries, filing and answers stay off" ;;
   *) warn "Apple Intelligence: $st — turn it on in System Settings › Apple Intelligence & Siri" ;;
 esac
 
@@ -125,12 +128,15 @@ else warn "skipped — run launchd/install.sh later"; fi
 
 # 8) menu-bar app — detect existing install -----------------------------------
 say "8/8 · Menu-bar app"
-# Plasmie was renamed Plasmie (ADR 0027); Plasmie carries its data over at first launch.
-[ -d "/Applications/Plasmie.app" ] && warn "the older Plasmie.app is still in Applications: quit it and move it to the Bin"
-if [ -d "/Applications/Plasmie.app" ]; then
-  pgrep -x Plasmie >/dev/null && ok "app already installed (running)" || ok "app already installed"
+# Plasmie became Plasmie (ADR 0027), then Plasmie (0028); the app carries its data over at
+# first launch. An older copy left installed can bring its background jobs back at login.
+for old in Plasmie Plasmie; do
+  [ -d "/Applications/$old.app" ] && warn "the older $old.app is still in Applications: quit it and move it to the Bin"
+done
+if [ -d "/Applications/$APP_NAME.app" ]; then
+  pgrep -x "$APP_NAME" >/dev/null && ok "app already installed (running)" || ok "app already installed"
   yes "Rebuild & reinstall (pick up the latest)?" && install_app
-elif yes "Build & install the Plasmie menu-bar app?"; then
+elif yes "Build & install the $APP_NAME menu-bar app?"; then
   install_app
 else warn "skipped — build later with app/make-app.sh"; fi
 
@@ -139,5 +145,5 @@ echo "  Ask anything:  press ⌃⌥⌘K, type a question about your notes."
 echo "  Menu bar:      look for the brain icon at the top of your screen."
 echo "  Your notes:    $VAULT  (open it in Obsidian: File ▸ Open folder as vault)"
 echo
-echo "  Slack ingest is optional — add a token in Plasmie's Settings any time to turn it on."
+echo "  Slack ingest is optional — add a token in $APP_NAME's Settings any time to turn it on."
 echo "  Run this wizard again whenever you like; it only does what's still needed."

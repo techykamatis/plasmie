@@ -152,7 +152,7 @@ def main(argv: list[str]) -> int:
         # Uploading the vault is the user's decision: only the app, when its iCloud switch
         # is on, passes --user-enabled. A hand or script run must never upload by accident.
         if "--user-enabled" not in argv:
-            print(json.dumps({"ok": False, "error": "iCloud sync is off. Turn it on in the Plasmie window."}))
+            print(json.dumps({"ok": False, "error": f"iCloud sync is off. Turn it on in the {paths.APP_NAME} window."}))
             return 1
         vault = Path(paths.vault())
         if "--dest" not in argv:

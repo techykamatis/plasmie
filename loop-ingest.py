@@ -105,7 +105,7 @@ slack_err = None
 if "slack" not in OFF and not TOKEN:
     # switched on but no sign-in: say so (the island shows it) instead of skipping
     # silently, and hold Slack's watermark so a restored token catches up the gap
-    slack_err = "not signed in; add your Slack token in Plasmie > Connectors"
+    slack_err = f"not signed in; add your Slack token in {paths.APP_NAME} > Connectors"
 if TOKEN and "slack" not in OFF:
     try:
         uname = slack("auth.test").get("user", "")
@@ -310,7 +310,7 @@ if "github" not in OFF:
     try:
         _guser = github_api.login()
         if not _guser:
-            raise RuntimeError("not signed in: add a GitHub token in Plasmie > Connectors")
+            raise RuntimeError(f"not signed in: add a GitHub token in {paths.APP_NAME} > Connectors")
         _gmark = SRC_MARK["github"]
         since_d = datetime.datetime.fromtimestamp(_gmark).strftime("%Y-%m-%d")
         _upper = f" updated:<={datetime.datetime.fromtimestamp(UNTIL).strftime('%Y-%m-%d')}" if BACKFILL else ""

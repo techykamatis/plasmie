@@ -144,6 +144,7 @@ struct NotchActions {
     var openFact: () -> Void = {}
     var nextFact: () -> Void = {}
     var vault: () -> Void = {}
+    var map: () -> Void = {}          // Plasmie's map (MapWindow.swift)
     var openApp: () -> Void = {}      // the Plasmie window: every other option + settings
     var quit: () -> Void = {}
     var closeAsk: () -> Void = {}
@@ -214,6 +215,7 @@ struct NotchView: View {
         .contextMenu {
             Button("Ask \(Brand.name)…", action: actions.ask)
             Button("Open \(Brand.name)…", action: actions.openApp)
+            Button("Open map", action: actions.map)
             Divider()
             Button("Quit \(Brand.name)", action: actions.quit)
         }
@@ -576,6 +578,7 @@ final class NotchController {
             },
             nextFact: { [weak model] in model?.nextFunFact() },
             vault: { [weak model] in if let model { openInObsidian(model.s.vault) } },
+            map: { [weak model] in if let model { MapController.shared.show(model) } },
             openApp: { SettingsController.shared.show() },
             quit: { NSApp.terminate(nil) },
             closeAsk: { [weak self] in self?.closeAsk() },

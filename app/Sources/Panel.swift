@@ -284,6 +284,8 @@ struct Panel: View {
             if !m.s.journal.isEmpty {
                 ActionRow(title: "Today's raw log", symbol: "book.closed") { openInObsidian(m.s.journal) }
             }
+            ActionRow(title: "Map", symbol: "point.3.connected.trianglepath.dotted",
+                      detail: "Your notes as a living network", key: "g") { MapController.shared.show(m) }
             ActionRow(title: "Trophies", symbol: "trophy", key: "t") { TrophiesController.shared.show(m) }
 
             groupLabel("Sync").padding(.top, 4)

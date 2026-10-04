@@ -229,6 +229,7 @@ final class Model: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] on in self?.askActive = on; self?.recomputePlasmie() }
             .store(in: &cancellables)
+        guard !LaunchMode.mapOnly else { return }      // the map-only viewer reads no status
         refresh()
         schedulePoll()
     }

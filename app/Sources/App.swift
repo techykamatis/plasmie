@@ -7,6 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let overlay = OverlayController.shared
     private var hotKey: HotKey?
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // `--map`: a map-only viewer (render checks): no migrations, jobs, notch or hotkey.
+        if LaunchMode.mapOnly { MapController.shared.show(.shared); return }
         // Data migrations (versioned, idempotent): an upgrade over an older install brings the
         // data along before anything reads it. Cheap when there's nothing to do.
         // (The Plasmie/Plasmie -> Plasmie folder/preferences move already ran, in PlasmieApp.init.)
@@ -51,7 +53,7 @@ struct PlasmieApp: App {
     init() {
         // Plasmie/Plasmie -> Plasmie, first: Model.shared reads the data folder and preferences as soon
         // as it exists, which is before applicationDidFinishLaunching.
-        RenameMigration.run(home: PlasmiePaths.home, logs: PlasmiePaths.logs)
+        if !LaunchMode.mapOnly { RenameMigration.run(home: PlasmiePaths.home, logs: PlasmiePaths.logs) }
         _m = ObservedObject(wrappedValue: Model.shared)
     }
 
@@ -66,7 +68,7 @@ struct PlasmieApp: App {
 
     var body: some Scene {
         // the notch replaces the menu-bar icon; turning the notch off brings the icon back
-        MenuBarExtra(isInserted: Binding(get: { !m.notchOn }, set: { UserDefaults.standard.set(!$0, forKey: NotchPrefs.key) })) {
+        MenuBarExtra(isInserted: Binding(get: { !m.notchOn && !LaunchMode.mapOnly }, set: { UserDefaults.standard.set(!$0, forKey: NotchPrefs.key) })) {
             Panel(m: m)
         } label: {
             HStack(spacing: 3) {

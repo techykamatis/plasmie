@@ -114,16 +114,31 @@ def test_the_plasmie_mirror_is_renamed_once_and_never_merged(monkeypatch, tmp_pa
     cloud = tmp_path / "CloudDocs"
     (cloud / "Plasmie" / "knowledge" / "wiki").mkdir(parents=True)
     (cloud / "Plasmie" / "knowledge" / "wiki" / "a (edited in iCloud 2026-10-01 0900).md").write_text("mine")
-    assert ic.adopt_plasmie_mirror(cloud)
+    assert ic.adopt_old_mirror(cloud)
     assert not (cloud / "Plasmie").exists()
     assert (cloud / "Plasmie" / "knowledge" / "wiki" / "a (edited in iCloud 2026-10-01 0900).md").read_text() == "mine"
-    assert not ic.adopt_plasmie_mirror(cloud)                      # idempotent
+    assert not ic.adopt_old_mirror(cloud)                      # idempotent
     (cloud / "Plasmie").mkdir()                                     # both exist: leave both alone
-    assert not ic.adopt_plasmie_mirror(cloud)
+    assert not ic.adopt_old_mirror(cloud)
     assert (cloud / "Plasmie").is_dir() and (cloud / "Plasmie" / "knowledge").is_dir()
 
 
 def test_no_plasmie_mirror_means_nothing_to_do(monkeypatch, tmp_path):
     ic = load(monkeypatch, tmp_path)
-    assert not ic.adopt_plasmie_mirror(tmp_path / "CloudDocs")
+    assert not ic.adopt_old_mirror(tmp_path / "CloudDocs")
     assert not (tmp_path / "CloudDocs").exists()
+
+
+def test_the_plasmie_mirror_wins_over_an_older_plasmie_one(monkeypatch, tmp_path):
+    """Plasmie -> Plasmie (0028): the newest earlier name moves; an older leftover is never merged."""
+    ic = load(monkeypatch, tmp_path)
+    cloud = tmp_path / "CloudDocs"
+    (cloud / "Plasmie" / "knowledge" / "wiki").mkdir(parents=True)
+    (cloud / "Plasmie" / "knowledge" / "wiki" / "new.md").write_text("plasmie")
+    (cloud / "Plasmie" / "knowledge" / "wiki").mkdir(parents=True)
+    (cloud / "Plasmie" / "knowledge" / "wiki" / "old.md").write_text("plasmie")
+    assert ic.adopt_old_mirror(cloud)
+    assert (cloud / "Plasmie" / "knowledge" / "wiki" / "new.md").read_text() == "plasmie"
+    assert not (cloud / "Plasmie" / "knowledge" / "wiki" / "old.md").exists()
+    assert (cloud / "Plasmie" / "knowledge" / "wiki" / "old.md").read_text() == "plasmie"
+    assert not ic.adopt_old_mirror(cloud)                         # idempotent

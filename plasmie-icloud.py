@@ -45,18 +45,21 @@ TEXT = {".md", ".json", ".css", ".txt", ".canvas"}
 
 
 def default_dest(vault: Path) -> Path:
-    return ICLOUD / "Plasmie" / vault.name
+    return ICLOUD / paths.APP_NAME / vault.name
 
 
-def adopt_plasmie_mirror(icloud: Path = ICLOUD) -> bool:
-    """Plasmie -> Plasmie (0027): rename iCloud Drive/Plasmie to iCloud Drive/Plasmie, so the
-    mirror (and any edit kept in it) carries over instead of being copied anew. Only when
-    the new folder doesn't exist yet; never merges. True when it moved."""
-    old, new = icloud / "Plasmie", icloud / "Plasmie"
-    if not old.is_dir() or new.exists():
-        return False
-    old.rename(new)
-    return True
+def adopt_old_mirror(icloud: Path = ICLOUD) -> bool:
+    """Renames (0027, 0028): iCloud Drive/<earlier name> becomes iCloud Drive/<APP_NAME>, so
+    the mirror (and any edit kept in it) carries over instead of being copied anew. The
+    newest earlier name (Plasmie, then Plasmie) wins; only when the new folder doesn't exist
+    yet, so it never merges. True when one moved."""
+    new = icloud / paths.APP_NAME
+    for name in reversed(paths.PREVIOUS_NAMES):
+        old = icloud / name
+        if old.is_dir() and not new.exists():
+            old.rename(new)
+            return True
+    return False
 
 
 def _sig(p: Path) -> list:
@@ -157,7 +160,7 @@ def main(argv: list[str]) -> int:
         vault = Path(paths.vault())
         if "--dest" not in argv:
             try:
-                adopt_plasmie_mirror()
+                adopt_old_mirror()
             except OSError:
                 pass                             # no permission yet: the sync below reports it
         dest = Path(argv[argv.index("--dest") + 1]) if "--dest" in argv else default_dest(vault)

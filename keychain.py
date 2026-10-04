@@ -103,8 +103,8 @@ def put(name, value):
         raise KeychainError(f"{name}: the Keychain did not keep it (locked, or access denied?)")
 
 
-def adopt_service(old="Plasmie"):
-    """Copy sign-ins saved under the app's old name (ADR 0027) to SERVICE. Copy only:
+def adopt_service(old):
+    """Copy sign-ins saved under one of the app's earlier names (ADRs 0027, 0028) to SERVICE. Copy only:
     the old items stay, and a value already under SERVICE is never overwritten. Raises
     KeychainError if any copy fails (a locked keychain), so a migration retries."""
     copied = []

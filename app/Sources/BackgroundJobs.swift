@@ -10,32 +10,20 @@ enum BackgroundJobs {
     static func label(_ name: String) -> String { "com.\(Brand.id).\(name)" }
     private static func service(_ name: String) -> SMAppService { .agent(plistName: "com.\(Brand.id).\(name).plist") }
 
-    /// Older installs ran com.plasmie.* jobs from ~/Library/LaunchAgents, and Plasmie (the old
-    /// bundle id) registered com.plasmie.* that this app can't unregister. Both sets at once
-    /// would run ingest twice (it appends), so nothing registers while one is still there;
-    /// plasmie-migrate.py retires them first (steps 3 and 4).
+    /// Older installs ran com.plasmie.* jobs from ~/Library/LaunchAgents, and the app under its
+    /// earlier names (Plasmie, Plasmie: other bundle ids) registered com.plasmie.* / com.plasmie.*
+    /// that this app can't unregister. Two sets at once would run ingest twice (it appends),
+    /// so nothing registers while one is still there; plasmie-migrate.py retires them first
+    /// (steps 3, 4 and 6).
     static var legacyPresent: Bool {
         let dir = "\(NSHomeDirectory())/Library/LaunchAgents"
         let files = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
         return files.contains { $0.hasPrefix("com.plasmie.dev-") || $0.hasPrefix("com.plasmie.mlx-") }
-            || plasmieJobsLoaded
+            || legacyJobsLoaded
     }
 
-    /// Any of Plasmie's com.plasmie.* jobs still loaded in this login session.
-    static var plasmieJobsLoaded: Bool {
-        names.contains { launchctlStatus(["print", "gui/\(getuid())/com.plasmie.\($0)"]) == 0 }
-    }
-
-    private static func launchctlStatus(_ args: [String]) -> Int32 {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        p.arguments = args
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError = FileHandle.nullDevice
-        do { try p.run() } catch { return -1 }
-        p.waitUntilExit()
-        return p.terminationStatus
-    }
+    /// Any earlier name's job (com.plasmie.*, com.plasmie.*) still loaded in this login session.
+    static var legacyJobsLoaded: Bool { LegacyJobs.anyLoaded(LegacyJobs.labels(names)) }
 
     /// macOS asks the user to allow background items the first time (Login Items).
     static var needsApproval: Bool { names.contains { service($0).status == .requiresApproval } }

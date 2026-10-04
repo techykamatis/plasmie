@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 HERE = Path(__file__).resolve().parent
 
 
@@ -118,15 +120,51 @@ def test_an_install_at_version_3_runs_step4_onward(monkeypatch, tmp_path):
     vf = tmp_path / "v"
     vf.write_text("3\n")
     r = km.migrate(km.STEPS, vf)
-    assert r["ok"] and r["version"] == 5 and r["applied"][0] == "retire Plasmie's com.plasmie background jobs"
+    assert r["ok"] and r["version"] == 7 and r["applied"][0] == "retire Plasmie's com.plasmie background jobs"
     assert loaded_now(state) == []
 
 
-def test_retire_plasmie_jobs_flag_runs_step4_alone(monkeypatch, tmp_path):
-    state = fake_launchd(monkeypatch, tmp_path, loaded=["com.plasmie.snapshot"])
+@pytest.mark.parametrize("flag", ["--retire-old-jobs", "--retire-plasmie-jobs"])
+def test_retire_flag_runs_steps_4_and_6_alone(monkeypatch, tmp_path, flag):
+    state = fake_launchd(monkeypatch, tmp_path, loaded=["com.plasmie.snapshot", "com.plasmie.ingest", "com.plasmie.ingest"])
     env = {**os.environ, "PLASMIE_HOME": str(tmp_path / "home"), "PLASMIE_LOGS": str(tmp_path / "logs")}
-    out = subprocess.run([sys.executable, str(HERE / "plasmie-migrate.py"), "--retire-plasmie-jobs"],
+    out = subprocess.run([sys.executable, str(HERE / "plasmie-migrate.py"), flag],
                          capture_output=True, text=True, env=env, timeout=60)
     assert out.returncode == 0 and json.loads(out.stdout) == {"ok": True}
-    assert loaded_now(state) == []
+    assert loaded_now(state) == ["com.plasmie.ingest"]
     assert not (tmp_path / "home" / ".schema-version").exists()       # not a versioned run
+
+
+# --- step 6: Plasmie's com.plasmie.* jobs (ADR 0028) ------------------------------------------
+def test_step6_boots_out_every_loaded_plasmie_job_and_nothing_else(monkeypatch, tmp_path):
+    km = load(monkeypatch, tmp_path)
+    state = fake_launchd(monkeypatch, tmp_path,
+                         loaded=["com.plasmie.ingest", "com.plasmie.snapshot", "com.plasmie.ingest", "com.plasmie.promote"])
+    km.m6_retire_plasmie_jobs()
+    assert loaded_now(state) == ["com.plasmie.promote", "com.plasmie.ingest"]       # step 4's job, not 6's
+    calls = (state / "calls").read_text().splitlines()
+    for name in km.PLASMIE_JOBS:
+        assert f"bootout gui/{os.getuid()}/com.plasmie.{name}" in calls
+
+
+def test_the_owners_plasmie_install_at_version_5_runs_steps_6_and_7(monkeypatch, tmp_path):
+    km = load(monkeypatch, tmp_path)
+    state = fake_launchd(monkeypatch, tmp_path, loaded=["com.plasmie.ingest", "com.plasmie.promote"])
+    adopted = []
+    monkeypatch.setattr(km, "m7_adopt_old_signins", lambda: adopted.append(True))
+    steps = [(n, what, km.m7_adopt_old_signins if n == 7 else fn) for n, what, fn in km.STEPS]
+    vf = tmp_path / "v"
+    vf.write_text("5\n")
+    r = km.migrate(steps, vf)
+    assert r["ok"] and r["version"] == 7 and r["applied"] == [
+        "retire Plasmie's com.plasmie background jobs", "copy Plasmie and Plasmie sign-ins in the Keychain"]
+    assert loaded_now(state) == [] and adopted == [True]
+
+
+def test_step6_fails_while_a_plasmie_job_stays_loaded(monkeypatch, tmp_path):
+    km = load(monkeypatch, tmp_path)
+    fake_launchd(monkeypatch, tmp_path, loaded=["com.plasmie.ingest"], stuck=["com.plasmie.ingest"])
+    vf = tmp_path / "v"
+    vf.write_text("5\n")
+    r = km.migrate(km.STEPS, vf)
+    assert not r["ok"] and r["failed"] == 6 and "com.plasmie.ingest" in r["error"] and km.current(vf) == 5

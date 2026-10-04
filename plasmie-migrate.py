@@ -4,8 +4,9 @@ there is nothing to do) and by setup.
 
   plasmie-migrate.py                      apply pending migrations, print JSON
   plasmie-migrate.py --status             current and latest version
-  plasmie-migrate.py --retire-plasmie-jobs  step 4 again, on its own (the app runs it whenever a
-                                     com.plasmie.* job is loaded again, e.g. after a login)
+  plasmie-migrate.py --retire-old-jobs    steps 4 and 6 again, on their own (the app runs it whenever
+                                     a com.plasmie.* or com.plasmie.* job is loaded again, e.g.
+                                     after a login; --retire-plasmie-jobs is the older spelling)
 
 Each migration runs once, in order; the reached version is saved in
 $PLASMIE_HOME/.schema-version only after a step succeeds, so a failed step is retried on
@@ -55,15 +56,14 @@ def _launchctl(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["launchctl", *args], capture_output=True, text=True, timeout=60)
 
 
-def m4_retire_plasmie_jobs() -> None:
-    """Plasmie -> Plasmie (0027): the old app registered com.plasmie.* through SMAppService under
-    its old bundle id, which the new app can't unregister. Boot them out so they never run
-    beside com.plasmie.* (ingest appends; a double run duplicates data). A job that isn't
+def _retire_jobs(prefix: str) -> None:
+    """Boot out <prefix>.<job> for every job, so an earlier name's set never runs beside
+    the current one (ingest appends; a double run duplicates data). A job that isn't
     loaded is fine; one that is still loaded afterwards fails the step (retried next launch)."""
     domain = f"gui/{os.getuid()}"
     left = []
     for name in PLASMIE_JOBS:
-        target = f"{domain}/com.plasmie.{name}"
+        target = f"{domain}/{prefix}.{name}"
         _launchctl("bootout", target)                 # "not found" and friends: checked below
         if _launchctl("print", target).returncode == 0:
             left.append(target)
@@ -71,11 +71,43 @@ def m4_retire_plasmie_jobs() -> None:
         raise RuntimeError(f"still loaded: {', '.join(left)}")
 
 
+def m4_retire_plasmie_jobs() -> None:
+    """Plasmie -> Plasmie (0027): the old app registered com.plasmie.* through SMAppService under
+    its old bundle id, which the new app can't unregister."""
+    _retire_jobs("com.plasmie")
+
+
 def m5_adopt_plasmie_signins() -> None:
-    """Sign-ins saved in the Keychain as "Plasmie" before the rename move to "Plasmie"
-    (copy only). Without this, an enabled connector silently loses its token."""
+    """Sign-ins saved in the Keychain as "Plasmie" before the 0027 rename are copied to the
+    current service (copy only). Without this, an enabled connector silently loses its token."""
     import keychain
     keychain.adopt_service("Plasmie")
+
+
+def m6_retire_plasmie_jobs() -> None:
+    """Plasmie -> Plasmie (0028): the same as step 4 for Plasmie's com.plasmie.* jobs."""
+    _retire_jobs("com.plasmie")
+
+
+def m7_adopt_old_signins() -> None:
+    """Sign-ins under the earlier names' Keychain services (Plasmie, then Plasmie: newest first,
+    so its value wins) are copied to the current one. Copy only; never overwrites."""
+    import keychain
+    for old in reversed(paths.PREVIOUS_NAMES):
+        keychain.adopt_service(old)
+
+
+def retire_old_jobs() -> None:
+    """Steps 4 and 6 again, on their own (`--retire-old-jobs`): every earlier name's jobs.
+    Both are tried even when one fails; any failure is raised after both ran."""
+    errors = []
+    for old in paths.PREVIOUS_NAMES:
+        try:
+            _retire_jobs(f"com.{old.lower()}")
+        except RuntimeError as e:
+            errors.append(str(e))
+    if errors:
+        raise RuntimeError("; ".join(errors))
 
 
 STEPS = [
@@ -83,7 +115,9 @@ STEPS = [
     (2, "seed ingest watermarks from the vault", m2_seed_watermarks_from_vault),
     (3, "retire the old com.legacy background jobs", m3_retire_legacy_jobs),
     (4, "retire Plasmie's com.plasmie background jobs", m4_retire_plasmie_jobs),
-    (5, "copy Plasmie sign-ins to Plasmie in the Keychain", m5_adopt_plasmie_signins),
+    (5, "copy Plasmie sign-ins in the Keychain", m5_adopt_plasmie_signins),
+    (6, "retire Plasmie's com.plasmie background jobs", m6_retire_plasmie_jobs),
+    (7, "copy Plasmie and Plasmie sign-ins in the Keychain", m7_adopt_old_signins),
 ]
 LATEST = STEPS[-1][0]
 
@@ -116,9 +150,9 @@ def migrate(steps=STEPS, version_file: Path = VERSION_FILE) -> dict:
 if __name__ == "__main__":
     if "--status" in sys.argv:
         print(json.dumps({"version": current(), "latest": LATEST}))
-    elif "--retire-plasmie-jobs" in sys.argv:
+    elif "--retire-old-jobs" in sys.argv or "--retire-plasmie-jobs" in sys.argv:
         try:
-            m4_retire_plasmie_jobs()
+            retire_old_jobs()
         except Exception as e:                                   # reported, not raised
             print(json.dumps({"ok": False, "error": str(e)}))
             sys.exit(1)

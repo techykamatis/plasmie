@@ -103,6 +103,40 @@ def sample(sdf, cx, cy, reach=70.0):
     return pts
 
 
+def trace(sdf, cx, step=0.25, eps=1e-3):
+    """N anchors evenly by arc length along the SDF's zero line, clockwise from its top point on
+    x=cx. For shapes rays from one centre can't sample: an armpit hides from every ray, so
+    `sample` webs it over."""
+    lo, hi = 0.0, 100.0                       # top crossing on the vertical through cx (outside above)
+    for _ in range(50):
+        mid = (lo + hi) / 2
+        if sdf(cx, mid) < 0: hi = mid
+        else: lo = mid
+    def grad(x, y):
+        return ((sdf(x + eps, y) - sdf(x - eps, y)) / (2 * eps), (sdf(x, y + eps) - sdf(x, y - eps)) / (2 * eps))
+    start = (cx, hi); p = start; pts = [p]; walked = 0.0
+    while True:
+        gx, gy = grad(*p); g = math.hypot(gx, gy) or 1
+        q = (p[0] - gy / g * step, p[1] + gx / g * step)       # along the tangent, clockwise (y down)
+        for _ in range(3):                                      # back onto the line
+            d = sdf(*q); gx, gy = grad(*q); g2 = gx * gx + gy * gy or 1
+            q = (q[0] - d * gx / g2, q[1] - d * gy / g2)
+        walked += math.dist(p, q); p = q; pts.append(p)
+        if walked > 4 * step and math.dist(p, start) < step: break
+        if walked > 2000: raise RuntimeError("contour didn't close")
+    pts[-1] = start
+    seg = [0.0]
+    for a, b in zip(pts, pts[1:]): seg.append(seg[-1] + math.dist(a, b))
+    total, out, j = seg[-1], [], 0
+    for i in range(N):
+        s = total * i / N
+        while seg[j + 1] < s: j += 1
+        t = (s - seg[j]) / ((seg[j + 1] - seg[j]) or 1)
+        a, b = pts[j], pts[j + 1]
+        out.append((round(a[0] + (b[0] - a[0]) * t, 2), round(a[1] + (b[1] - a[1]) * t, 2)))
+    return out
+
+
 MOCHI = ellipse(50, 56, 36, 32)
 
 SHAPES = {
@@ -132,6 +166,11 @@ SHAPES = {
     # --- reactions to the mouse (transient; the app returns to the pipeline state) ---
     # hi: one click — waves the same raised hand as "held"
     "hi": sample(smooth_union(8, MOCHI, capsule(70, 40, 79, 27, 8), circle(81, 22, 10.5)), 56, 52),
+    # tada: the map opening (Stark throwing the hologram open) — the "hi" arm on both sides
+    # (arms from the lower sides, hands out at eye height: two arms up off the top of the head
+    # read as ears. Traced, since rays from the centre would web over the armpits.)
+    "tada": trace(smooth_union(6, ellipse(50, 55, 29, 28), capsule(30, 67, 14, 47, 6.5), circle(14, 47, 8.5),
+                               capsule(70, 67, 86, 47, 6.5), circle(86, 47, 8.5)), 50),
     # annoyed: rapid clicks — puffs up rounder and bigger
     "annoyed": sample(ellipse(50, 55, 39, 35), 50, 55),
     # petted: click-drag across it — squishes low and wide
@@ -154,6 +193,7 @@ FACES = {
     "off":       {"eyes": "closed", "mouth": "none",  "prop": None},
     "success":   {"eyes": "happy",  "mouth": "grin",  "prop": "sparkles"},
     "hi":        {"eyes": "happy",  "mouth": "grin",  "prop": "hello"},
+    "tada":      {"eyes": "happy",  "mouth": "grin",  "prop": None},
     "annoyed":   {"eyes": "angry",  "mouth": "pout",  "prop": "vein"},
     "petted":    {"eyes": "happy",  "mouth": "smile", "prop": "hearts"},
 }

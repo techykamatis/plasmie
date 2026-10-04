@@ -131,7 +131,8 @@ private struct MapArea: View {
     }
 
     private var plasmieState: PlasmieState {
-        scene.plasmieHover || Date() < scene.waveUntil ? .hi : m.plasmie
+        if scene.introPose?.tada == true { return .tada }
+        return scene.plasmieHover || Date() < scene.waveUntil ? .hi : m.plasmie
     }
 
     private func live(_ g: MapGraph) -> some View {

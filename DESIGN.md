@@ -190,10 +190,11 @@ pink heart; everything around it is calm and neutral, so the mascot reads at a g
   (~8 s after the last touch). Reduce Motion: no pulses or breathing, the layout arrives
   settled, 0.15 s eases.
 - **The opening** (`MapIntro.swift`, after the hologram burst in Iron Man 2): Plasmie swells
-  from the loading size to half the view with the web packed out of sight behind it, throws
-  two stubby arms up into a V (fingers spread), then snaps to size while the web bursts out
-  spinning, one soft overshoot, a sparkle-gold shockwave ring. ~2.2 s; the arms are the only
-  pink off the body and tuck back in. Any click or scroll skips it; Reduce Motion: none.
+  from the loading size to half the view with the web packed out of sight behind it, morphs
+  into `tada` (its "hi" arm on both sides, raised from the lower sides: arms off the top of
+  the head read as ears), then snaps to size while the web bursts out spinning, one soft
+  overshoot, a sparkle-gold shockwave ring. ~2.2 s. Clicking Plasmie replays it; any other
+  click or scroll skips it; Reduce Motion: none.
 - **Native chrome:** toolbar = notes-list toggle, find (type to glide to a match, Return opens
   it), type chips (only kinds the vault has), zoom −/+/fit. The notes list is also the
   VoiceOver route.

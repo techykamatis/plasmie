@@ -42,7 +42,6 @@ extension MapScene {
         drawMatchRing(ctx, g, l, scheme, now: now)
         drawLabels(ctx, g, l, scheme, focusSet: dim > 0.3 ? focusSet : [], focus: shownFocus, dim: dim)
         drawIntroWave(ctx, scheme)
-        drawIntroArms(ctx, scheme)
         perf.frame(draw: CFAbsoluteTimeGetCurrent() - t0, nodes: g.nodes.count, edges: g.edges.count)
     }
 

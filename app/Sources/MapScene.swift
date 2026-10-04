@@ -267,7 +267,8 @@ final class MapScene: ObservableObject {
         if dragged { if case .node = grab { layout?.unpin(); layout?.reheat(0.12) }; return }
         switch grab {
         case .node(let i): open(i)
-        case .plasmie: waveUntil = Date().addingTimeInterval(1.4); fit()
+        case .plasmie:                                  // replay the opening (just a wave under Reduce Motion)
+            if reduceMotion { waveUntil = Date().addingTimeInterval(1.4); fit() } else { glide = nil; camera = fitCamera(); startIntro() }
         default: break
         }
     }

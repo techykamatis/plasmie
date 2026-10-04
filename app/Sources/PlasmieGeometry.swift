@@ -12,6 +12,7 @@ enum PlasmieState: String, CaseIterable {
     case idle, ingest, summarize, promote, ask, held, error, busy, quiet, off, success
     // transient reactions to the mouse; never derived from the pipeline
     case hi, annoyed, petted
+    case tada          // the map opening: both arms flung up (MapIntro.swift)
 
     var anchors: [CGPoint] { PlasmieShapes.anchors[rawValue] ?? PlasmieShapes.anchors["idle"] ?? [] }
 
@@ -31,6 +32,7 @@ enum PlasmieState: String, CaseIterable {
         case .hi:        return "\(Brand.name) waves hi"
         case .annoyed:   return "\(Brand.name) is annoyed"
         case .petted:    return "\(Brand.name) is enjoying the pets"
+        case .tada:      return "\(Brand.name) throws its arms open"
         }
     }
 
@@ -164,6 +166,7 @@ extension PlasmieState {
         case .success:   return PlasmieFace(eyes: .happy, mouth: .grin, prop: .sparkles, blush: true, layout: PlasmieLayout(cy: 0.5, gap: 0.15, mouthDy: 8.5))
         case .hi:        return PlasmieFace(eyes: .happy, mouth: .grin, prop: .hello, blush: true, layout: PlasmieLayout(cy: 0.5, gap: 0.15, mouthDy: 8.5))
         case .annoyed:   return PlasmieFace(eyes: .angry, mouth: .pout, prop: .vein, layout: PlasmieLayout(cy: 0.5, gap: 0.17, mouthDy: 10))
+        case .tada:      return PlasmieFace(eyes: .happy, mouth: .grin, prop: nil, blush: true, layout: PlasmieLayout(cy: 0.56, gap: 0.15, mouthDy: 8.5))
         case .petted:    return PlasmieFace(eyes: .happy, mouth: .smile, prop: .hearts, blush: true, blushScale: 1.35, layout: PlasmieLayout(cy: 0.42, gap: 0.17, mouthDy: 8.5))
         }
     }

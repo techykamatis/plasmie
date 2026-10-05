@@ -480,8 +480,8 @@ private struct NotchRoot: View {
                              stageName: m.stage?.name, accessory: m.stage?.accessory, fact: m.funFact,
                              activity: m.s.activity, celebrating: nm.bannerText, pending: m.s.pending, tourStep: nm.tourStep,
                              vault: m.s.vault, notes: m.s.notes,
-                             notice: BackgroundJobs.needsApproval ? Self.jobsNotice : (m.s.notice ?? ""),
-                             noticeIsJobs: BackgroundJobs.needsApproval)
+                             notice: m.jobsNeedApproval ? Self.jobsNotice : (m.s.notice ?? ""),
+                             noticeIsJobs: m.jobsNeedApproval)
         let mode = NotchMode.resolve(ask: nm.asking, answered: nm.answered, tour: nm.tourStep != nil, hover: nm.hovering, banner: nm.banner, working: info.working)
         NotchView(info: info, geo: geo, mode: mode, actions: actions, panelShift: nm.panelShift,
                   onTarget: { onMode(mode, $0) })

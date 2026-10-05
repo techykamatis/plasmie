@@ -97,6 +97,7 @@ struct Panel: View {
     @ObservedObject private var icloud = ICloudSync.shared
     @AppStorage(ICloudSync.key) private var icloudOn = false
     @State private var atLogin = LoginItem.isOn
+    @State private var loginNeedsOK = LoginItem.needsApproval   // read once, not per render (XPC to smd)
     private enum Confirm { case approve, dismiss }
     @State private var confirm: Confirm?
     @AppStorage(NotchPrefs.key) private var notchOn = true
@@ -217,7 +218,7 @@ struct Panel: View {
             banner(m.s.reason, symbol: "exclamationmark.triangle.fill", tint: .red) { SettingsController.shared.show() }
         }
         if m.s.pending > 0 { held }
-        if BackgroundJobs.needsApproval {
+        if m.jobsNeedApproval {
             banner(NotchRootText.jobsNotice, symbol: "gearshape.fill", tint: .orange) { BackgroundJobs.openLoginItems() }
         }
         if let n = m.s.notice, !n.isEmpty {
@@ -315,9 +316,9 @@ struct Panel: View {
                 NotchController.shared.startTour()
             }
             ActionRow(title: "Open at login", symbol: "power.circle",
-                      detail: LoginItem.needsApproval ? "Waiting for approval in System Settings › Login Items"
+                      detail: loginNeedsOK ? "Waiting for approval in System Settings › Login Items"
                             : atLogin ? "On · \(Brand.name) starts when you log in" : "Off") {
-                LoginItem.set(!atLogin); atLogin = LoginItem.isOn
+                LoginItem.set(!atLogin); atLogin = LoginItem.isOn; loginNeedsOK = LoginItem.needsApproval
             }
             ActionRow(title: "\(Brand.name) in the notch", symbol: "capsule.tophalf.filled",
                       detail: notchOn ? "On · replaces the menu-bar icon" : "Off · using the menu-bar icon") { notchOn.toggle() }

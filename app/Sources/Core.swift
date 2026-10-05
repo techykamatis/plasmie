@@ -178,8 +178,12 @@ final class Model: ObservableObject {
     static let shared = Model()
     /// Mirrors the "plasmie.notch" default, set only when it really changes (NotchController.sync):
     /// binding MenuBarExtra to @AppStorage loops, since the status item writes defaults itself.
-    @Published var notchOn = true
+    @Published var notchOn = true { didSet { if notchOn != oldValue { updateAnimation() } } }   // no menu-bar icon to animate while the notch shows
     @Published var s = Status()
+    /// BackgroundJobs.needsApproval, read once per status refresh off the main thread. Views
+    /// must read this, never the live call: each is 5 blocking XPC calls to smd, and views
+    /// re-render ~8x/s while the menu-bar glyph animates (ingest/promote went sluggish).
+    @Published private(set) var jobsNeedApproval = false
     @Published var obsidian = detectObsidian()
     @Published var note = ""            // transient status line ("Promote started…")
     @Published var output = ""          // captured output of the last in-process run
@@ -326,8 +330,10 @@ final class Model: ObservableObject {
         DispatchQueue.global().async {
             let new = loadStatus()
             let off = ConnectorsModel.readOff()
+            let approval = BackgroundJobs.needsApproval
             DispatchQueue.main.async {
                 self.s = new
+                if self.jobsNeedApproval != approval { self.jobsNeedApproval = approval }
                 self.allOff = Connector.all.allSatisfy { off.contains($0.id) }
                 self.minSourceAge = Connector.all.filter { !off.contains($0.id) }
                     .compactMap { new.age($0.ageKey) }.min()
@@ -362,6 +368,14 @@ final class Model: ObservableObject {
     /// Reduce Motion: always static, no tween.
     private func updateAnimation() {
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            anim?.invalidate(); anim = nil
+            tweenStep = 0
+            setGlyph(PlasmieGlyph.still(plasmie), plasmie)
+            return
+        }
+        // The notch replaces the menu-bar icon: animating a hidden glyph re-rendered every view
+        // observing Model 8x/s for nothing.
+        if notchOn {
             anim?.invalidate(); anim = nil
             tweenStep = 0
             setGlyph(PlasmieGlyph.still(plasmie), plasmie)

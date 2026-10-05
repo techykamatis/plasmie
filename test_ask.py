@@ -236,3 +236,16 @@ def test_recap_raw_logs_get_a_fair_share(tmp_path):
 
 def test_selfcheck_passes():
     ask.selfcheck()
+
+
+def test_qmd_paths_map_back_to_the_real_note(tmp_path):
+    # qmd "handelizes" paths (spaces -> dashes) and names the collection, not the folder
+    note = tmp_path / "02 Areas" / "health" / "Bungee Vet.md"
+    note.parent.mkdir(parents=True)
+    note.write_text("# Bungee\n")
+    (tmp_path / "wiki").mkdir()
+    (tmp_path / "wiki" / "rds.md").write_text("x")
+    ask._real_paths.clear()
+    assert ask.real_path(tmp_path, "qmd://vault/02-Areas/health/bungee-vet.md") == "02 Areas/health/Bungee Vet.md"
+    assert ask.real_path(tmp_path, "qmd://wiki/rds.md") == "wiki/rds.md"
+    assert ask.real_path(tmp_path, "qmd://vault/gone.md") == "gone.md"     # unknown: left as is

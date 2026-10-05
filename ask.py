@@ -15,8 +15,9 @@ was the one thing FM fabricated in the A/B (docs/fm-baseline.md).
 
 qmd owns retrieval (see the vault's CLAUDE.md); ask.py owns the private
 synthesis and the promote/improve loops that depend on it. Retrieval
-is over the **wiki/** collection only — raw/ is immutable source material, not an
-answer source. If vector search can't run yet (models still downloading), it
+is over the **wiki** collection (Plasmie's curated notes) and the **vault** collection
+(the user's own notes, in whatever folders they keep) — raw/ is immutable source
+material, not an answer source. If vector search can't run yet (models still downloading), it
 falls back to BM25 `qmd search`.
 
 Two output channels so a UI can show live progress:
@@ -81,6 +82,33 @@ def _run_qmd(args):
                           timeout=QMD_TIMEOUT, env=_qmd_env())
 
 
+# qmd collection -> its folder in the vault (app-setup.sh registers them; "vault" is the
+# root, minus raw/ wiki/ meta/). qmd hands back paths "handelized" (spaces -> dashes,
+# e.g. qmd://vault/02-Areas/...), so a path that isn't on disk is matched back to the
+# real file by its normalized form.
+COLLECTION_DIRS = {"wiki": "wiki", "raw": "raw", "vault": ""}
+_real_paths = {}
+
+
+def _norm(rel):
+    return re.sub(r"[^a-z0-9]+", "-", rel.lower()).strip("-")
+
+
+def real_path(vp, qmd_file):
+    """qmd://<collection>/<path> -> the vault-relative path of the real file."""
+    coll, _, rest = qmd_file.replace("qmd://", "").partition("/")
+    base = COLLECTION_DIRS.get(coll, coll)
+    rel = f"{base}/{rest}" if base else rest
+    if (vp / rel).exists():
+        return rel
+    key = str(vp)
+    if key not in _real_paths:
+        _real_paths[key] = {_norm(p.relative_to(vp).as_posix()): p.relative_to(vp).as_posix()
+                            for p in vp.rglob("*.md")
+                            if not any(part.startswith(".") for part in p.relative_to(vp).parts)}
+    return _real_paths[key].get(_norm(rel), rel)
+
+
 def qmd_hits(question, vault, k=TOP_K, collection=None):
     """Ranked notes from qmd -> [(score, {path, title, text}), ...].
 
@@ -93,7 +121,7 @@ def qmd_hits(question, vault, k=TOP_K, collection=None):
     def parse(stdout):
         hits = []
         for r in json.loads(stdout or "[]"):
-            rel = (r.get("file") or "").replace("qmd://", "")
+            rel = real_path(vp, r.get("file") or "") if r.get("file") else ""
             # skip generated navigation: an index or a map of content is a list of
             # titles, so as a "source" it hands the model headings instead of facts.
             if not rel or Path(rel).name == "index.md" or paths.MOCS in rel:
@@ -104,7 +132,8 @@ def qmd_hits(question, vault, k=TOP_K, collection=None):
                          {"path": rel, "title": r.get("title") or Path(rel).stem, "text": text}))
         return hits
 
-    base = ["-n", str(k), "--json"] + (["-c", collection] if collection else [])
+    colls = [collection] if isinstance(collection, str) else list(collection or [])
+    base = ["-n", str(k), "--json"] + [a for c in colls for a in ("-c", c)]
     # vsearch (pure vector) measured best on this vault: hit@4 1.00 / MRR 0.96 vs
     # hybrid `query` 0.74 — paraphrased questions over short curated notes don't
     # benefit from BM25 fusion + rerank. BM25 `search` is the offline fallback
@@ -348,15 +377,15 @@ def ask(question, vault=None, on_chunk=None):
             return result    # else nothing in range — fall through to retrieval
 
     _say("Searching your notes…")
-    # Answer ONLY from wiki/ — the curated, organized layer. raw/ is immutable
-    # source material to be synthesized INTO wiki (via promote), not answered from
-    # directly: it can contradict curated guidance. A weak/empty wiki result is a
-    # coverage GAP to fill by promoting, not a reason to fall back to raw.
-    hits = qmd_hits(question, vault, collection="wiki")
+    # Answer from notes: Plasmie's curated wiki/ and the user's own notes (the "vault"
+    # collection, their folders as they keep them). Never raw/: it is immutable source
+    # material to be synthesized INTO wiki (via promote), and can contradict curated
+    # guidance. A weak/empty result is a coverage GAP to fill, not a reason to read raw.
+    hits = qmd_hits(question, vault, collection=["wiki", "vault"])
     if not hits:
         if log_gap(vault, question, 0.0, "(none)"):
-            _say("Nothing in the wiki covers this — logged a coverage gap.")
-        return done("Nothing in the wiki covers this yet — promote a note from raw to answer it.", [])
+            _say("Nothing in your notes covers this — logged a coverage gap.")
+        return done("Nothing in your notes covers this yet — I'll learn more as I gather and file your work.", [])
     # qmd's top score gauges coverage — a low one means nothing really matches (gap).
     weak = hits[0][0] < COVERAGE_MIN
     if weak and log_gap(vault, question, hits[0][0], hits[0][1]["path"]):

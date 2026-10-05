@@ -24,10 +24,29 @@ PLASMIE_ENGINE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Plasmie's own venv (made from the bundled Python); never a Homebrew or system python,
 # which a fresh Mac may not have (/usr/bin/python3 is a stub that prompts for Xcode tools).
 PY="$PLASMIE_HOME/venv/bin/python3"
-[ -x "$PY" ] || PY="$(command -v python3)"
+[ -x "$PY" ] || PY="$PLASMIE_ENGINE/../python/bin/python3"   # bundled runtime, before setup
+# plasmie_native NAME [TEST...]: first NAME on PATH built for this Mac's CPU (or a script) that
+# also passes TEST (the command, run with the candidate path appended); never an Intel copy on Apple silicon
+# (Python's twin: paths.native_tool). For the moments before Plasmie's own Python exists.
+plasmie_native() {
+  local name="$1" d p a; shift; a="$(uname -m)"
+  local IFS=:
+  for d in $PATH /opt/homebrew/bin /usr/bin; do
+    p="$d/$name"; [ -x "$p" ] && [ ! -d "$p" ] || continue
+    case "$(file -bL "$p" 2>/dev/null)" in *Mach-O*"$a"*|*script*|*text*) ;; *) continue ;; esac
+    { [ $# -eq 0 ] || "$@" "$p"; } && { echo "$p"; return 0; }
+  done
+  return 1
+}
+_py310() { "$1" -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>/dev/null; }
+[ -x "$PY" ] || PY="$(plasmie_native python3 _py310)"            # dev checkout: native, 3.10+
 PLASMIE_CONFIG="$PLASMIE_HOME/config.env"
 [ -f "$PLASMIE_CONFIG" ] && . "$PLASMIE_CONFIG"
 export PLASMIE_ENGINE PY
+# Native tools only (setup records them; paths.native_tool): an Intel git that shadows the
+# native one on PATH dies with "Bad CPU type" on Apple silicon without Rosetta.
+export PLASMIE_GIT_BIN="${PLASMIE_GIT_BIN:-}" PLASMIE_GH_BIN="${PLASMIE_GH_BIN:-}"
+[ -x "$PLASMIE_GIT_BIN" ] && git() { "$PLASMIE_GIT_BIN" "$@"; }
 # Search (qmd, a Node CLI): Plasmie's own copy in $PLASMIE_HOME/qmd, run by the Node that ships
 # inside Plasmie.app (Resources/node), so a friend needs no Node install. qmd's
 # `#!/usr/bin/env node` shebang means node must be on PATH, not just qmd. A dev checkout

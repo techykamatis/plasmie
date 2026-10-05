@@ -33,7 +33,9 @@ READY="$PLASMIE_HOME/.setup-complete"   # the app's "installed" marker (Setup.sw
 # PREPENDED, so the last one wins: nvm goes last. qmd's better-sqlite3 is a native
 # module built for one Node ABI; homebrew node (v26) loading an nvm-built (v22)
 # install dies with ERR_DLOPEN_FAILED.
+# /usr/local is Intel Homebrew on Apple silicon: never put it ahead of native tools.
 for d in /usr/local/bin /opt/homebrew/bin "$HOME"/.nvm/versions/node/*/bin; do
+  [ "$d" = /usr/local/bin ] && [ "$(uname -m)" = arm64 ] && continue
   [ -d "$d" ] && PATH="$d:$PATH"
 done
 export PATH
@@ -87,8 +89,20 @@ check_all() {
   if [ -d /Applications/Obsidian.app ] || [ -d "$HOME/Applications/Obsidian.app" ]; then chk obsidian ok recommended "Obsidian" "Opens and browses your vault."
   else chk obsidian missing recommended "Obsidian" "The app you read your vault in."; fi
 
-  if xcode-select -p >/dev/null 2>&1; then chk clt ok recommended "Command Line Tools" "git keeps a history of your vault."
-  else chk clt missing recommended "Command Line Tools" "Without them there's no vault history (git)."; fi
+  local git; git="$(native_tool git)"
+  if [ -n "$git" ]; then chk clt ok recommended "Command Line Tools" "git keeps a history of your vault ($git, built for this Mac)."
+  else chk clt missing recommended "Command Line Tools" "Without them there's no vault history (git). Setup will offer to install them."; fi
+}
+# The native (Apple-silicon) copy of a tool, "" if none: Intel copies are skipped
+# (paths.native_tool). Runs on the bundled Python, so it works before the venv exists.
+native_tool() {
+  "$RES/python/bin/python3" -c 'import sys; sys.path.insert(0, sys.argv[1]); import paths; print(paths.native_tool(sys.argv[2]))' \
+    "$ENGINE" "$1" 2>/dev/null
+}
+set_config() {   # set_config KEY VALUE: one line in config.env, every other line kept
+  local esc; esc="$(printf '%s' "$2" | sed "s/'/'\\\\''/g")"
+  { grep -v "^$1=" "$PLASMIE_CONFIG" 2>/dev/null; printf "%s='%s'\n" "$1" "$esc"; } > "$PLASMIE_CONFIG.tmp" \
+    && mv "$PLASMIE_CONFIG.tmp" "$PLASMIE_CONFIG"
 }
 
 if [ "$MODE" = check ]; then check_all; exit 0; fi
@@ -103,13 +117,26 @@ p 5 "Preparing $PLASMIE_APP_NAME's data folder…"
 "$ENGINE/migrate-home.sh" >/dev/null 2>&1 || fail "couldn't move older $PLASMIE_APP_NAME data into place"
 
 # 2) python runtime (the engine is stdlib-only; nothing to pip-install) ---------
-if [ ! -x "$PY" ]; then
+# The venv is a copy of the bundled runtime. Missing, broken, or a different version than
+# this app ships (left by an older install) -> replaced, so the engine always runs on the
+# Python it was tested with.
+pyver() { "$1" -c 'import sys; print(sys.version.split()[0])' 2>/dev/null; }
+WANT_PY="$(pyver "$RES/python/bin/python3")"
+if [ -n "$WANT_PY" ] && [ "$(pyver "$PY")" != "$WANT_PY" ]; then
   p 8 "Setting up the Python runtime…"
-  mkdir -p "$VENV"
+  rm -rf "$VENV" && mkdir -p "$VENV"
   cp -R "$RES/python/." "$VENV/" || fail "python copy failed"
 fi
 "$PY" -c 'import sys; sys.exit(sys.version_info < (3, 10))' || fail "the bundled Python runtime is broken — reinstall $PLASMIE_APP_NAME"
 p 20 "Python runtime ready"
+
+# 2b) native tools: record the Apple-silicon git and gh the background jobs must use, so an
+# Intel copy earlier on PATH is never picked; no native git -> offer Apple's installer.
+p 22 "Checking tools are built for this Mac…"
+GIT_NATIVE="$(native_tool git)"
+set_config PLASMIE_GIT_BIN "$GIT_NATIVE"
+set_config PLASMIE_GH_BIN "$(native_tool gh)"
+[ -n "$GIT_NATIVE" ] || xcode-select --install >/dev/null 2>&1 || true
 
 # 3) vault: adopt, never overwrite (ADR 0022) -------------------------------------
 # The vault is the one thing that must never be lost: the folder the user chose in setup
@@ -119,9 +146,7 @@ p 20 "Python runtime ready"
 p 25 "Preparing your notes vault…"
 ok="$("$PY" "$ENGINE/plasmie-vault.py" check-folder "$VAULT")"
 case "$ok" in *'"ok": true'*) ;; *) fail "$(printf '%s' "$ok" | sed -E 's/.*"reason": "([^"]*)".*/\1/')";; esac
-esc="$(printf '%s' "$VAULT" | sed "s/'/'\\\\''/g")"
-{ grep -v '^VAULT_DIR=' "$PLASMIE_CONFIG" 2>/dev/null; printf "VAULT_DIR='%s'\n" "$esc"; } > "$PLASMIE_CONFIG.tmp" \
-  && mv "$PLASMIE_CONFIG.tmp" "$PLASMIE_CONFIG"
+set_config VAULT_DIR "$VAULT"
 "$PY" "$ENGINE/plasmie-vault.py" snapshot "$VAULT" "$PLASMIE_APP_NAME setup" >/dev/null 2>&1 || true
 info="$("$PY" "$ENGINE/plasmie-vault.py" inspect "$VAULT")"
 case "$info" in
@@ -141,13 +166,19 @@ esac
 QMD_VERSION="2.5.3"
 NODE_BIN="$RES/node/bin"
 if [ -x "$NODE_BIN/node" ]; then
-  if [ ! -x "$PLASMIE_HOME/qmd/bin/qmd" ]; then
+  QMD="$PLASMIE_HOME/qmd/bin/qmd"
+  # missing, not the pinned version, or not loading under the bundled Node (a native module
+  # built for another Node ABI) -> reinstall fresh
+  qmd_ver() { PATH="$NODE_BIN:$PATH" "$QMD" --version 2>/dev/null | awk '{print $NF; exit}'; }
+  if [ "$(qmd_ver)" != "$QMD_VERSION" ] \
+     || ! PATH="$NODE_BIN:$PATH" "$QMD" collection list >/dev/null 2>&1; then
     p 30 "Installing the search engine…"
+    rm -rf "$PLASMIE_HOME/qmd"
     PATH="$NODE_BIN:$PATH" npm_config_build_from_source=false npm_config_update_notifier=false \
       "$NODE_BIN/npm" install -g --prefix "$PLASMIE_HOME/qmd" "@tobilu/qmd@$QMD_VERSION" >/dev/null 2>&1 \
       || fail "couldn't install the search engine; check the internet connection and try again"
+    [ "$(qmd_ver)" = "$QMD_VERSION" ] || fail "the search engine didn't install correctly; try again"
   fi
-  QMD="$PLASMIE_HOME/qmd/bin/qmd"
   export PATH="$NODE_BIN:$PLASMIE_HOME/qmd/bin:$PATH"
 else
   QMD="$(command -v qmd || true)"
@@ -155,8 +186,32 @@ else
 fi
 
 p 35 "Indexing your vault…"
-"$QMD" collection add "$VAULT/raw"  --name raw  >/dev/null 2>&1 || true
-"$QMD" collection add "$VAULT/wiki" --name wiki >/dev/null 2>&1 || true
+# Search covers ONE location, the vault chosen above: raw/ and wiki/ are Plasmie's
+# collections, "vault" is the user's own notes in whatever folders they already use.
+# A collection left pointing elsewhere (a previous vault, an iCloud copy) is repointed in
+# place through qmd's own config API, so hand-written contexts and ignores survive; plain
+# `collection add` refuses an existing name and would silently keep the stale path.
+QMD_COLLECTIONS="$PLASMIE_HOME/qmd/lib/node_modules/@tobilu/qmd/dist/collections.js"
+if [ -x "$NODE_BIN/node" ] && [ -f "$QMD_COLLECTIONS" ]; then
+  PLASMIE_VAULT_ROOT="$VAULT" QMD_COLLECTIONS="$QMD_COLLECTIONS" "$NODE_BIN/node" --input-type=module -e '
+    const { pathToFileURL } = await import("node:url");
+    const q = await import(pathToFileURL(process.env.QMD_COLLECTIONS).href);
+    const v = process.env.PLASMIE_VAULT_ROOT.replace(/\/+$/, "");
+    const cfg = q.loadConfig();
+    const want = { raw: v + "/raw", wiki: v + "/wiki", vault: v };
+    for (const [name, path] of Object.entries(want)) {
+      const c = cfg.collections[name] || {};
+      c.path = path;
+      c.pattern = c.pattern || "**/*.md";
+      if (name === "vault")                     // the rest is indexed by raw/wiki, or private
+        c.ignore = [...new Set([...(c.ignore || []), ".obsidian/**", "raw/**", "wiki/**", "meta/**"])];
+      cfg.collections[name] = c;
+    }
+    q.saveConfig(cfg);' || fail "couldn't set up search for your vault"
+else                                            # dev build: an installed qmd, CLI only
+  "$QMD" collection add "$VAULT/raw"  --name raw  >/dev/null 2>&1 || true
+  "$QMD" collection add "$VAULT/wiki" --name wiki >/dev/null 2>&1 || true
+fi
 "$QMD" context add qmd://raw  "Immutable raw source material captured hourly. Prefer wiki/ for durable answers." >/dev/null 2>&1 || true
 "$QMD" context add qmd://raw/slack  "Slack messages sent and received." >/dev/null 2>&1 || true
 "$QMD" context add qmd://raw/claude "Claude Code coding-session activity and decisions." >/dev/null 2>&1 || true

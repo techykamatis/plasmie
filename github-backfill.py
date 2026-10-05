@@ -29,7 +29,7 @@ from scrub import redact as _scrub
 
 # launchd / cron run with a minimal PATH — resolve the gh binary explicitly.
 import github_api  # noqa: E402  (token path; gh CLI below is the fallback)
-GH_BIN = shutil.which("gh") or next((p for p in ("/opt/homebrew/bin/gh", "/usr/local/bin/gh") if os.path.exists(p)), "gh")
+GH_BIN = paths.native_tool("gh") or "gh"          # never an Intel gh (paths.native_tool)
 
 
 def redact(s):
@@ -138,7 +138,7 @@ def main():
         for it in search(f"is:issue author:{user}{oq}"):
             bucket(repo_full(it))["issues"].append(it)
         print(f"[{org}] commented threads…")
-        threads = search(f"commenter:{user}{oq}")
+        threads = search(f"is:issue commenter:{user}{oq}") + search(f"is:pr commenter:{user}{oq}")
         for i, it in enumerate(threads):
             full = repo_full(it)
             is_pr = "pull_request" in it

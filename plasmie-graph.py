@@ -4,11 +4,14 @@
   plasmie-graph.py            -> JSON on stdout:
      {"nodes": [{id, title, type, tags, date, links, hub, excerpt}], "edges": [[i, j], ...]}
 
-Nodes are the curated notes in wiki/ (raw/ captures are not in the graph). `id` is the
-vault-relative path. Edges are undirected [[wikilinks]] resolved the way Obsidian does: by
-file name (case-insensitive, a folder prefix ignored), else by title; `[[note|alias]]`,
+Nodes are every note in the vault, in whatever folders it already uses (Plasmie's wiki/
+and the user's own), except raw/ (unredacted captures), meta/ (Ask queries, drafts),
+hidden folders (.git, .obsidian, .trash) and attachments. `id` is the vault-relative
+path. Edges are undirected [[wikilinks]] resolved the way Obsidian does: by file name
+(case-insensitive, a folder prefix ignored), else by title; `[[note|alias]]`,
 `[[note#heading]]` and `[[note^block]]` point at `note`; links to missing notes and to
-attachments are dropped. Maps of content (type moc/index, or under wiki/mocs/) are hubs.
+attachments are dropped. Local Markdown links ([text](../folder/note.md)) are edges too,
+resolved from the linking note's folder. Maps of content (type moc/index, or under wiki/mocs/) are hubs.
 `links` is the number of distinct neighbours. The excerpt is the first two body lines that
 are not frontmatter, headings, HTML comments or bare link lists. Every displayable string
 (title, type, tags, excerpt) passes scrub.redact(emails=True) on its final form, redacted
@@ -20,6 +23,7 @@ import json
 import os
 import re
 import sys
+import urllib.parse
 from pathlib import Path
 
 import paths
@@ -29,7 +33,9 @@ HUB_TYPES = {"moc", "index"}
 EXCERPT_LINES = 2
 EXCERPT_CHARS = 180
 WIKILINK = re.compile(r"\[\[([^\]\n]+?)\]\]")
-SKIP_DIRS = {"attachments", ".obsidian", ".trash"}
+MDLINK = re.compile(r"\]\(<?([^)<>\n]+?\.md)>?(?:#[^)\n]*)?\)")   # [text](rel/path.md#h)
+SKIP_DIRS = {"attachments"}                   # plus any dot-folder (.git, .obsidian, .trash)
+SKIP_TOP = {paths.RAW, paths.META}             # private machine folders, never on the map
 
 
 def front_and_body(raw):
@@ -129,12 +135,31 @@ def _title(meta, body, path):
     return h.group(1).strip() if h else path.stem
 
 
+def md_targets(root, note, body):
+    """Vault-relative paths of local Markdown links ([text](path.md)), resolved from the
+    linking note's folder; web links and links leaving the vault are dropped."""
+    out = []
+    for t in MDLINK.findall(body):
+        if re.match(r"^[a-z][a-z0-9+.-]*:", t, re.IGNORECASE):
+            continue
+        t = urllib.parse.unquote(t.strip())
+        base = root if t.startswith("/") else note.parent
+        try:
+            out.append((base / t.lstrip("/")).resolve().relative_to(root.resolve()).as_posix())
+        except ValueError:
+            continue
+    return out
+
+
 def notes(vault):
-    wiki = Path(vault) / paths.WIKI
-    if not wiki.is_dir():
-        return []
-    files = sorted(p for p in wiki.rglob("*.md")
-                   if not (set(p.relative_to(wiki).parts[:-1]) & SKIP_DIRS))
+    root = Path(vault)
+    files = []
+    for p in root.rglob("*.md"):
+        dirs = p.relative_to(root).parts[:-1]
+        if (dirs and dirs[0] in SKIP_TOP) or any(d in SKIP_DIRS or d.startswith(".") for d in dirs):
+            continue
+        files.append(p)
+    files.sort()
     out = []
     for p in files:
         try:
@@ -155,6 +180,7 @@ def notes(vault):
             "hub": (typ or "").lower() in HUB_TYPES or rel.startswith(paths.MOCS + "/"),
             "excerpt": excerpt(body),
             "_targets": [link_target(m) for m in WIKILINK.findall(body)],
+            "_paths": md_targets(root, p, body),
         })
     return out
 
@@ -166,10 +192,11 @@ def graph(vault):
         by_key.setdefault(n["title"].lower(), i)
     for i, n in enumerate(ns):
         by_key[Path(n["id"]).stem.lower()] = i
+    by_id = {n["id"]: i for i, n in enumerate(ns)}
     edges = set()
     for i, n in enumerate(ns):
-        for t in n.pop("_targets"):
-            j = by_key.get(t) if t else None
+        by_path = [by_id.get(t) for t in n.pop("_paths")]
+        for j in [by_key.get(t) if t else None for t in n.pop("_targets")] + by_path:
             if j is not None and j != i:
                 edges.add((min(i, j), max(i, j)))
     for i, j in edges:

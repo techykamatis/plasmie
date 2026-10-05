@@ -11,7 +11,6 @@ in (the owner's dev setup). Read-only GETs only.
 import json
 import os
 import re
-import shutil
 import subprocess
 import urllib.error
 import urllib.parse
@@ -21,8 +20,7 @@ import paths
 
 API = "https://api.github.com"
 TIMEOUT = 30
-GH_BIN = shutil.which("gh") or next(
-    (p for p in ("/opt/homebrew/bin/gh", "/usr/local/bin/gh") if os.path.exists(p)), "")
+GH_BIN = paths.native_tool("gh")                  # never an Intel gh (paths.native_tool)
 
 
 class GitHubError(RuntimeError):
@@ -53,7 +51,11 @@ def _http(url):
     except urllib.error.HTTPError as e:
         msg = {401: "token rejected (expired or revoked?)", 403: "forbidden or rate-limited",
                422: "search not allowed (an org you can't see?)"}.get(e.code, f"HTTP {e.code}")
-        raise GitHubError(msg) from None
+        try:                                      # GitHub says why; a guess alone misled once
+            why = (json.loads(e.read() or b"{}").get("message") or "").strip()
+        except (ValueError, OSError, AttributeError):
+            why = ""
+        raise GitHubError(f"{msg}: {why}" if why else msg) from None
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         raise GitHubError(f"network: {getattr(e, 'reason', e)}") from None
 

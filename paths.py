@@ -87,6 +87,50 @@ def load_env(environ=None):
                 environ.setdefault(k, legacy[k])
 
 
+# --- native tools --------------------------------------------------------------
+# Plasmie runs as arm64 on Apple silicon and never uses an Intel (x86_64) copy of a tool:
+# without Rosetta it dies with "Bad CPU type in executable", with Rosetta it runs emulated.
+# An old Intel Homebrew in /usr/local often shadows the native one on PATH, so tools are
+# resolved by what the binary IS, not by where PATH finds it first.
+NATIVE_DIRS = ("/opt/homebrew/bin", os.path.expanduser("~/.local/bin"), "/usr/bin", "/bin",
+               "/usr/local/bin")
+_CPU = {"arm64": 0x0100000C, "x86_64": 0x01000007}
+
+
+def runs_natively(path, machine=None) -> bool:
+    """True when `path` is a script or a Mach-O binary with a slice for this Mac's CPU."""
+    import platform
+    import struct
+    want = _CPU.get(machine or platform.machine())
+    try:
+        with open(path, "rb") as f:
+            head = f.read(4096)
+    except OSError:
+        return False
+    if head[:2] == b"#!" or want is None:
+        return True
+    magic = head[:4]
+    if magic in (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe"):          # thin, little-endian
+        return struct.unpack("<i", head[4:8])[0] == want
+    if magic in (b"\xca\xfe\xba\xbe", b"\xca\xfe\xba\xbf"):          # universal (fat)
+        n, size = struct.unpack(">I", head[4:8])[0], 20 if magic[3] == 0xBE else 32
+        return any(struct.unpack(">i", head[8 + i * size:12 + i * size])[0] == want
+                   for i in range(min(n, (len(head) - 8) // size)))
+    return False
+
+
+def native_tool(name, environ=None):
+    """Absolute path of a native `name`: PLASMIE_<NAME>_BIN (written by setup) if it still is,
+    else the first native one on PATH or in NATIVE_DIRS; "" when there is none."""
+    env = os.environ if environ is None else environ
+    dirs = [env.get(f"PLASMIE_{name.upper()}_BIN", "")]
+    dirs += [os.path.join(d, name) for d in env.get("PATH", "").split(os.pathsep) + list(NATIVE_DIRS) if d]
+    for p in dict.fromkeys(dirs):
+        if p and os.path.isfile(p) and os.access(p, os.X_OK) and runs_natively(p):
+            return p
+    return ""
+
+
 def qmd_bin():
     """qmd: Plasmie's own copy ($PLASMIE_HOME/qmd), else PLASMIE_QMD, PATH, or an nvm install."""
     import glob

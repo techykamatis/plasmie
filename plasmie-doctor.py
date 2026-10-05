@@ -16,7 +16,6 @@ import base64
 import glob
 import json
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -107,7 +106,7 @@ def check_github():
     good, bad = [], []
     for org in orgs:
         try:
-            github_api.get("search/issues", {"q": f"author:{user} org:{org}", "per_page": 1})
+            github_api.get("search/issues", {"q": f"is:pull-request author:{user} org:{org}", "per_page": 1})
             good.append(org)
         except github_api.GitHubError:
             bad.append(org)
@@ -170,7 +169,7 @@ def check_git():
     if not repos:
         return _result(False, None, "No git repositories found in " + ", ".join(roots),
                        "Set PLASMIE_GIT_ROOTS to where your repos live.")
-    git = shutil.which("git") or "/usr/bin/git"
+    git = paths.native_tool("git") or "/usr/bin/git"
     recent = 0
     for d in repos:
         try:

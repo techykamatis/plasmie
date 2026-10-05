@@ -290,19 +290,21 @@ gh_counts = []   # (repo, n)
 gh_err = None
 # Blank = everything you authored or commented on, anywhere; orgs narrow it.
 GH_ORGS = paths.csv_setting("PLASMIE_GITHUB_ORGS")
-# launchd runs with a minimal PATH, so resolve the gh binary explicitly.
-import shutil
-GIT_BIN = shutil.which("git") or next((p for p in ("/opt/homebrew/bin/git", "/usr/bin/git") if os.path.exists(p)), "git")
+# launchd runs with a minimal PATH, so resolve the git binary explicitly.
+GIT_BIN = paths.native_tool("git") or "git"       # never an Intel git (paths.native_tool)
 import github_api  # noqa: E402
 
 
 def _gh_search(q):
-    """All matching items, newest-updated first, paged past the 100/request cap."""
-    bodies = github_api.pages("search/issues", {"q": q, "sort": "updated", "order": "desc",
-                                                "per_page": 100}, max_pages=MAX_PAGES)
-    items = [it for b in bodies for it in (b or {}).get("items", [])]
-    if len(bodies) >= MAX_PAGES and len((bodies[-1] or {}).get("items", [])) == 100:
-        truncated.append("github")
+    """All matching items, newest-updated first, paged past the 100/request cap. GitHub
+    requires is:issue or is:pull-request on every issue search (422 without), so ask both."""
+    items = []
+    for kind in ("is:issue", "is:pull-request"):
+        bodies = github_api.pages("search/issues", {"q": f"{kind} {q}", "sort": "updated", "order": "desc",
+                                                    "per_page": 100}, max_pages=MAX_PAGES)
+        items += [it for b in bodies for it in (b or {}).get("items", [])]
+        if len(bodies) >= MAX_PAGES and len((bodies[-1] or {}).get("items", [])) == 100:
+            truncated.append("github")
     return items
 
 

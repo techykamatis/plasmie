@@ -158,10 +158,13 @@ enum PlasmiePaths {
     }
     static func script(_ name: String) -> String { "\(engine)/\(name)" }
     /// Plasmie's own venv. Never /usr/bin/python3 on a fresh Mac: it's a stub that pops the
-    /// "install developer tools" dialog. The fallback only covers the moments before setup.
+    /// "install developer tools" dialog (and where real, it's 3.9, too old for the engine).
+    /// Before setup makes the venv, use the bundled runtime the venv is copied from.
     static var python: String {
         let v = "\(home)/venv/bin/python3"
-        return FileManager.default.isExecutableFile(atPath: v) ? v : "/usr/bin/python3"
+        if FileManager.default.isExecutableFile(atPath: v) { return v }
+        let bundled = (Bundle.main.resourcePath ?? "") + "/python/bin/python3"
+        return FileManager.default.isExecutableFile(atPath: bundled) ? bundled : "/usr/bin/python3"
     }
 }
 

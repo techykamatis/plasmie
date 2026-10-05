@@ -53,3 +53,36 @@ def test_no_token_and_no_gh_asks_for_a_token(monkeypatch):
     assert not github_api.available()
     with pytest.raises(github_api.GitHubError, match="add a GitHub token"):
         github_api.login()
+
+
+def test_422_carries_githubs_own_reason(monkeypatch):
+    """A bare guess ("an org you can't see?") hid the real 422 for days: GitHub had
+    started requiring is:issue / is:pull-request on every issue search."""
+    monkeypatch.setenv("GITHUB_TOKEN", "t0k")
+    why = "Query must include 'is:issue' or 'is:pull-request'"
+
+    def urlopen(req, timeout):
+        body = io.BytesIO(json.dumps({"message": why}).encode())
+        raise urllib.error.HTTPError(req.full_url, 422, "Unprocessable", {}, body)
+
+    monkeypatch.setattr(github_api.urllib.request, "urlopen", urlopen)
+    with pytest.raises(github_api.GitHubError, match=r"is:issue' or 'is:pull-request"):
+        github_api.get("search/issues", {"q": "author:me"})
+
+
+def test_every_issue_search_names_issue_or_pr():
+    """loop-ingest's _gh_search must send each query twice, once per kind; a query
+    without is:issue / is:pull-request now 422s and marks GitHub "Failed last run"."""
+    import pathlib
+    import re
+    src = (pathlib.Path(__file__).parent / "loop-ingest.py").read_text()
+    fn = src[src.index("def _gh_search"):]
+    fn = fn[:fn.index("\n\n\n")]
+    assert re.search(r'for kind in \("is:issue", "is:pull-request"\)', fn)
+    assert 'f"{kind} {q}"' in fn
+    doctor = (pathlib.Path(__file__).parent / "plasmie-doctor.py").read_text()
+    for q in re.findall(r'"search/issues", \{"q": f"([^"]*)"', doctor):
+        assert re.search(r"\bis:(issue|pull-request|pr)\b", q), q
+    backfill = (pathlib.Path(__file__).parent / "github-backfill.py").read_text()
+    for q in re.findall(r'search\(f"([^"]*)"\)', backfill):
+        assert re.search(r"\bis:(issue|pull-request|pr)\b", q), q

@@ -118,3 +118,29 @@ def test_truncation_happens_after_redaction(tmp_path):
     _note(tmp_path, "u.md", "type: note", pad + "ghp_abcdefghijklmnopqrstuvwxyz0123456789 tail")
     ex = G.graph(tmp_path)["nodes"][0]["excerpt"]
     assert len(ex) <= G.EXCERPT_CHARS and "ghp_" not in ex and "abcdefgh" not in ex
+
+
+def test_map_follows_the_vaults_own_folders_but_never_private_ones(tmp_path):
+    _note(tmp_path, "a.md", "type: note", "[[Plan]]")
+    for rel in ("01 Projects/Plan.md", "archive/old.md", "top.md",
+                "raw/slack/x.md", "meta/q.md", ".obsidian/s.md", ".git/h.md",
+                ".trash/t.md", "02 Areas/attachments/pdf.md"):
+        p = tmp_path / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("# " + p.stem + "\n")
+    g = G.graph(tmp_path)
+    assert set(_ids(g)) == {"wiki/a.md", "01 Projects/Plan.md", "archive/old.md", "top.md"}
+    ix = _ids(g)
+    assert sorted([ix["wiki/a.md"], ix["01 Projects/Plan.md"]]) in g["edges"]
+
+
+def test_markdown_links_resolve_relative_to_the_note(tmp_path):
+    for rel, body in {"01 Projects/hub.md": "[a](sib.md) [b](../03%20Resources/x.md#h) [w](https://e.com/r.md) [out](../../etc.md)",
+                      "01 Projects/sib.md": "", "03 Resources/x.md": ""}.items():
+        p = tmp_path / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(body + "\n")
+    g = G.graph(tmp_path)
+    ix = _ids(g)
+    h = ix["01 Projects/hub.md"]
+    assert sorted(g["edges"]) == sorted([sorted([h, ix["01 Projects/sib.md"]]), sorted([h, ix["03 Resources/x.md"]])])

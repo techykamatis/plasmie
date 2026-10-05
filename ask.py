@@ -201,7 +201,8 @@ RULES = """Rules:
 - Copy names, numbers and identifiers exactly as written. Never invent people, teams, links, file names, dates or follow-up work.
 - If the notes don't cover the question, say so plainly in one sentence instead of guessing. If they cover it only partly, answer that part and say what is missing.
 - Don't mention note numbers, file names or sources; the reader already sees them separately.
-- Be concise."""
+- Answer the question directly in 2-4 sentences, with the specific facts from the notes (what, when, who, numbers). For an open question like "what happened", summarize the events the notes record, in order.
+- Never answer by repeating a note's opening description."""
 
 
 def prompt_char_budget(max_tokens=NUM_PREDICT, ctx=None):
@@ -224,7 +225,9 @@ def build_prompt(question, hits, weak=False, budget_chars=None):
     labels = [f"--- NOTE {i}: {doc['title']} ---\n" for i, (_, doc) in enumerate(hits, 1)]
     seps = 2 * max(0, len(hits) - 1)
     room = budget - len(head) - len(tail) - sum(map(len, labels)) - seps
-    texts = [doc["text"] for _, doc in hits]
+    # frontmatter is metadata, not content: dropped, it stops the model echoing it and
+    # leaves the budget to the notes' facts (the title is already in each label)
+    texts = [re.sub(r"\A---\n.*?\n---\n", "", doc["text"], flags=re.S) for _, doc in hits]
     caps = fair_shares([min(len(t), PER_NOTE) for t in texts], room)
     ctx = "\n\n".join(lab + t[:c] for lab, t, c in zip(labels, texts, caps))
     return f"{head}{ctx}{tail}"

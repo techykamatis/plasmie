@@ -249,3 +249,10 @@ def test_qmd_paths_map_back_to_the_real_note(tmp_path):
     assert ask.real_path(tmp_path, "qmd://vault/02-Areas/health/bungee-vet.md") == "02 Areas/health/Bungee Vet.md"
     assert ask.real_path(tmp_path, "qmd://wiki/rds.md") == "wiki/rds.md"
     assert ask.real_path(tmp_path, "qmd://vault/gone.md") == "gone.md"     # unknown: left as is
+
+
+def test_prompt_drops_frontmatter_and_asks_for_facts():
+    doc = {"title": "Bungee", "text": "---\ntype: Area\ntags: [pets]\n---\n# Bungee\nSeen 2026-06-23.\n"}
+    p = ask.build_prompt("what happened to bungee", [(0.9, doc)], budget_chars=4000)
+    assert "type: Area" not in p and "Seen 2026-06-23." in p
+    assert "Never answer by repeating a note's opening description." in p

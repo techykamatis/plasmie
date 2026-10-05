@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plasmie's map: the wiki as a graph, for the app's map window.
+"""Plasmie's map: the vault as a graph, for the app's map window.
 
   plasmie-graph.py            -> JSON on stdout:
      {"nodes": [{id, title, type, tags, date, links, hub, excerpt}], "edges": [[i, j], ...]}

@@ -35,6 +35,10 @@ final class MapScene: ObservableObject {
     @Published var listShown = false
     @Published private(set) var awake = true
     @Published private(set) var kindsPresent = MapKind.allCases   // filter chips: only kinds the vault has
+    @Published private(set) var reading: String?               // the note open in the reader (absolute path)
+    @Published private(set) var readBackStack: [String] = []
+    @Published private(set) var readForwardStack: [String] = []
+    @Published var readerEditing = false                       // a draft is open: no navigating away
 
     private(set) var graph: MapGraph?
     private(set) var layout: MapLayout?
@@ -75,6 +79,7 @@ final class MapScene: ObservableObject {
 
     func reload() {
         load = .loading
+        vaultIndex = nil
         let reduce = reduceMotion
         DispatchQueue.global(qos: .userInitiated).async {
             let result = loadGraph()
@@ -333,7 +338,47 @@ final class MapScene: ObservableObject {
 
     func open(_ i: Int) {
         guard let g = graph else { return }
-        openInObsidian("\(vault())/\(g.nodes[i].path)")
+        read("\(vault())/\(g.nodes[i].path)")
+    }
+
+    // MARK: the reader (NoteReader.swift)
+
+    var canReadBack: Bool { !readBackStack.isEmpty }
+    var canReadForward: Bool { !readForwardStack.isEmpty }
+
+    /// Open a note in the reader beside the map; following a link keeps a back trail.
+    func read(_ path: String) {
+        guard path != reading else { return }
+        if readerEditing { NSSound.beep(); return }            // save or cancel the edit first
+        if let r = reading { readBackStack.append(r) }
+        readForwardStack = []
+        reading = path
+        if let g = graph, let i = g.nodes.firstIndex(where: { "\(vault())/\($0.path)" == path }) {
+            listFocus = i                                    // the note lights up on the map too
+        }
+    }
+
+    func readBack() {
+        guard !readerEditing, let p = readBackStack.popLast() else { return }
+        if let r = reading { readForwardStack.append(r) }
+        reading = p
+    }
+
+    func readForward() {
+        guard !readerEditing, let p = readForwardStack.popLast() else { return }
+        if let r = reading { readBackStack.append(r) }
+        reading = p
+    }
+
+    func closeReader() { guard !readerEditing else { NSSound.beep(); return }; reading = nil; readBackStack = []; readForwardStack = []; listFocus = nil }
+
+    private var vaultIndex: VaultIndex?
+    /// Every note by name, for [[wikilinks]]; rebuilt when the vault or the map reloads.
+    func index() -> VaultIndex {
+        if let v = vaultIndex, v.root == vault() { return v }
+        let v = VaultIndex(root: vault())
+        vaultIndex = v
+        return v
     }
 
     /// Esc: clear the search, then the hover.

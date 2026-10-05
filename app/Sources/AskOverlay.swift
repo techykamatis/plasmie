@@ -220,7 +220,7 @@ struct AskOverlay: View {
                                 Text("Sources").font(.klMeta.weight(.semibold))
                                     .foregroundStyle(.secondary)
                                 ForEach(Array(sources.enumerated()), id: \.offset) { _, src in
-                                    Button { openInObsidian("\(vault)/\(src.path)") } label: {
+                                    Button { openNote("\(vault)/\(src.path)") } label: {
                                         HStack(spacing: 6) {
                                             Image(systemName: "doc.text").font(.system(size: 10)).accessibilityHidden(true)
                                             Text(src.path).font(.klMeta).underline()
@@ -228,8 +228,8 @@ struct AskOverlay: View {
                                         }
                                     }
                                     .buttonStyle(.plain).foregroundStyle(.blue)
-                                    .accessibilityLabel("Open \(src.path) in Obsidian")
-                                    .help("Open in Obsidian")
+                                    .accessibilityLabel("Read \(src.path)")
+                                    .help("Read this note")
                                 }
                             }
                         }

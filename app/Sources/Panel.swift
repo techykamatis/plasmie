@@ -209,11 +209,6 @@ struct Panel: View {
 
     // Only present when something is wrong or waiting.
     @ViewBuilder private var attention: some View {
-        if !m.obsidian {
-            banner("Obsidian required to view the vault", symbol: "exclamationmark.triangle.fill", tint: .orange) {
-                openExternal("https://obsidian.md")
-            }
-        }
         if m.s.state == "error", !m.s.reason.isEmpty {
             banner(m.s.reason, symbol: "exclamationmark.triangle.fill", tint: .red) { SettingsController.shared.show() }
         }
@@ -256,7 +251,10 @@ struct Panel: View {
     }
 
     private var vaultRow: some View {
-        ActionRow(title: "Vault in Obsidian", symbol: "folder", key: "o") { openInObsidian(m.s.vault) }
+        ActionRow(title: "Your vault", symbol: "folder", detail: "Read your notes", key: "o") {
+            MapController.shared.scene.listShown = true       // every note, by type, beside the map
+            MapController.shared.show(m)
+        }
     }
 
     // The menu: the everyday few, then the door to everything else.
@@ -283,7 +281,7 @@ struct Panel: View {
             groupLabel("Open").padding(.top, 4)
             vaultRow
             if !m.s.journal.isEmpty {
-                ActionRow(title: "Today's raw log", symbol: "book.closed") { openInObsidian(m.s.journal) }
+                ActionRow(title: "Today's raw log", symbol: "book.closed") { openNote(m.s.journal) }
             }
             ActionRow(title: "Map", symbol: "point.3.connected.trianglepath.dotted",
                       detail: "Your notes as a living network", key: "g") { MapController.shared.show(m) }
@@ -301,10 +299,10 @@ struct Panel: View {
             ActionRow(title: "Reindex check", symbol: "magnifyingglass",
                       detail: "Rebuild catalog & flag dead links · changes nothing") { m.reindexCheck() }
             ActionRow(title: "How \(Brand.name) works", symbol: "questionmark.circle", compact: true) {
-                openExternal((Bundle.main.resourcePath ?? "") + "/docs/Quickstart.txt")
+                openNote((Bundle.main.resourcePath ?? "") + "/docs/Quickstart.md")
             }
             ActionRow(title: "Privacy", symbol: "hand.raised", compact: true) {
-                openExternal((Bundle.main.resourcePath ?? "") + "/docs/Privacy.txt")
+                openNote((Bundle.main.resourcePath ?? "") + "/docs/Privacy.md")
             }
             ActionRow(title: "Copy diagnostics", symbol: "stethoscope",
                       detail: "A report to send when something's wrong · no notes or secrets") { copyDiagnostics() }
@@ -442,8 +440,8 @@ struct Panel: View {
             } else {
                 Text("Auto-apply was unsure — approve, edit, or dismiss.").klNote()
                 HStack(spacing: 8) {
-                    Button { openInObsidian(m.s.pendingFile) } label: { Label("Review", systemImage: "pencil") }
-                        .help("Open the held items in Obsidian to inspect or change their action before applying.")
+                    Button { openNote(m.s.pendingFile) } label: { Label("Review", systemImage: "pencil") }
+                        .help("Open the held items to inspect or change their action before applying.")
                     Button { confirm = .approve } label: { Label("Approve all", systemImage: "checkmark.circle.fill") }
                         .tint(.orange)
                         .help("File all held items using the suggested merge/create, then clear them.")

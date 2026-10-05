@@ -16,6 +16,13 @@ enum LaunchMode {
 final class MapController: NSObject, NSWindowDelegate {
     static let shared = MapController()
     private var win: NSWindow?
+    let scene = MapScene()                     // outlives the window, so a note can open into it
+
+    /// Open a note in the reader beside the map (the window opens if it isn't).
+    func read(_ path: String) {
+        show(.shared)
+        scene.read((path as NSString).expandingTildeInPath)
+    }
 
     func show(_ m: Model) {
         if let w = win { bringForward(w); return }
@@ -24,11 +31,11 @@ final class MapController: NSObject, NSWindowDelegate {
                          styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
         w.title = "\(Brand.name)'s map"
         w.isReleasedWhenClosed = false
-        w.contentMinSize = NSSize(width: 720, height: 520)
+        w.contentMinSize = NSSize(width: 720, height: 520)          // the reader squeezes the map, never the reverse
         w.center()
         if !LaunchMode.mapOnly { w.setFrameAutosaveName("\(Brand.id).map") }   // remembers where you left it
         w.delegate = self
-        w.contentView = NSHostingView(rootView: MapWindowView(m: m) { [weak self] in self?.win?.performClose(nil) })
+        w.contentView = NSHostingView(rootView: MapWindowView(m: m, scene: scene) { [weak self] in self?.win?.performClose(nil) })
         win = w
         bringForward(w)
     }
@@ -41,8 +48,8 @@ final class MapController: NSObject, NSWindowDelegate {
 
 struct MapWindowView: View {
     @ObservedObject var m: Model
+    @ObservedObject var scene: MapScene
     let close: () -> Void
-    @StateObject private var scene = MapScene()
     @Environment(\.accessibilityReduceMotion) private var reduce
     @FocusState private var findFocused: Bool
 
@@ -57,8 +64,14 @@ struct MapWindowView: View {
                     Divider()
                 }
                 MapArea(m: m, scene: scene)
+                if let note = scene.reading {
+                    Divider()
+                    NoteReaderView(scene: scene, path: note).frame(minWidth: 340, idealWidth: 460, maxWidth: 620)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
             }
             .motion(Motion.glide, value: scene.listShown)
+            .motion(Motion.glide, value: scene.reading == nil)
         }
         .frame(minWidth: 720, minHeight: 520)
         .background(shortcuts)
@@ -66,8 +79,10 @@ struct MapWindowView: View {
             scene.reduceMotion = reduce
             let model = m                                     // the app-lifetime Model.shared
             scene.vault = {
-                let v = model.s.vault
-                return v.isEmpty ? NSString(string: "~/knowledge").expandingTildeInPath : v
+                // status first; before it has loaded (or in --map), the vault setup recorded
+                var v = model.s.vault
+                if v.isEmpty { v = ConfigStore.read(PlasmiePaths.config)["VAULT_DIR"] ?? "" }
+                return NSString(string: v.isEmpty ? "~/knowledge" : v).expandingTildeInPath
             }
             if NSWorkspace.shared.isVoiceOverEnabled { scene.listShown = true }
             DispatchQueue.main.async { findFocused = true }   // type to find, straight away
@@ -84,7 +99,13 @@ struct MapWindowView: View {
             Button("Zoom out") { scene.zoomStep(1 / 1.4) }.keyboardShortcut("-", modifiers: .command)
             Button("Fit") { scene.fit() }.keyboardShortcut("0", modifiers: .command)
             Button("Find") { findFocused = true }.keyboardShortcut("f", modifiers: .command)
-            Button("Clear") { scene.clear(); findFocused = false }.keyboardShortcut(.cancelAction)
+            Button("Clear") {
+                if scene.readerEditing { return }
+                if scene.reading != nil && scene.search.isEmpty { scene.closeReader() } else { scene.clear() }
+                findFocused = false
+            }.keyboardShortcut(.cancelAction)
+            Button("Back") { scene.readBack() }.keyboardShortcut("[", modifiers: .command)
+            Button("Forward") { scene.readForward() }.keyboardShortcut("]", modifiers: .command)
             Button("Close Window", action: close).keyboardShortcut("w", modifiers: .command)
         }
         .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true)
@@ -179,7 +200,7 @@ private struct MapArea: View {
             HStack {
                 Text("\(g.nodes.count) notes · \(g.edges.count) links")
                 Spacer()
-                Text("Scroll or pinch to zoom · drag to pan · click a note to open it")
+                Text("Scroll or pinch to zoom · drag to pan · click a note to read it")
             }
             .font(.klMeta).foregroundStyle(.secondary)
             .padding(.horizontal, 14).padding(.vertical, 10)

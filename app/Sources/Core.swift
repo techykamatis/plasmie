@@ -125,14 +125,40 @@ func fireAndForget(_ launch: String, _ args: [String]) {
 func openExternal(_ path: String) { fireAndForget("/usr/bin/open", [path]) }
 
 /// Open a vault path in Obsidian via the obsidian:// URI (reliably navigates to the
-/// file/folder, unlike `open -a` which often just fronts the app). Falls back to open -a.
+/// file/folder, unlike `open -a` which often just fronts the app). Obsidian matches
+/// `path=` against its registered vault paths literally, so a vault it knows by another
+/// spelling (a symlink, e.g. an iCloud alias of ~/vault) reads "Vault not found": resolve
+/// the vault from Obsidian's own list instead, and open it by id. A vault Obsidian doesn't
+/// know yet opens the app and shows the folder, ready for "Open folder as vault".
 func openInObsidian(_ path: String) {
     var c = URLComponents()
     c.scheme = "obsidian"
     c.host = "open"
-    c.queryItems = [URLQueryItem(name: "path", value: path)]
-    if let url = c.url, NSWorkspace.shared.open(url) { return }
-    fireAndForget("/usr/bin/open", ["-a", "Obsidian", path])
+    if let (id, rel) = obsidianVault(containing: path) {
+        c.queryItems = [URLQueryItem(name: "vault", value: id)]
+            + (rel.isEmpty ? [] : [URLQueryItem(name: "file", value: rel)])
+        if let url = c.url, NSWorkspace.shared.open(url) { return }
+    }
+    fireAndForget("/usr/bin/open", ["-a", "Obsidian"])
+    fireAndForget("/usr/bin/open", ["-R", path])
+}
+
+/// The registered Obsidian vault holding `path` (symlinks resolved on both sides): its id
+/// and the path inside it, from Obsidian's own obsidian.json. nil when none holds it.
+func obsidianVault(containing path: String) -> (id: String, rel: String)? {
+    let list = "\(NSHomeDirectory())/Library/Application Support/obsidian/obsidian.json"
+    guard let d = FileManager.default.contents(atPath: list),
+          let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+          let vaults = o["vaults"] as? [String: [String: Any]] else { return nil }
+    let real = { (p: String) in URL(fileURLWithPath: p).resolvingSymlinksInPath().path }
+    let target = real((path as NSString).expandingTildeInPath)
+    let hits = vaults.compactMap { id, v -> (String, String)? in
+        guard let p = v["path"] as? String else { return nil }
+        let root = real(p)
+        if target == root { return (id, "") }
+        return target.hasPrefix(root + "/") ? (id, String(target.dropFirst(root.count + 1))) : nil
+    }
+    return hits.min { $0.1.count < $1.1.count }        // the innermost vault wins
 }
 /// Keychain Access lives in CoreServices on recent macOS (no longer in Utilities).
 func openKeychainAccess() {

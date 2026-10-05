@@ -341,7 +341,7 @@ struct NotchView: View {
                     Spacer(minLength: 8)
                     NotchIconButton(symbol: "arrow.clockwise", label: "Another fact", action: actions.nextFact)
                     if !(f.path ?? "").isEmpty {
-                        NotchIconButton(symbol: "arrow.up.forward.square", label: "Open this note in Obsidian", action: actions.openFact)
+                        NotchIconButton(symbol: "arrow.up.forward.square", label: "Read this note", action: actions.openFact)
                     }
                 }
                 Text(f.text ?? "").font(.klLabel).foregroundStyle(.white)
@@ -573,7 +573,7 @@ final class NotchController {
             ingest: { [weak model] in model?.kick(BackgroundJobs.label("ingest"), "Ingest") },
             trophies: { [weak model] in if let model { TrophiesController.shared.show(model) } },
             openFact: { [weak model] in
-                if let model, let path = model.funFact?.path, !path.isEmpty { openInObsidian("\(model.s.vault)/\(path)") }
+                if let model, let path = model.funFact?.path, !path.isEmpty { openNote("\(model.s.vault)/\(path)") }
             },
             nextFact: { [weak model] in model?.nextFunFact() },
             map: { [weak model] in if let model { MapController.shared.show(model) } },

@@ -87,7 +87,7 @@ check_all() {
   else chk node missing required "Node.js 22+" "Vault search (qmd) runs on Node.js."; fi
 
   if [ -d /Applications/Obsidian.app ] || [ -d "$HOME/Applications/Obsidian.app" ]; then chk obsidian ok recommended "Obsidian" "Opens and browses your vault."
-  else chk obsidian missing recommended "Obsidian" "The app you read your vault in."; fi
+  else chk obsidian missing recommended "Obsidian" "Optional: $PLASMIE_APP_NAME reads your vault itself; Obsidian is another way to browse and edit it."; fi
 
   local git; git="$(native_tool git)"
   if [ -n "$git" ]; then chk clt ok recommended "Command Line Tools" "git keeps a history of your vault ($git, built for this Mac)."
@@ -236,7 +236,21 @@ if [ ! -f "$PLASMIE_HOME/.loop-state.json" ]; then
   "$PY" "$ENGINE/loop-ingest.py"                   >/dev/null 2>&1 || true
   "$PY" "$ENGINE/reindex.py" "$VAULT"              >/dev/null 2>&1 || true
   "$QMD" embed                                   >/dev/null 2>&1 || true
+  CRAWLED=1
 fi
+
+# 5c) first ingest + promote, on EVERY setup (an existing vault, a re-run, an upgrade), so
+# Plasmie starts from today's activity and files it instead of waiting for the hourly and
+# nightly jobs. Ingest is incremental (watermarks), so a re-run captures only what's new;
+# it runs here with the job's own time limit and log. Promote drafts with the on-device
+# model and can take a while: it starts in the background (same limit and log as the
+# nightly job, see make-app.sh) and setup finishes without waiting for it.
+if [ -z "${CRAWLED:-}" ]; then
+  p 88 "Catching up on your latest activity…"
+  PLASMIE_JOB_LOG=ingest.log "$ENGINE/plasmie-job.sh" 50 run-ingest.sh >/dev/null 2>&1 || true
+fi
+p 92 "Filing what I found into your notes (continues in the background)…"
+( PLASMIE_JOB_LOG=promote.log nohup "$ENGINE/plasmie-job.sh" 120 promote.sh >/dev/null 2>&1 & ) || true
 
 # 6) background jobs: the app registers them (SMAppService) as soon as this finishes,
 # so they're Plasmie's own Login Items and go away with the app. launchd/install.sh is the

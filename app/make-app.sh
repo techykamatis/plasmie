@@ -43,10 +43,10 @@ done
 shopt -u nullglob
 rm -f "$BACKEND"/test_*.py "$BACKEND/conftest.py" "$BACKEND/install.sh"   # dev-only / brew-based
 say "bundled backend ($(ls "$BACKEND" | wc -l | tr -d ' ') items)"
-# the friend docs ship inside the app too (Plasmie window > Help); .txt opens in TextEdit
+# the friend docs ship inside the app too (Plasmie window > Help), read in Plasmie's own reader
 mkdir -p "$RES/docs"
-cp "$LOOP/docs/QUICKSTART.md" "$RES/docs/Quickstart.txt"
-cp "$LOOP/docs/PRIVACY.md" "$RES/docs/Privacy.txt"
+cp "$LOOP/docs/QUICKSTART.md" "$RES/docs/Quickstart.md"
+cp "$LOOP/docs/PRIVACY.md" "$RES/docs/Privacy.md"
 
 # background jobs, owned by the app: registered with SMAppService.agent at launch (Login
 # Items lists them; they go away with the app). They run the bundled engine in place and

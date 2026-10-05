@@ -1,13 +1,13 @@
 # Plasmie quickstart
 
-Plasmie is a small pink blob that lives beside your MacBook's notch. It quietly gathers what you work on (messages, code, notes), writes it into a folder of notes you can read in Obsidian, and answers questions about it. Everything runs on your Mac; nothing is uploaded.
+Plasmie is a small pink blob that lives beside your MacBook's notch. It quietly gathers what you work on (messages, code, notes), writes it into a folder of notes you can read right in Plasmie, and answers questions about it. Everything runs on your Mac; nothing is uploaded.
 
 ## What you need
 
 - A Mac with Apple silicon (M1 or newer), on macOS 26 or later
 - **Apple Intelligence turned on** (System Settings > Apple Intelligence & Siri). Plasmie's summaries and answers come from Apple's on-device model
 - About 6 GB of free disk space and an internet connection for the first setup (search models, about 4 GB, downloaded once)
-- Nice to have: Obsidian (to read your notes) and Apple's Command Line Tools (keeps a history of your notes). The checklist offers both
+- Nice to have: Apple's Command Line Tools (keeps a history of your notes); setup offers to install them. Obsidian is optional: another way to browse and edit your notes
 
 ## Install
 
@@ -28,7 +28,7 @@ Then Plasmie shows you around the notch in three short steps.
 
 ## Everyday use
 
-- **Hover over the notch**: a fun fact from your own notes (↻ for another, ↗ to open it), plus **Ask**, **Ingest** (gather now), **Vault** (open in Obsidian) and **More**.
+- **Hover over the notch**: a fun fact from your own notes (↻ for another, ↗ to open it), plus **Ask**, **Ingest** (gather now), **Map** (your notes; click one to read it) and **More**.
 - **Ask**: press Control-Option-Command-K anywhere and ask about your work; answers show their sources.
 - **More** opens the Plasmie window: status, connectors, settings, trophies.
 - Plasmie gathers every hour, writes a daily summary, and files lasting knowledge overnight (around 2:30 am).

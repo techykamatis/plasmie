@@ -8,7 +8,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKey: HotKey?
     func applicationDidFinishLaunching(_ notification: Notification) {
         // `--map`: a map-only viewer (render checks): no migrations, jobs, notch or hotkey.
-        if LaunchMode.mapOnly { MapController.shared.show(.shared); return }
+        // `--map --read <file>` opens that note in the reader too.
+        if LaunchMode.mapOnly {
+            let a = CommandLine.arguments
+            if let i = a.firstIndex(of: "--read"), a.indices.contains(i + 1) { MapController.shared.read(a[i + 1]) }
+            else { MapController.shared.show(.shared) }
+            return
+        }
         // Data migrations (versioned, idempotent): an upgrade over an older install brings the
         // data along before anything reads it. Cheap when there's nothing to do.
         // (The Plasmie/Plasmie -> Plasmie folder/preferences move already ran, in PlasmieApp.init.)

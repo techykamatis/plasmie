@@ -167,7 +167,7 @@ struct MapNotesList: View {
             if inside { scene.listFocus = n.id } else if scene.listFocus == n.id { scene.listFocus = nil }
         }
         .accessibilityLabel("\(n.title), \(n.type), \(n.links == 1 ? "1 link" : "\(n.links) links")")
-        .accessibilityHint("Opens the note in Obsidian")
+        .accessibilityHint("Opens the note in the reader")
         .accessibilityAction(named: "Show on map") { scene.listFocus = n.id; scene.show(n.id) }
     }
 }

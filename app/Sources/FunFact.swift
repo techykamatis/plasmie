@@ -36,7 +36,7 @@ struct FunFactCard: View {
     var body: some View {
         if let f = m.funFact {
             FunFactCardBody(fact: f, reduceMotion: reduceMotion,
-                            open: { if let p = f.path, !p.isEmpty { openInObsidian("\(m.s.vault)/\(p)") } },
+                            open: { if let p = f.path, !p.isEmpty { openNote("\(m.s.vault)/\(p)") } },
                             another: { m.nextFunFact() })
         }
     }
@@ -62,7 +62,7 @@ struct FunFactCardBody: View {
                 Spacer(minLength: 8)
                 iconButton("arrow.clockwise", "Another fact", another)
                 if !(fact.path ?? "").isEmpty {
-                    iconButton("arrow.up.forward.square", "Open this note in Obsidian", open)
+                    iconButton("arrow.up.forward.square", "Read this note", open)
                 }
             }
             Text(fact.text ?? "").font(.klLabel).foregroundStyle(.primary)

@@ -58,7 +58,7 @@ struct VaultStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Where should your notes live?").font(.klHeading)
-            Text("\(Brand.name) keeps everything it learns as plain Markdown notes you can open in Obsidian. Pick a folder on this Mac, or point me at the vault you already have.")
+            Text("\(Brand.name) keeps everything it learns as plain Markdown notes you can read right here, or in any Markdown app such as Obsidian. Pick a folder on this Mac, or point me at the vault you already have.")
                 .klNote()
             HStack(spacing: 8) {
                 Image(systemName: "folder").foregroundStyle(.secondary)

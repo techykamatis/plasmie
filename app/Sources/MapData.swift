@@ -1,14 +1,16 @@
 import Foundation
 import SwiftUI
 
-// Plasmie's map: the data side. plasmie-graph.py prints the wiki as JSON (nodes + undirected
-// wikilink edges); this file decodes it defensively and derives what the map needs once:
+// Plasmie's map: the data side. plasmie-graph.py prints the vault as JSON (nodes, undirected
+// link edges, and suggested edges: text neighbours from related.py, never counted as
+// links); this file decodes it defensively and derives what the map needs once:
 // each note's kind and colour, its size, how fresh it is, which notes Plasmie grows a vein
 // to directly, and how many hops each note is from Plasmie (pulses flow down that slope).
 
 struct GraphReport: Decodable {
     var nodes: [GraphNodeDTO]?
     var edges: [[Int]]?
+    var suggested: [[Int]]?
     var error: String?
 }
 
@@ -42,7 +44,8 @@ struct MapNode: Identifiable {
 struct MapGraph {
     let nodes: [MapNode]
     let edges: [(Int, Int)]
-    let neighbours: [[Int]]
+    let suggested: [(Int, Int)]     // drawn faint and dashed; weak springs; not links
+    let neighbours: [[Int]]         // real links only (focus, link counts)
     let anchors: [Int]         // notes Plasmie connects to directly
     let depth: [Int]           // hops from Plasmie (anchors = 1)
     let nextHome: [Int]        // the neighbour one hop closer to Plasmie (-1 = Plasmie itself)
@@ -78,11 +81,21 @@ struct MapGraph {
             guard a != b, nodes.indices.contains(a), nodes.indices.contains(b) else { continue }
             edges.append((a, b)); nb[a].append(b); nb[b].append(a)
         }
+        // structure (which notes Plasmie reaches directly, and the way home) uses suggestions
+        // too: a cluster of related notes hangs together instead of every note floating alone
+        var reach = nb
+        var sug: [(Int, Int)] = []
+        for e in report.suggested ?? [] where e.count == 2 {
+            let a = e[0], b = e[1]
+            guard a != b, nodes.indices.contains(a), nodes.indices.contains(b) else { continue }
+            sug.append((a, b)); reach[a].append(b); reach[b].append(a)
+        }
         self.nodes = nodes
         self.edges = edges
+        self.suggested = sug
         self.neighbours = nb
-        self.anchors = MapGraph.pickAnchors(nodes, nb)
-        (self.depth, self.nextHome) = MapGraph.hops(count: nodes.count, anchors: anchors, nb)
+        self.anchors = MapGraph.pickAnchors(nodes, reach)
+        (self.depth, self.nextHome) = MapGraph.hops(count: nodes.count, anchors: anchors, reach)
     }
 
     /// Maps (mocs) first; topped up with the most-linked notes so a vault without maps still

@@ -27,6 +27,7 @@ extension MapScene {
 
         w.drawLayer { base in
             base.opacity = 1 - 0.72 * dim
+            drawSuggested(base, g, l, scheme, view: view, only: nil)
             drawVeins(base, g, l, scheme, view: view, only: nil)
             drawFreshGlow(base, g, l, scheme, view: view)
             drawBlobs(base, g, l, scheme, view: view, only: nil, now: now, breath: breath)
@@ -34,6 +35,7 @@ extension MapScene {
         if dim > 0.001, let f = shownFocus {
             w.drawLayer { top in
                 top.opacity = dim
+                drawSuggested(top, g, l, scheme, view: view, only: f)
                 drawVeins(top, g, l, scheme, view: view, only: f)
                 drawBlobs(top, g, l, scheme, view: view, only: focusSet, now: now, breath: breath)
             }
@@ -106,6 +108,25 @@ extension MapScene {
         path.addQuadCurve(to: CGPoint(x: a.x - n0.x * w0, y: a.y - n0.y * w0),
                           control: CGPoint(x: c.x - nm.x * wm, y: c.y - nm.y * wm))
         path.closeSubpath()
+    }
+
+    /// Suggested links (related.py): a hairline dash, quieter than any vein, so they read as
+    /// "these belong together" without passing for links you made. Lit with the focus.
+    private func drawSuggested(_ ctx: GraphicsContext, _ g: MapGraph, _ l: MapLayout, _ s: ColorScheme,
+                               view: CGRect, only: Int?) {
+        var path = Path()
+        for (a, b) in g.suggested {
+            if let f = only, a != f && b != f { continue }
+            guard visible(a), visible(b) else { continue }
+            let (ax, ay, bx, by) = (l.x[a], l.y[a], l.x[b], l.y[b])
+            if (ax < view.minX && bx < view.minX) || (ax > view.maxX && bx > view.maxX)
+                || (ay < view.minY && by < view.minY) || (ay > view.maxY && by > view.maxY) { continue }
+            path.move(to: CGPoint(x: ax, y: ay))
+            path.addQuadCurve(to: CGPoint(x: bx, y: by), control: veinControl(a, b, l, g))
+        }
+        let w = (only == nil ? 0.5 : 0.9) / camera.zoom
+        ctx.stroke(path, with: .color(MapPalette.ink(s).opacity(only == nil ? (s == .dark ? 0.10 : 0.09) : 0.5)),
+                   style: StrokeStyle(lineWidth: w, lineCap: .round, dash: [3 / camera.zoom, 3 / camera.zoom]))
     }
 
     /// All veins (only == nil), or just the ones touching `only`, lit.

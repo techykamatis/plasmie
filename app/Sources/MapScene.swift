@@ -80,6 +80,7 @@ final class MapScene: ObservableObject {
     func reload() {
         load = .loading
         vaultIndex = nil
+        relatedCache = nil
         let reduce = reduceMotion
         DispatchQueue.global(qos: .userInitiated).async {
             let result = loadGraph()
@@ -371,6 +372,29 @@ final class MapScene: ObservableObject {
     }
 
     func closeReader() { guard !readerEditing else { NSSound.beep(); return }; reading = nil; readBackStack = []; readForwardStack = []; listFocus = nil }
+
+    private var relatedCache: [String: [(path: String, title: String)]]?
+    /// A note's suggested neighbours (related.py's cache, written by setup and the map
+    /// load): vault-relative path and title. Empty when it has none or isn't in the vault.
+    func related(to path: String) -> [(path: String, title: String)] {
+        let v = vault()
+        guard path.hasPrefix(v + "/") else { return [] }
+        if relatedCache == nil {
+            var out: [String: [(path: String, title: String)]] = [:]
+            if let d = FileManager.default.contents(atPath: PlasmiePaths.home + "/related.json"),
+               let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+               (o["vault"] as? String) == v, let rel = o["related"] as? [String: [[Any]]] {
+                for (k, list) in rel {
+                    out[k] = list.compactMap { e in
+                        guard e.count >= 2, let p = e[0] as? String, let t = e[1] as? String else { return nil }
+                        return (p, t)
+                    }
+                }
+            }
+            relatedCache = out
+        }
+        return relatedCache?[String(path.dropFirst(v.count + 1))] ?? []
+    }
 
     private var vaultIndex: VaultIndex?
     /// Every note by name, for [[wikilinks]]; rebuilt when the vault or the map reloads.

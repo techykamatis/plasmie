@@ -90,7 +90,7 @@ def test_excerpt_skips_headings_and_is_redacted(tmp_path):
 
 
 def test_no_wiki_is_an_empty_graph_and_cli_prints_json(tmp_path, monkeypatch):
-    assert G.graph(tmp_path) == {"nodes": [], "edges": []}
+    assert G.graph(tmp_path) == {"nodes": [], "edges": [], "suggested": []}
     _note(tmp_path, "a.md", "type: note")
     monkeypatch.setenv("PLASMIE_VAULT", str(tmp_path))
     out = subprocess.run([sys.executable, str(HERE / "plasmie-graph.py")], capture_output=True, text=True, check=True)

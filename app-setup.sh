@@ -220,6 +220,12 @@ fi
 p 45 "Downloading the search models (~3.7 GB, one-time)…"
 "$QMD" embed >/dev/null 2>&1 || true   # downloads embed/rerank models + indexes; safe to retry later
 
+# 4b) suggested links: most notes a person brings have none, so the map would be loose dots
+# and a note in the reader would lead nowhere. related.py finds each note's text neighbours
+# (a few seconds for ~1000 notes) for the map and the reader; nothing is written to a note.
+p 80 "Finding links between your notes…"
+"$PY" "$ENGINE/related.py" build >/dev/null 2>&1 || true
+
 # 5) answer model: Apple's, on-device, managed by macOS — nothing to download --
 p 82 "Answer model: Apple Intelligence (on-device)"
 

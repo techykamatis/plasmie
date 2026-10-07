@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Plasmie — hero</title>
+<link href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Hanken+Grotesk:wght@500;600&display=swap" rel="stylesheet"/>
+<style>
+  html,body{margin:0;height:100%;background:#FDF1F4;overflow:hidden}
+  .stage{position:relative;width:1280px;height:720px;margin:0 auto;background:#FDF1F4;font-family:'Hanken Grotesk',system-ui,sans-serif;color:#3A1430}
+  #plasmie-stage{position:absolute;left:880px;top:150px;width:340px;height:340px}
+  #plasmie-stage svg{width:100%;height:100%;overflow:visible;--surface:#FFF9FA;--body:#F49AB2;--body-hi:#FBC9D6;--face:#3A1430;--blush:#E8668A;--spark:#FFC94A;--sweat:#6EC5F0;--off:#C9B9C0;--ink-3:#8E6080}
+  .txt{position:absolute;left:80px;top:170px;width:700px;opacity:0;transform:translateY(18px);transition:none}
+  .txt.on{opacity:1;transform:none}
+  .eyebrow{font-size:14px;letter-spacing:.2em;text-transform:uppercase;color:#E8668A;margin-bottom:18px}
+  h1{font-family:'Young Serif',Georgia,serif;font-weight:400;font-size:84px;line-height:1.04;letter-spacing:-.03em;margin:0 0 22px}
+  h2{font-family:'Young Serif',Georgia,serif;font-weight:400;font-size:52px;line-height:1.1;letter-spacing:-.02em;margin:0 0 18px}
+  p{font-size:26px;line-height:1.5;margin:0;color:#6A3A5A}
+  .brand{position:absolute;left:80px;bottom:44px;font-size:16px;letter-spacing:.18em;text-transform:uppercase;color:#8E6080}
+</style></head>
+<body>
+<div class="stage" id="stage">
+  <div class="txt" id="hero-title"><div class="eyebrow">Introducing</div><h1>Plasmie</h1><p>Your private memory, on your Mac.</p></div>
+  <div class="txt" id="s2"><h2>The answer is somewhere in your notes.</h2><p>And you'll never find it again.</p></div>
+  <div class="txt" id="s3"><h2>Every hour, it reads what you touched</h2><p>and condenses it on your machine.</p></div>
+  <div class="txt" id="s4"><h2>Each night it files what matters.</h2><p>Anything it isn't sure of, it holds back for you.</p></div>
+  <div class="txt" id="s5"><h2>Ask it later.</h2><p>It answers from your own notes, with the facts.</p></div>
+  <div class="txt" id="s6"><div class="eyebrow">Why it's safe</div><h2>Your notes never leave your Mac.</h2><p>The AI is Apple's on-device model. Nothing is sent to a cloud model.</p></div>
+  <div class="txt" id="s7"><h2>Plasmie</h2><p>Remember what you did.</p></div>
+  <div id="plasmie-stage"></div>
+  <div class="brand">Plasmie · local-first memory for macOS</div>
+</div>
+<script>
+/* Plasmie, drawn by the app's own code.
+   curve/lerp/bbox/el/makePlasmie/drawFace/drawProps/life/shape/morph are ported
+   verbatim from the app's brand sheet, and the shape data and face spec are its
+   own files — so this is the real character and the real animation rather than
+   a drawing of it. The only thing added here is the driver: which status to
+   show, and when to stop drawing. */
+(function () {
+  var host = document.getElementById('plasmie-stage');
+  if (!host) return;
+  var DATA = {"shapes":{"idle":[[50.0,24.0],[54.2,24.2],[58.3,24.9],[62.4,26.0],[66.4,27.5],[70.3,29.6],[73.9,32.1],[77.2,35.1],[80.2,38.6],[82.6,42.5],[84.5,46.8],[85.6,51.3],[86.0,56.0],[85.6,60.7],[84.5,65.2],[82.6,69.5],[80.2,73.4],[77.2,76.9],[73.9,79.9],[70.3,82.4],[66.4,84.5],[62.4,86.0],[58.3,87.1],[54.2,87.8],[50.0,88.0],[45.8,87.8],[41.7,87.1],[37.6,86.0],[33.6,84.5],[29.7,82.4],[26.1,79.9],[22.8,76.9],[19.8,73.4],[17.4,69.5],[15.5,65.2],[14.4,60.7],[14.0,56.0],[14.4,51.3],[15.5,46.8],[17.4,42.5],[19.8,38.6],[22.8,35.1],[26.1,32.1],[29.7,29.6],[33.6,27.5],[37.6,26.0],[41.7,24.9],[45.8,24.2]],"ingest":[[50.0,42.0],[52.9,41.8],[56.2,40.8],[60.7,38.2],[69.7,30.0],[74.2,32.5],[78.2,35.8],[81.6,39.7],[84.5,44.1],[86.5,48.9],[87.7,53.9],[88.0,59.0],[87.4,64.0],[85.9,68.7],[83.8,73.1],[81.2,76.9],[78.1,80.2],[74.8,83.0],[71.3,85.3],[67.8,87.2],[64.2,88.6],[60.6,89.7],[57.1,90.4],[53.5,90.9],[50.0,91.0],[46.5,90.9],[42.9,90.4],[39.4,89.7],[35.8,88.6],[32.2,87.2],[28.7,85.3],[25.2,83.0],[21.9,80.2],[18.9,76.9],[16.2,73.1],[14.1,68.7],[12.6,64.0],[12.0,59.0],[12.3,53.9],[13.5,48.9],[15.5,44.1],[18.4,39.7],[21.8,35.8],[25.9,32.5],[30.4,30.0],[39.3,38.2],[43.8,40.8],[47.1,41.8]],"summarize":[[50.0,39.0],[53.2,39.5],[56.1,41.1],[58.6,43.1],[61.4,44.3],[64.9,44.6],[68.8,45.2],[72.2,47.0],[75.0,49.6],[77.6,52.6],[81.2,55.6],[86.3,59.2],[90.1,64.0],[90.9,69.4],[88.6,74.3],[84.5,78.3],[79.7,81.1],[74.9,83.1],[70.5,84.5],[66.4,85.4],[62.7,86.1],[59.3,86.5],[56.1,86.8],[53.0,87.0],[50.0,87.0],[47.0,87.0],[43.9,86.8],[40.7,86.5],[37.3,86.1],[33.6,85.4],[29.5,84.5],[25.1,83.1],[20.4,81.1],[15.5,78.3],[11.4,74.3],[9.1,69.4],[9.9,64.0],[13.7,59.2],[18.8,55.6],[22.4,52.6],[25.0,49.6],[27.9,47.0],[31.3,45.3],[35.3,44.8],[38.6,44.3],[41.3,42.9],[43.9,41.0],[46.8,39.5]],"promote":[[50.0,27.0],[53.8,27.0],[57.8,27.0],[62.0,27.0],[66.7,27.0],[72.2,27.0],[77.4,28.6],[80.8,32.3],[82.0,37.5],[82.0,42.8],[82.0,47.4],[82.0,51.8],[82.0,56.0],[82.0,60.2],[82.0,64.6],[82.0,69.2],[82.0,74.5],[80.8,79.7],[77.4,83.4],[72.2,85.0],[66.7,85.0],[62.0,85.0],[57.8,85.0],[53.8,85.0],[50.0,85.0],[46.2,85.0],[42.2,85.0],[38.0,85.0],[33.3,85.0],[27.8,85.0],[22.6,83.4],[19.2,79.7],[18.0,74.5],[18.0,69.2],[18.0,64.6],[18.0,60.2],[18.0,56.0],[18.0,51.8],[18.0,47.4],[18.0,42.8],[18.0,37.5],[19.2,32.3],[22.6,28.6],[27.8,27.0],[33.3,27.0],[38.0,27.0],[42.2,27.0],[46.2,27.0]],"ask":[[50.0,12.0],[55.2,12.5],[60.2,13.8],[64.9,16.0],[69.1,18.9],[72.7,22.4],[75.6,26.4],[77.8,30.7],[79.2,35.1],[79.9,39.6],[79.9,44.0],[79.4,48.1],[78.3,52.0],[76.8,55.5],[74.9,58.7],[72.8,61.5],[70.5,63.9],[68.1,65.9],[65.6,67.6],[63.2,69.2],[61.6,72.0],[61.0,78.6],[59.8,88.4],[54.9,89.0],[50.0,89.0],[45.1,89.0],[40.2,88.4],[39.0,78.6],[38.4,72.0],[36.8,69.2],[34.4,67.6],[31.9,65.9],[29.5,63.9],[27.2,61.5],[25.1,58.7],[23.2,55.5],[21.7,52.0],[20.6,48.1],[20.1,44.0],[20.1,39.6],[20.8,35.1],[22.2,30.7],[24.4,26.4],[27.3,22.4],[30.9,18.9],[35.1,16.0],[39.8,13.8],[44.8,12.5]],"held":[[56.0,24.4],[59.5,25.1],[63.0,26.0],[67.4,24.6],[79.3,11.6],[86.1,12.8],[90.5,17.5],[91.6,24.7],[84.8,35.3],[83.1,40.8],[83.8,44.5],[84.9,48.2],[85.7,52.0],[86.0,56.0],[85.7,60.0],[84.9,64.0],[83.4,67.8],[81.5,71.5],[79.0,75.0],[76.0,78.1],[72.7,80.9],[68.9,83.2],[64.9,85.1],[60.5,86.6],[56.0,87.5],[51.3,88.0],[46.4,87.8],[41.5,87.1],[36.5,85.7],[31.8,83.6],[27.2,80.8],[23.1,77.2],[19.5,73.0],[16.8,68.3],[14.9,63.0],[14.0,57.5],[14.3,52.0],[15.6,46.7],[17.8,41.8],[20.7,37.4],[24.2,33.7],[28.1,30.6],[32.2,28.2],[36.4,26.4],[40.5,25.1],[44.5,24.4],[48.5,24.0],[52.3,24.1]],"error":[[50.0,49.0],[52.2,49.0],[54.5,49.1],[56.9,49.2],[59.6,49.5],[62.5,49.8],[65.8,50.2],[69.6,51.0],[74.1,52.1],[79.3,53.8],[85.0,56.6],[89.9,60.7],[92.0,66.0],[89.9,71.3],[85.0,75.4],[79.3,78.2],[74.8,80.3],[72.0,82.8],[70.2,86.2],[68.3,89.8],[65.1,92.2],[60.8,92.1],[55.6,87.0],[52.4,83.9],[50.0,83.2],[47.7,83.3],[45.2,84.1],[41.8,85.8],[37.6,87.4],[33.8,87.2],[30.6,85.4],[27.9,83.0],[25.0,80.4],[20.6,78.2],[15.0,75.4],[10.1,71.3],[8.0,66.0],[10.1,60.7],[15.0,56.6],[20.6,53.8],[25.9,52.1],[30.4,51.0],[34.2,50.2],[37.5,49.8],[40.4,49.5],[43.1,49.2],[45.5,49.1],[47.8,49.0]],"busy":[[50.0,13.0],[55.4,13.0],[61.0,13.0],[67.0,13.0],[73.7,13.0],[79.7,15.4],[74.0,30.1],[67.6,40.5],[64.4,45.7],[62.5,48.8],[61.2,51.0],[60.2,52.7],[59.4,54.0],[60.2,55.3],[61.2,57.0],[62.5,59.2],[64.4,62.3],[67.6,67.5],[74.0,78.0],[79.7,92.6],[73.7,95.0],[67.0,95.0],[61.0,95.0],[55.4,95.0],[50.0,95.0],[44.6,95.0],[39.0,95.0],[33.0,95.0],[26.3,95.0],[20.4,92.6],[26.1,78.0],[32.4,67.5],[35.6,62.3],[37.5,59.2],[38.8,57.0],[39.8,55.3],[40.6,54.0],[39.8,52.7],[38.8,51.0],[37.5,48.8],[35.6,45.7],[32.4,40.5],[26.1,30.1],[20.4,15.4],[26.3,13.0],[33.0,13.0],[39.0,13.0],[44.6,13.0]],"quiet":[[50.0,57.0],[52.0,57.0],[54.0,57.1],[56.1,57.2],[58.5,57.3],[61.1,57.5],[64.1,57.9],[67.7,58.4],[72.1,59.2],[77.4,60.6],[83.6,63.0],[89.4,66.8],[92.0,72.0],[89.4,77.2],[83.6,81.0],[77.4,83.4],[72.1,84.8],[67.7,85.6],[64.1,86.1],[61.1,86.5],[58.5,86.7],[56.1,86.8],[54.0,86.9],[52.0,87.0],[50.0,87.0],[48.0,87.0],[46.0,86.9],[43.9,86.8],[41.5,86.7],[38.9,86.5],[35.9,86.1],[32.3,85.6],[27.9,84.8],[22.6,83.4],[16.4,81.0],[10.6,77.2],[8.0,72.0],[10.6,66.8],[16.4,63.0],[22.6,60.6],[27.9,59.2],[32.3,58.4],[35.9,57.9],[38.9,57.5],[41.5,57.3],[43.9,57.2],[46.0,57.1],[48.0,57.0]],"off":[[50.0,43.0],[52.7,43.2],[55.4,43.7],[58.0,44.6],[60.5,45.8],[62.8,47.3],[64.8,49.1],[66.7,51.2],[68.2,53.5],[69.4,56.0],[70.3,58.6],[70.8,61.3],[71.0,64.0],[70.8,66.7],[70.3,69.4],[69.4,72.0],[68.2,74.5],[66.7,76.8],[64.8,78.8],[62.8,80.7],[60.5,82.2],[58.0,83.4],[55.4,84.3],[52.7,84.8],[50.0,85.0],[47.3,84.8],[44.6,84.3],[42.0,83.4],[39.5,82.2],[37.2,80.7],[35.1,78.8],[33.3,76.8],[31.8,74.5],[30.6,72.0],[29.7,69.4],[29.2,66.7],[29.0,64.0],[29.2,61.3],[29.7,58.6],[30.6,56.0],[31.8,53.5],[33.3,51.2],[35.1,49.1],[37.2,47.3],[39.5,45.8],[42.0,44.6],[44.6,43.7],[47.3,43.2]],"hi":[[56.0,24.4],[59.5,25.1],[63.0,26.0],[67.4,24.6],[79.3,11.6],[86.1,12.8],[90.5,17.5],[91.6,24.7],[84.8,35.3],[83.1,40.8],[83.8,44.5],[84.9,48.2],[85.7,52.0],[86.0,56.0],[85.7,60.0],[84.9,64.0],[83.4,67.8],[81.5,71.5],[79.0,75.0],[76.0,78.1],[72.7,80.9],[68.9,83.2],[64.9,85.1],[60.5,86.6],[56.0,87.5],[51.3,88.0],[46.4,87.8],[41.5,87.1],[36.5,85.7],[31.8,83.6],[27.2,80.8],[23.1,77.2],[19.5,73.0],[16.8,68.3],[14.9,63.0],[14.0,57.5],[14.3,52.0],[15.6,46.7],[17.8,41.8],[20.7,37.4],[24.2,33.7],[28.1,30.6],[32.2,28.2],[36.4,26.4],[40.5,25.1],[44.5,24.4],[48.5,24.0],[52.3,24.1]],"tada":[[50.0,27.0],[54.9,27.4],[59.6,28.6],[64.1,30.5],[68.2,33.2],[71.7,36.5],[74.8,40.3],[79.0,40.3],[83.4,38.2],[88.2,38.1],[92.4,40.5],[94.9,44.6],[94.8,49.5],[92.4,53.6],[88.5,56.6],[84.6,59.5],[81.6,63.3],[78.9,67.4],[76.1,71.4],[72.6,74.7],[68.3,77.1],[64.1,79.5],[59.6,81.4],[54.9,82.6],[50.0,83.0],[45.1,82.6],[40.4,81.4],[35.9,79.5],[31.7,77.1],[27.4,74.7],[23.9,71.4],[21.1,67.4],[18.4,63.3],[15.4,59.5],[11.4,56.6],[7.6,53.6],[5.2,49.5],[5.1,44.6],[7.6,40.5],[11.8,38.1],[16.6,38.2],[21.0,40.3],[25.2,40.3],[28.3,36.5],[31.9,33.2],[35.9,30.5],[40.4,28.6],[45.1,27.4]],"annoyed":[[50.0,20.0],[54.6,20.2],[59.1,21.0],[63.6,22.2],[67.9,23.9],[72.1,26.2],[76.0,28.9],[79.6,32.2],[82.8,36.1],[85.4,40.3],[87.4,45.0],[88.6,49.9],[89.0,55.0],[88.6,60.1],[87.4,65.0],[85.4,69.7],[82.8,73.9],[79.6,77.8],[76.0,81.0],[72.1,83.8],[67.9,86.1],[63.6,87.8],[59.1,89.0],[54.6,89.8],[50.0,90.0],[45.4,89.8],[40.9,89.0],[36.4,87.8],[32.1,86.1],[27.9,83.8],[23.9,81.0],[20.4,77.8],[17.2,73.9],[14.6,69.7],[12.6,65.0],[11.4,60.1],[11.0,55.0],[11.4,49.9],[12.6,45.0],[14.6,40.3],[17.2,36.1],[20.4,32.2],[23.9,28.9],[27.9,26.2],[32.1,23.9],[36.4,22.2],[40.9,21.0],[45.4,20.2]],"petted":[[50.0,36.0],[53.4,36.1],[56.9,36.4],[60.4,36.9],[64.1,37.6],[67.9,38.6],[72.0,40.0],[76.1,42.0],[80.3,44.5],[84.3,47.8],[87.8,51.9],[90.1,56.7],[91.0,62.0],[90.1,67.3],[87.8,72.1],[84.3,76.2],[80.3,79.5],[76.1,82.0],[72.0,84.0],[67.9,85.4],[64.1,86.4],[60.4,87.2],[56.9,87.6],[53.4,87.9],[50.0,88.0],[46.6,87.9],[43.1,87.6],[39.6,87.2],[35.9,86.4],[32.1,85.4],[28.0,84.0],[23.9,82.0],[19.7,79.5],[15.7,76.2],[12.2,72.1],[9.9,67.3],[9.0,62.0],[9.9,56.7],[12.2,51.9],[15.7,47.8],[19.7,44.5],[23.9,42.0],[28.0,40.0],[32.1,38.6],[35.9,37.6],[39.6,36.9],[43.1,36.4],[46.6,36.1]],"success":[[50.0,14.4],[55.0,16.1],[59.0,20.5],[61.7,25.9],[63.6,30.4],[66.1,33.0],[70.0,34.0],[75.5,34.4],[81.4,35.9],[86.1,39.0],[88.0,43.8],[86.7,49.2],[83.0,54.0],[78.7,57.8],[75.7,60.9],[74.8,64.3],[75.7,68.8],[76.9,74.6],[76.6,80.6],[74.1,85.4],[69.4,87.5],[63.6,86.8],[58.1,84.2],[53.6,81.5],[50.0,80.4],[46.4,81.5],[41.9,84.2],[36.4,86.8],[30.6,87.5],[25.9,85.4],[23.4,80.6],[23.1,74.6],[24.3,68.8],[25.1,64.3],[24.3,60.9],[21.3,57.8],[17.0,54.0],[13.3,49.2],[12.0,43.8],[13.9,39.0],[18.6,35.9],[24.5,34.4],[30.0,34.0],[33.9,33.0],[36.4,30.4],[38.3,25.9],[41.0,20.5],[45.0,16.1]]},"faces":{"idle":{"eyes":"dot","mouth":"smile","prop":null},"ingest":{"eyes":"dot","mouth":"o","prop":"dots"},"summarize":{"eyes":"happy","mouth":"flat","prop":null},"promote":{"eyes":"wink","mouth":"smile","prop":"card"},"ask":{"eyes":"up","mouth":"small","prop":"spark"},"held":{"eyes":"dot","mouth":"o","prop":"bang"},"error":{"eyes":"worried","mouth":"wobble","prop":"sweat"},"busy":{"eyes":"flat","mouth":"flat","prop":"sand"},"quiet":{"eyes":"closed","mouth":"none","prop":"zzz"},"off":{"eyes":"closed","mouth":"none","prop":null},"success":{"eyes":"happy","mouth":"grin","prop":"sparkles"},"hi":{"eyes":"happy","mouth":"grin","prop":"hello"},"annoyed":{"eyes":"angry","mouth":"pout","prop":"vein"},"petted":{"eyes":"happy","mouth":"smile","prop":"hearts"}}};
+  var DOTS = [["","#7A3A82"],["","#3A3F58"],["","#F07A3E"]];
+  var NS = "http://www.w3.org/2000/svg";
+  var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function curve(p){var n=p.length,d="M"+p[0][0]+","+p[0][1];
+    for(var i=0;i<n;i++){var a=p[(i-1+n)%n],b=p[i],c=p[(i+1)%n],e=p[(i+2)%n];
+      d+=" C"+(b[0]+(c[0]-a[0])/6).toFixed(2)+","+(b[1]+(c[1]-a[1])/6).toFixed(2)+" "+
+         (c[0]-(e[0]-b[0])/6).toFixed(2)+","+(c[1]-(e[1]-b[1])/6).toFixed(2)+" "+c[0]+","+c[1];}
+    return d+"Z";}
+  var lerp=function(a,b,k){return a.map(function(p,i){return [p[0]+(b[i][0]-p[0])*k,p[1]+(b[i][1]-p[1])*k];});};
+  var easeOut=function(k){return 1-Math.pow(1-k,5);};
+  var easeOutExpo=function(k){return k>=1?1:1-Math.pow(2,-10*k);};
+  function bbox(p){var xs=p.map(function(q){return q[0];}),ys=p.map(function(q){return q[1];});
+    return {x:Math.min.apply(null,xs),y:Math.min.apply(null,ys),
+            w:Math.max.apply(null,xs)-Math.min.apply(null,xs),h:Math.max.apply(null,ys)-Math.min.apply(null,ys)};}
+  var frac=function(x){return x-Math.floor(x);};
+  /* Motion.springValue from the app, verbatim: closed-form damped spring 0 -> 1,
+     response .36 / damping .58, so the "hi!" bubble overshoots and settles the
+     way it does in the product. */
+  function spring(t){ if(t<=0) return 0;
+    var w0=2*Math.PI/0.36, d=0.58, wd=w0*Math.sqrt(1-d*d);
+    return 1-Math.exp(-d*w0*t)*(Math.cos(wd*t)+d*w0/wd*Math.sin(wd*t)); }
+  function el(tag,attrs,parent){var e=document.createElementNS(NS,tag);
+    for(var k in attrs)e.setAttribute(k,attrs[k]); if(parent)parent.appendChild(e); return e;}
+
+  function makePlasmie(svg){
+    svg.setAttribute("viewBox","-6 -14 112 120");
+    var g=el("g",{},svg), id="clip"+Math.random().toString(36).slice(2,8);
+    var defs=el("defs",{},svg), cp=el("clipPath",{id:id},defs), clip=el("path",{},cp);
+    var body=el("path",{},g), hi=el("ellipse",{opacity:.6,"clip-path":"url(#"+id+")"},g);
+    var face=el("g",{},g), prop=el("g",{},g);
+    return {svg:svg,g:g,body:body,hi:hi,clip:clip,face:face,prop:prop,
+            pts:DATA.shapes.idle.map(function(q){return q.slice();}),state:"idle",
+            enteredAt:performance.now()};}
+
+  function drawFace(L,st,b){
+    var f=DATA.faces[st], col="var(--face)";
+    L.face.replaceChildren();
+    var cx=b.x+b.w/2, gap=st==="busy"?8:Math.min(b.w*0.17,13), r=st==="busy"?3.8:4.6;
+    var ey=st==="busy"?b.y+b.h*0.15:b.y+Math.min(b.h*0.42,b.h-14);
+    function eye(x){
+      switch(f.eyes){
+        case "happy": return el("path",{d:"M"+(x-5)+","+(ey+1.5)+" Q"+x+","+(ey-5)+" "+(x+5)+","+(ey+1.5),fill:"none",stroke:col,"stroke-width":3,"stroke-linecap":"round"},L.face);
+        case "closed": return el("path",{d:"M"+(x-5)+","+ey+" Q"+x+","+(ey+4.5)+" "+(x+5)+","+ey,fill:"none",stroke:col,"stroke-width":3,"stroke-linecap":"round"},L.face);
+        case "flat": return el("path",{d:"M"+(x-4.5)+","+ey+" H"+(x+4.5),stroke:col,"stroke-width":3.2,"stroke-linecap":"round"},L.face);
+        case "up": el("circle",{cx:x,cy:ey,r:r,fill:col},L.face); return el("circle",{cx:x+1.2,cy:ey-2.4,r:1.7,fill:"#fff"},L.face);
+        case "worried": el("circle",{cx:x,cy:ey+1,r:r-.4,fill:col},L.face);
+          return el("path",{d:"M"+(x-5)+","+(ey-6+(x<cx?2:0))+" L"+(x+5)+","+(ey-6+(x<cx?0:2)),stroke:col,"stroke-width":2.4,"stroke-linecap":"round"},L.face);
+        case "angry": el("circle",{cx:x,cy:ey+1,r:r-.4,fill:col},L.face);
+          return el("path",{d:"M"+(x-5)+","+(ey-6+(x<cx?0:2))+" L"+(x+5)+","+(ey-6+(x<cx?2:0)),stroke:col,"stroke-width":2.4,"stroke-linecap":"round"},L.face);
+        case "wink": if(x>cx) return el("path",{d:"M"+(x-5)+","+ey+" Q"+x+","+(ey-4)+" "+(x+5)+","+ey,fill:"none",stroke:col,"stroke-width":3,"stroke-linecap":"round"},L.face);
+        default: el("circle",{cx:x,cy:ey,r:r,fill:col},L.face);
+          return el("circle",{cx:x+1.4,cy:ey-1.6,r:1.6,fill:"#fff"},L.face);}}
+    eye(cx-gap); eye(cx+gap);
+    var my=ey+9;
+    var bl={idle:1,success:1,held:1,promote:1,hi:1,petted:1.35}[st];
+    if(bl) [-1,1].forEach(function(sg){el("ellipse",{cx:cx+sg*(gap+9),cy:my-2,rx:5.5*bl,ry:3.2*bl,fill:"var(--blush)",opacity:.8},L.face);});
+    var m={stroke:col,"stroke-width":3,fill:"none","stroke-linecap":"round"};
+    switch(f.mouth){
+      case "smile": el("path",Object.assign({d:"M"+(cx-5)+","+my+" Q"+cx+","+(my+5)+" "+(cx+5)+","+my},m),L.face); break;
+      case "grin": el("path",{d:"M"+(cx-7)+","+(my-1)+" Q"+cx+","+(my+8)+" "+(cx+7)+","+(my-1)+"Z",fill:col},L.face); break;
+      case "o": el("ellipse",{cx:cx,cy:my+1,rx:3.6,ry:4.4,fill:col},L.face); break;
+      case "small": el("path",Object.assign({d:"M"+(cx-3)+","+my+" Q"+cx+","+(my+2.5)+" "+(cx+3)+","+my},m),L.face); break;
+      case "flat": el("path",Object.assign({d:"M"+(cx-4)+","+my+" H"+(cx+4)},m),L.face); break;
+      case "pout": el("path",Object.assign({d:"M"+(cx-3.9)+","+(my+1.7)+" Q"+cx+","+(my-3.1)+" "+(cx+3.9)+","+(my+1.7)},m),L.face); break;
+      case "wobble": el("path",Object.assign({d:"M"+(cx-6)+","+(my+1)+" q2,-3 4,0 t4,0 t4,0"},m),L.face); break;}}
+
+  function drawProps(L,st,b,T){
+    L.prop.replaceChildren();
+    var f=DATA.faces[st], cx=b.x+b.w/2;
+    switch(f.prop){
+      case "dots": DOTS.forEach(function(d,i){var c=d[1],k=(T*1.0+i/3)%1,x=cx+(i-1)*9*(1-k),y=b.y-22+k*30;
+        el("circle",{cx:x,cy:y,r:4,fill:c,opacity:Math.min(1,(1-k)*2.2)},L.prop);}); break;
+      case "card": {var k=(T*0.8)%1,y=b.y-26+easeOut(Math.min(1,k*1.6))*22;
+        el("rect",{x:cx-9,y:y,width:18,height:13,rx:2.5,fill:"var(--surface)",stroke:"var(--face)","stroke-width":2,opacity:k>.85?(1-k)/.15:1},L.prop);
+        el("path",{d:"M"+(cx-5)+","+(y+5)+" H"+(cx+5)+" M"+(cx-5)+","+(y+9)+" H"+(cx+2),stroke:"var(--face)","stroke-width":1.6,"stroke-linecap":"round"},L.prop); break;}
+      case "spark": {var s2=1+0.25*Math.sin(T*7.5),x=cx+b.w*0.36,y=b.y-6;
+        el("path",{d:"M"+x+","+(y-7*s2)+" L"+(x+2*s2)+","+(y-2*s2)+" L"+(x+7*s2)+","+y+" L"+(x+2*s2)+","+(y+2*s2)+" L"+x+","+(y+7*s2)+" L"+(x-2*s2)+","+(y+2*s2)+" L"+(x-7*s2)+","+y+" L"+(x-2*s2)+","+(y-2*s2)+"Z",fill:"var(--spark)",stroke:"var(--face)","stroke-width":1.2},L.prop); break;}
+      /* The reaction props, ported from the app's Plasmie.swift. Unlike the
+         status props above these are not placed off the bounding box: each
+         belongs to one fixed pose, so they keep the app's own coordinates --
+         the bubble beside the raised hand, the mark on the brow, the hearts
+         rising off the top of the head. */
+      case "hello": {
+        var age=(performance.now()-L.enteredAt)/1000;
+        var fade=reduce?1:Math.min(Math.max((1.9-age)/0.35,0),1);
+        if(fade<=0.001) break;
+        var sc=reduce?1:0.3+0.7*spring(age);
+        var gh=el("g",{transform:"translate(76 17) scale("+sc.toFixed(3)+")",opacity:fade.toFixed(3)},L.prop);
+        el("path",{d:"M-6.5,-8.5 H6.5 A8.5,8.5 0 0 1 6.5,8.5 H-6.5 A8.5,8.5 0 0 1 -6.5,-8.5Z"+
+                     "M-8,7 L-11.5,13 L-3,8Z",
+                   fill:"#fff","fill-opacity":.97,stroke:"var(--face)","stroke-width":1.3,"stroke-linejoin":"round"},gh);
+        el("text",{x:0,y:0,"text-anchor":"middle","dominant-baseline":"central","font-size":11,
+                   "font-weight":700,fill:"var(--face)",
+                   "font-family":"ui-rounded, 'Arial Rounded MT Bold', var(--font-sans)"},gh).textContent="hi!";
+        break;}
+      case "vein": {
+        var pulse=reduce?1:1+0.14*Math.sin(2*Math.PI*T/0.55), dv="";
+        for(var q=0;q<4;q++){var av=q*Math.PI/2+Math.PI/4, ca=Math.cos(av), sa=Math.sin(av);
+          dv+="M"+(ca*8-sa*4.6).toFixed(2)+","+(sa*8+ca*4.6).toFixed(2)+
+              " Q"+(ca*3.4).toFixed(2)+","+(sa*3.4).toFixed(2)+
+              " "+(ca*8+sa*4.6).toFixed(2)+","+(sa*8-ca*4.6).toFixed(2)+" ";}
+        el("path",{transform:"translate(80 20) scale("+pulse.toFixed(3)+")",d:dv,fill:"none",
+                   stroke:"var(--blush)","stroke-width":2.6,"stroke-linecap":"round","stroke-linejoin":"round"},L.prop);
+        break;}
+      case "hearts": {
+        var xs=[34,66,50];
+        for(var j=0;j<3;j++){
+          var ph=reduce?[0.3,0.5,0.7][j]:frac(T/1.8+j/3);
+          var x=xs[j]+(2.5+6*ph)*Math.sin(ph*6+j*2.1), y=30-28*(1-Math.pow(1-ph,2));
+          var r=3.4+2.6*Math.sin(Math.PI*Math.min(ph*1.6,1));
+          el("path",{d:"M"+x.toFixed(2)+","+(y+0.85*r).toFixed(2)+
+            " C"+(x-0.5*r).toFixed(2)+","+(y+0.5*r).toFixed(2)+" "+(x-r).toFixed(2)+","+(y+0.2*r).toFixed(2)+" "+(x-r).toFixed(2)+","+(y-0.2*r).toFixed(2)+
+            " C"+(x-r).toFixed(2)+","+(y-r).toFixed(2)+" "+(x-0.1*r).toFixed(2)+","+(y-r).toFixed(2)+" "+x.toFixed(2)+","+(y-0.3*r).toFixed(2)+
+            " C"+(x+0.1*r).toFixed(2)+","+(y-r).toFixed(2)+" "+(x+r).toFixed(2)+","+(y-r).toFixed(2)+" "+(x+r).toFixed(2)+","+(y-0.2*r).toFixed(2)+
+            " C"+(x+r).toFixed(2)+","+(y+0.2*r).toFixed(2)+" "+(x+0.5*r).toFixed(2)+","+(y+0.5*r).toFixed(2)+" "+x.toFixed(2)+","+(y+0.85*r).toFixed(2)+"Z",
+            fill:"var(--blush)",stroke:"var(--face)","stroke-width":1,"stroke-linejoin":"round",
+            opacity:(reduce?1:Math.sin(Math.PI*ph)).toFixed(3)},L.prop);}
+        break;}
+      case "sparkles": [[-1,-0.2],[1,-0.4],[0.7,0.9]].forEach(function(o,i){var sx=o[0],sy=o[1];
+        var k=(T*1.1+i*0.33)%1,s2=Math.sin(k*Math.PI)*5+1,x=cx+sx*(b.w/2+6),y=b.y+b.h/2+sy*(b.h/2+6);
+        el("path",{d:"M"+x+","+(y-s2)+" L"+(x+s2*.35)+","+(y-s2*.35)+" L"+(x+s2)+","+y+" L"+(x+s2*.35)+","+(y+s2*.35)+" L"+x+","+(y+s2)+" L"+(x-s2*.35)+","+(y+s2*.35)+" L"+(x-s2)+","+y+" L"+(x-s2*.35)+","+(y-s2*.35)+"Z",fill:"var(--spark)"},L.prop);}); break;}}
+
+  function life(L,t){
+    var st=L.state,b=L.box,cx=b.x+b.w/2,cy=b.y+b.h,w=Math.sin(t*2.6);
+    var sx=1+0.018*w, sy=1-0.018*w, dx=0;
+    if(st==="summarize"){var k=Math.sin(t*5.2); sx=1+0.07*k; sy=1-0.07*k;}
+    if(st==="success") sy*=1+0.05*Math.max(0,Math.sin(t*6.5));
+    if(L.squash){var k2=(performance.now()-L.squash)/140;
+      if(k2>=1)L.squash=0; else {var sq=Math.sin(k2*Math.PI)*0.06; sx*=1+sq; sy*=1-sq;}}
+    L.g.setAttribute("transform","translate("+(cx+dx).toFixed(2)+" "+cy.toFixed(2)+") scale("+sx.toFixed(4)+" "+sy.toFixed(4)+") translate("+(-cx)+" "+(-cy)+")");}
+
+  function shape(L){
+    var p=L.pts; L.box=bbox(p); var d=curve(p), b=L.box;
+    L.body.setAttribute("d",d);
+    L.body.setAttribute("fill",L.state==="off"?"var(--off)":"var(--body)");
+    L.body.setAttribute("stroke","var(--face)"); L.body.setAttribute("stroke-width","2.2"); L.body.setAttribute("stroke-linejoin","round");
+    L.clip.setAttribute("d",d);
+    L.hi.setAttribute("cx",b.x+b.w/2); L.hi.setAttribute("cy",b.y+b.h*0.74);
+    L.hi.setAttribute("rx",b.w*0.3); L.hi.setAttribute("ry",b.h*0.17); L.hi.setAttribute("fill","var(--body-hi)");
+    drawFace(L,L.state,b);}
+
+  function morph(L,to,ms){
+    ms=ms||320;
+    var from=L.pts.map(function(q){return q.slice();}), target=DATA.shapes[to], t0=performance.now();
+    L.state=to; L.enteredAt=t0; L.dirty=true;
+    if(reduce){ L.pts=target.map(function(q){return q.slice();}); return; }
+    L.squash=t0;
+    L.tween=function(now){var k=Math.min(1,(now-t0)/ms); L.pts=lerp(from,target,easeOutExpo(k)); L.dirty=true; if(k>=1)L.tween=null;};}
+
+
+
+window.__eng={el:el,makePlasmie:makePlasmie,shape:shape,drawProps:drawProps,life:life,morph:morph};
+})();
+</script>
+<script>
+/* Deterministic: time is driven by renderAt(ms), so every frame is reproducible. */
+var __T = 0;
+performance.now = function () { return __T; };
+var el=__eng.el, makePlasmie=__eng.makePlasmie, shape=__eng.shape, drawProps=__eng.drawProps, life=__eng.life, morph=__eng.morph;
+(function () {
+  var SCENES = [{"state": "idle", "id": "hero-title", "a": "Plasmie", "b": "Your private memory, on your Mac."}, {"state": "ingest", "id": "s2", "a": "The answer is somewhere in your notes.", "b": "And you'll never find it again."}, {"state": "summarize", "id": "s3", "a": "Every hour, it reads what you touched", "b": "and condenses it on your machine."}, {"state": "promote", "id": "s4", "a": "Each night it files what matters.", "b": "Anything it isn't sure of, it holds back for you."}, {"state": "ask", "id": "s5", "a": "Ask it later.", "b": "It answers from your own notes, with the facts."}, {"state": "petted", "id": "s6", "a": "Why it's safe", "b": "Your notes never leave your Mac. The AI is Apple's on-device model."}, {"state": "hi", "id": "s7", "a": "Plasmie", "b": "Remember what you did."}];
+  var host = document.getElementById('plasmie-stage');
+  var svg = el("svg", {"role":"img","aria-label":"Plasmie"}, host);
+  var L = makePlasmie(svg);
+  shape(L); drawProps(L, L.state, L.box, 0.35);
+  var DUR = 4000, cur = -1;
+  window.renderAt = function (ms) {
+    __T = ms;
+    var idx = Math.min(SCENES.length - 1, Math.floor(ms / DUR));
+    if (idx !== cur) {
+      cur = idx;
+      SCENES.forEach(function (sc, i) {
+        var node = document.getElementById(sc.id);
+        if (node) node.classList.toggle('on', i === idx);
+      });
+      morph(L, SCENES[idx].state, 600);
+    }
+    if (L.tween) L.tween(ms);
+    if (L.dirty !== false) { shape(L); L.dirty = false; }
+    life(L, ms / 1000);
+    drawProps(L, L.state, L.box, ms / 1000);
+    return idx;
+  };
+  window.renderAt(0);
+  var q = new URLSearchParams(location.search);
+  if (q.has('t')) window.renderAt(parseFloat(q.get('t')));
+})();
+</script>
+</body></html>

@@ -198,9 +198,9 @@ private struct MapArea: View {
         VStack {
             Spacer()
             HStack {
-                Text("\(g.nodes.count) notes · \(g.edges.count) links")
+                Text("\(g.nodes.count) notes · \(g.edges.count) links" + (g.suggested.isEmpty ? "" : " · \(g.suggested.count) suggested"))
                 Spacer()
-                Text("Scroll or pinch to zoom · drag to pan · click a note to read it")
+                if scene.reading == nil { Text("Scroll or pinch to zoom · drag to pan · click a note to read it") }
             }
             .font(.klMeta).foregroundStyle(.secondary)
             .padding(.horizontal, 14).padding(.vertical, 10)

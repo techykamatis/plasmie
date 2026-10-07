@@ -335,11 +335,63 @@ struct SettingsView: View {
             labeled("Vault folder") { TextField("~/knowledge", text: $vaultDir).textFieldStyle(.roundedBorder).focused($vaultFocused) }
             Text("Keep the vault on local disk. Background jobs cannot read from iCloud/OneDrive folders.")
                 .klNote()
+            relatedLinks
             Text("Where things live").font(.klLabel).foregroundStyle(.secondary).padding(.top, 4)
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
                 pathRow("Data", PlasmiePaths.home)
                 pathRow("Logs", PlasmiePaths.logs)
                 keychainRow
+            }
+        }
+    }
+
+    // MARK: related links in the user's notes (related.py)
+
+    @State private var relatedOn = ConfigStore.read(PlasmiePaths.config)["PLASMIE_RELATED_NOTES"] == "1"
+    @State private var relatedBusy = false
+    @State private var relatedMsg = ""
+    @State private var confirmRelated = false
+
+    /// Suggested links are shown on the map and in the reader without touching any note.
+    /// Writing them into the user's own notes is a choice made here, explained first.
+    private var relatedLinks: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Links between your notes").font(.klLabel).foregroundStyle(.secondary).padding(.top, 4)
+            Text(relatedOn
+                 ? "\(Brand.name) keeps a Related section at the end of your notes, linking each to similar ones. It refreshes hourly."
+                 : "\(Brand.name) suggests links between similar notes on the map and under each note, without changing your notes. You can also write them into your notes, so Obsidian and other apps see them.")
+                .klNote()
+            HStack(spacing: 8) {
+                if relatedOn {
+                    Button("Remove Related Links") { runRelated("remove") }
+                } else {
+                    Button("Add Related Links to My Notes…") { confirmRelated = true }
+                }
+                if relatedBusy { ProgressView().controlSize(.small) }
+                if !relatedMsg.isEmpty { Text(relatedMsg).font(.klMeta).foregroundStyle(.secondary) }
+            }
+            .disabled(relatedBusy)
+        }
+        .alert("Add Related links to your notes?", isPresented: $confirmRelated) {
+            Button("Cancel", role: .cancel) {}
+            Button("Add Links") { runRelated("apply") }
+        } message: {
+            Text("\(Brand.name) adds a short Related section to the end of each of your notes, between markers so it can update or remove exactly that part. Your own text isn't touched, and a restore point is taken first. \(Brand.name)'s wiki notes already have one.")
+        }
+    }
+
+    private func runRelated(_ cmd: String) {
+        relatedBusy = true; relatedMsg = ""
+        DispatchQueue.global(qos: .userInitiated).async {
+            let out = runCapture(PlasmiePaths.python, [PlasmiePaths.script("related.py"), cmd], timeout: 600)
+            let n = (try? JSONSerialization.jsonObject(with: Data(out.utf8)) as? [String: Any])?["changed"] as? Int
+            DispatchQueue.main.async {
+                relatedBusy = false
+                guard let n else { relatedMsg = "Couldn't change your notes; nothing was written."; return }
+                relatedOn = cmd == "apply"
+                ConfigStore.upsert(ConfigStore.configEnv, ["PLASMIE_RELATED_NOTES": relatedOn ? "1" : ""],
+                                   exportPrefix: false, quoted: true)
+                relatedMsg = cmd == "apply" ? "Added to \(n) notes." : "Removed from \(n) notes."
             }
         }
     }

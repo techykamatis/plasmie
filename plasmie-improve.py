@@ -593,6 +593,10 @@ def run(vault=None, write=True):
     pruned = prune_raw(vault, write=write)
     closed = resolve_gaps(vault, write=write)
     linked = link_related(vault, write=write)
+    # the user's own notes get Related blocks only if they chose it (Settings > Vault)
+    if write and paths.read_config(paths.CONFIG).get("PLASMIE_RELATED_NOTES") == "1":
+        import related
+        linked += related.apply(vault)
     cands = propose_merges(vault, write=write)
     retired = retire_stale(vault, write=write)
     gaps = count_gaps(vault)

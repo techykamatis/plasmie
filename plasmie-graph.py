@@ -27,6 +27,7 @@ import urllib.parse
 from pathlib import Path
 
 import paths
+import related
 import scrub
 
 HUB_TYPES = {"moc", "index"}
@@ -34,8 +35,6 @@ EXCERPT_LINES = 2
 EXCERPT_CHARS = 180
 WIKILINK = re.compile(r"\[\[([^\]\n]+?)\]\]")
 MDLINK = re.compile(r"\]\(<?([^)<>\n]+?\.md)>?(?:#[^)\n]*)?\)")   # [text](rel/path.md#h)
-SKIP_DIRS = {"attachments"}                   # plus any dot-folder (.git, .obsidian, .trash)
-SKIP_TOP = {paths.RAW, paths.META}             # private machine folders, never on the map
 
 
 def front_and_body(raw):
@@ -153,13 +152,7 @@ def md_targets(root, note, body):
 
 def notes(vault):
     root = Path(vault)
-    files = []
-    for p in root.rglob("*.md"):
-        dirs = p.relative_to(root).parts[:-1]
-        if (dirs and dirs[0] in SKIP_TOP) or any(d in SKIP_DIRS or d.startswith(".") for d in dirs):
-            continue
-        files.append(p)
-    files.sort()
+    files = related.note_files(root)              # one rule for the map, the reader, suggestions
     out = []
     for p in files:
         try:
@@ -185,7 +178,7 @@ def notes(vault):
     return out
 
 
-def graph(vault):
+def graph(vault, with_suggestions=True):
     ns = notes(vault)
     by_key = {}
     for i, n in enumerate(ns):                    # titles first, so a file name wins a clash
@@ -202,7 +195,17 @@ def graph(vault):
     for i, j in edges:
         ns[i]["links"] += 1
         ns[j]["links"] += 1
-    return {"nodes": ns, "edges": sorted([i, j] for i, j in edges)}
+    # suggested links (related.py): drawn faint and dashed, never counted as links
+    suggested = set()
+    if with_suggestions:
+        for rel, near in related.build(vault)["related"].items():
+            i = by_id.get(rel)
+            for n in near:
+                j = by_id.get(n[0])
+                if i is not None and j is not None and i != j and (min(i, j), max(i, j)) not in edges:
+                    suggested.add((min(i, j), max(i, j)))
+    return {"nodes": ns, "edges": sorted([i, j] for i, j in edges),
+            "suggested": sorted([i, j] for i, j in suggested)}
 
 
 def main():

@@ -72,9 +72,12 @@ The app drives [`app-setup.sh`](app-setup.sh). It is idempotent and resumable, a
 6. **Search collections.** Points `raw`, `wiki` and `vault` at the chosen vault, repointing
    any that were left elsewhere *in place*, so hand-written contexts and ignores survive.
    Then it downloads the models and embeds.
-7. **First crawl** (no prior state only). GitHub and Confluence history, plus 30 days of
+7. **Suggested links.** [`related.py`](related.py) finds each note's text neighbours across the
+   vault. That takes a few seconds, and nothing is written to a note. Most vaults people bring
+   are mostly unlinked (one measured 75%), and this gives the map structure from the first open.
+8. **First crawl** (no prior state only). GitHub and Confluence history, plus 30 days of
    sessions and Slack (`PLASMIE_BOOTSTRAP_DAYS`).
-8. **Catch-up ingest on every run, then promote in the background.** An existing vault or a
+9. **Catch-up ingest on every run, then promote in the background.** An existing vault or a
    re-run gets today's activity filed immediately instead of waiting for the nightly job.
 
 ---
@@ -133,7 +136,7 @@ Sources list comes from retrieval, never from model output. Weak matches are log
 |---|---|
 | Notch / menu bar | Status as Plasmie's shape, a daily fun fact, quick actions |
 | Ask (⌃⌥⌘K, anywhere) | Streamed on-device answer with clickable sources |
-| Map | The vault as a graph (all notes except `raw/` and `meta/`), in your folders as they are, with `[[wikilinks]]` and Markdown links as edges ([`plasmie-graph.py`](plasmie-graph.py)) |
+| Map | The vault as a graph (all notes except `raw/` and `meta/`), in your folders as they are, with `[[wikilinks]]` and Markdown links as edges ([`plasmie-graph.py`](plasmie-graph.py)). Suggested links are drawn faint and dashed |
 | Reader | Opens any note beside the map, see below |
 | Settings | Connectors with Test, vault, iCloud mirror, diagnostics, re-run setup |
 | Trophies | Evolution stage and first-year trophies earned from vault history |
@@ -148,6 +151,16 @@ anywhere in the app render natively in the map window.
   Save refuses if the file changed on disk since it was opened, so a background job's write
   is never silently lost.
 - **Read-only:** `raw/`, the bundled docs, and any note too large to show in full.
+- **Related notes** under each note list its suggested neighbours.
+
+**Suggested links** ([`related.py`](related.py)). Each note's nearest neighbours by TF-IDF
+over its title and description (or opening text), across the whole vault, minus `raw/` and
+`meta/`. The floor is 0.25 and there are at most 4 per note. They are cached in `related.json`,
+keyed by every note's mtime and size, and computed, never written. **Settings › Vault ›
+Add Related Links to My Notes** is the opt-in that writes them into the user's own notes, as
+the same regenerable `<!-- related:start -->` block plasmie-improve keeps in `wiki/`. It takes a
+restore point first, refreshes hourly, and can be removed in one click. `wiki/` and
+`archive/` are left to plasmie-improve, so the two never write the same file.
 
 Render checks without the full app: `Plasmie.app/Contents/MacOS/Plasmie --map [--read <file>]`.
 
@@ -269,8 +282,9 @@ app/make-app.sh                       # Swift build (swiftc, no Xcode project)
   `app/make-release.sh`. It runs the tests, ruff and `bash -n` as gates before building the
   DMG. Commits follow Conventional Commits.
 - **Data migrations:** versioned and idempotent, in [`plasmie-migrate.py`](plasmie-migrate.py), and run
-  at every launch and setup. Renames carry over earlier installs (Plasmie, Plasmie;
-  ADR 0027, 0028).
+  at every launch and setup.
+- **Upgrading from Plasmie or Plasmie** (earlier names): the migrations carry the install over
+  (data, preferences, Keychain sign-ins, jobs; ADR 0027, 0028).
 - **Reset:** `plasmie-reset.sh [--dry-run]` removes jobs, data and logs, **never the vault**.
 
 ### Troubleshooting

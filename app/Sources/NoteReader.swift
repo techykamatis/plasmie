@@ -285,6 +285,7 @@ struct NoteReaderView: View {
                         if truncated {
                             Text("This note is long; showing the start. Open it in another app for the rest.").klNote()
                         }
+                        relatedList
                     }
                 }
                 .padding(18)
@@ -309,6 +310,28 @@ struct NoteReaderView: View {
         } message: { Text(saveError ?? "") }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Note: \(doc.title ?? fileTitle)")
+    }
+
+    /// Suggested neighbours (related.py), unless the note already carries its own Related
+    /// block (written by plasmie-improve or by "Add related links to my notes").
+    @ViewBuilder private var relatedList: some View {
+        let near = raw.contains("<!-- related:start -->") ? [] : scene.related(to: path)
+        if !near.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Divider().padding(.vertical, 6)
+                Text("Related notes").font(.klLabel.weight(.semibold)).foregroundStyle(.secondary)
+                ForEach(near, id: \.path) { n in
+                    Button { scene.read((scene.vault() as NSString).appendingPathComponent(n.path)) } label: {
+                        Label(n.title, systemImage: "doc.text").font(.klLabel).lineLimit(1)
+                    }
+                    .buttonStyle(.plain).foregroundStyle(Color.accentColor)
+                    .help("Suggested from what the notes say: \(n.path)")
+                }
+                Text("Suggested from similar wording, not links in your notes.").font(.klMeta).foregroundStyle(.tertiary)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Related notes")
+        }
     }
 
     private var fileTitle: String { ((path as NSString).lastPathComponent as NSString).deletingPathExtension }

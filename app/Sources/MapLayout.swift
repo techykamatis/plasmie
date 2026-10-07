@@ -46,12 +46,18 @@ final class MapLayout {
         n = g.nodes.count
         r = g.nodes.map(\.radius)
         mass = g.nodes.map { 0.6 + $0.radius / 10 }
-        edges = g.edges
+        // suggested links are springs too, at a third of the strength and a little longer:
+        // related notes drift together without pretending to be linked
+        let all = g.edges + g.suggested
+        let real = g.edges.count
+        edges = all
         anchors = g.anchors
-        let deg = g.neighbours.map { max($0.count, 1) }
-        edgeLen = g.edges.map { 18 + g.nodes[$0.0].radius + g.nodes[$0.1].radius }
-        edgeK = g.edges.map { 1 / Double(min(deg[$0.0], deg[$0.1])) }
-        edgeBias = g.edges.map { Double(deg[$0.0]) / Double(deg[$0.0] + deg[$0.1]) }
+        var degs = Array(repeating: 0, count: g.nodes.count)
+        for (a, b) in all { degs[a] += 1; degs[b] += 1 }
+        let deg = degs.map { max($0, 1) }
+        edgeLen = all.enumerated().map { k, e in (k < real ? 18 : 26) + g.nodes[e.0].radius + g.nodes[e.1].radius }
+        edgeK = all.enumerated().map { k, e in (k < real ? 1 : 0.35) / Double(min(deg[e.0], deg[e.1])) }
+        edgeBias = all.map { Double(deg[$0.0]) / Double(deg[$0.0] + deg[$0.1]) }
         // seeded start: a golden-angle disc, anchors on the inside, each note's angle nudged
         // by its own path hash so a new note doesn't reshuffle everyone else
         let order = g.nodes.indices.sorted { (g.depth[$0], g.nodes[$0].seed) < (g.depth[$1], g.nodes[$1].seed) }

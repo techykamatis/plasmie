@@ -309,7 +309,7 @@ The name "Plasmie" and the blob mascot are not covered by that license. See
 
 ## Get in touch
 
-Plasmie is made by Vhen Joseph. Open an issue in this repository to reach me.
+Plasmie is made by Vhen Joseph. Email me at vhenjoseph@gmail.com, or open an issue in this repository.
 
 - **Building something with Plasmie?** I'd love to hear about it. Not required, just appreciated.
 - **Using the name "Plasmie" or the mascot** needs my permission first ([TRADEMARK.md](TRADEMARK.md)).

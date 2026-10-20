@@ -18,5 +18,5 @@ as "Plasmie", or with the blob mascot, without written permission.
 
 The official builds are the ones published by Vhen Joseph.
 
-To ask for permission, or if you're not sure whether something is fine, open an issue in this
-repository and ask. I'd rather hear from you early.
+To ask for permission, or if you're not sure whether something is fine, email me at
+vhenjoseph@gmail.com. I'd rather hear from you early.

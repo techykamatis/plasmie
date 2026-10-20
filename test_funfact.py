@@ -13,6 +13,7 @@ import pytest
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import paths  # noqa: E402
 _spec = importlib.util.spec_from_file_location("plasmie_funfact", HERE / "plasmie-funfact.py")
 F = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(F)
@@ -131,7 +132,7 @@ def test_unfaithful_or_missing_phrasing_falls_back_to_the_quote(tmp_path, monkey
     assert f["text"] == "Throwback from your notes on Tokens: " + f["quote"]    # never a bare quote
 
 
-@pytest.mark.parametrize("name", ["Plasmie", "Plasmie", "Plasmie", "Plasmie"])   # earlier names still count
+@pytest.mark.parametrize("name", ["Plasmie", *paths.PREVIOUS_NAMES, paths.SKETCH_NAME])   # earlier names still count
 def test_patterns_plasmie_noticed_get_their_own_kicker(tmp_path, name):
     v = _vault(tmp_path)
     (v / "wiki" / "p.md").write_text('---\ntype: pattern\ntitle: "P"\ndescription: "Green main before tagging."\n'

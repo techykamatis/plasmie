@@ -49,9 +49,9 @@ def default_dest(vault: Path) -> Path:
 
 
 def adopt_old_mirror(icloud: Path = ICLOUD) -> bool:
-    """Renames (0027, 0028): iCloud Drive/<earlier name> becomes iCloud Drive/<APP_NAME>, so
+    """Older names (ADR 0025): iCloud Drive/<earlier name> becomes iCloud Drive/<APP_NAME>, so
     the mirror (and any edit kept in it) carries over instead of being copied anew. The
-    newest earlier name (Plasmie, then Plasmie) wins; only when the new folder doesn't exist
+    newest earlier name (paths.PREVIOUS_NAMES, read newest first) wins; only when the new folder doesn't exist
     yet, so it never merges. True when one moved."""
     new = icloud / paths.APP_NAME
     for name in reversed(paths.PREVIOUS_NAMES):

@@ -13,6 +13,7 @@ import pytest
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import paths  # noqa: E402
 _spec = importlib.util.spec_from_file_location("plasmie_achievements", HERE / "plasmie-achievements.py")
 A = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(A)
@@ -115,7 +116,7 @@ def test_pattern_spotter_counts_only_patterns_plasmie_noticed(tmp_path):
     assert _by_id(r)["pattern-spotter"]["unlocked"] and _by_id(r)["pattern-spotter"]["date"] == "2026-10-04"
 
 
-@pytest.mark.parametrize("name", ["Plasmie", "Plasmie", "Plasmie"])
+@pytest.mark.parametrize("name", [*paths.PREVIOUS_NAMES, paths.SKETCH_NAME])
 def test_patterns_noticed_before_the_rename_still_count(tmp_path, name):
     v = _vault(tmp_path, ingest_days=["2026-07-02"])
     (v / "wiki" / "old.md").write_text(f"---\ntype: pattern\nsource: \"{name} noticed · 3 days\"\ntimestamp: 2026-10-03T00:00:00Z\n---\n")

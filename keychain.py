@@ -104,7 +104,7 @@ def put(name, value):
 
 
 def adopt_service(old):
-    """Copy sign-ins saved under one of the app's earlier names (ADRs 0027, 0028) to SERVICE. Copy only:
+    """Copy sign-ins saved under one of the app's earlier names (ADR 0023) to SERVICE. Copy only:
     the old items stay, and a value already under SERVICE is never overwritten. Raises
     KeychainError if any copy fails (a locked keychain), so a migration retries."""
     copied = []
@@ -163,7 +163,9 @@ def migrate(data_dir=None, config=None):
     Returns (tokens copied, settings copied, errors)."""
     d = data_dir or paths.DATA_DIR
     config = config or os.path.join(d, "config.env")
-    src = paths.read_config(legacy_env())
+    # ~/.claude/.env may predate the PLASMIE_* names (ADR 0009): its settings may use the old key prefix (mapped here
+    # for good, not just for the one-release read fallback).
+    src = paths.with_new_names(paths.read_config(legacy_env()))
     tokens, errors = [], []
     for n in SECRETS:
         if src.get(n) and get(n) is None:

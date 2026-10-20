@@ -283,7 +283,7 @@ def test_vault_resolution_order(tmp_path, monkeypatch):
 
 def test_ingest_with_every_source_off_fetches_and_writes_nothing(tmp_path):
     """Off means off: no network, no raw file. Backfill mode (PLASMIE_SINCE) so the live
-    watermark in ~/.plasmie/.loop-state.json is never written."""
+    watermark in $PLASMIE_HOME/.loop-state.json is never written."""
     import subprocess
     import sys as _sys
     env = {**os.environ, "PLASMIE_VAULT": str(tmp_path), "PLASMIE_DISABLED_SOURCES": ",".join(paths.SOURCES),

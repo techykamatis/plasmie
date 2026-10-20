@@ -28,7 +28,7 @@ decide / learn about X" and get a grounded answer, and the loop runs unattended.
 ## Positioning
 
 Fully local and personal: summarisation and answers run on-device (Apple
-Foundation Models, the only backend since ADR 0025); the only network calls read the user's own
+Foundation Models, the only backend, ADR 0002); the only network calls read the user's own
 accounts. Unlike cloud agents (OpenAI dots, Meta Muse, Grok Bot) it never uploads
 the work record — it is a private memory, not a cloud coworker.
 
@@ -47,8 +47,7 @@ the work record — it is a private memory, not a cloud coworker.
   machine busy (jobs defer), quiet (no new data), off.
 - Work notes only: personal finances, family and health stay out of the vault, and
   credentials or PII are never stored in it.
-- Name is free to change (confirmed 2026-10-03). "Plasmie" may survive as a
-  descriptor. Existing asset: `kLogo` loop-arrow glyph that spins while jobs run.
+- Name is free to change (confirmed 2026-10-03). Existing asset: `kLogo` loop-arrow glyph that spins while jobs run.
 
 ## Brand Commitments
 
@@ -56,13 +55,11 @@ the work record — it is a private memory, not a cloud coworker.
   referencing OpenAI's dots (customisable blobby agent crew), xAI/Grok (Groklet
   mascot; Grok Bot agent) and Meta Muse's mascot Jolly. References, not templates.
 - Status sprites / loading animations for the different pipeline states.
-- **Chosen 2026-10-03:** a soft blob mascot (first called Plasmie, then Plasmie = Knowledge
-  Loop, squished), renamed again on 2026-10-04 (ADR 0027) and settled as **Plasmie**
-  the same day (ADR 0028; plasmie .com/.app/.ai were free). It is both the app's and the
-  mascot's name; "Plasmie" may remain a descriptor. Where the name comes from is a
-  hidden easter egg in the app, not product copy (ADR 0028). **Plasmie is the species:** in
+- **Chosen:** a soft blob mascot named **Plasmie** (ADR 0014; plasmie .com/.app/.ai were
+  free). It is both the app's and the mascot's name, with no descriptor alongside it. Where
+  the name comes from is a hidden easter egg in the app, not product copy (ADR 0014). **Plasmie is the species:** in
   future each person personalises their own blob (name, colours, accessories), so their blob
-  becomes theirs (direction recorded, not built yet; ADR 0027). The owner's reason, which is the
+  becomes theirs (direction recorded, not built yet; ADR 0014). The owner's reason, which is the
   concept: *"a blob is nice, cause it can take any shape or form"* — Plasmie
   **shape-shifts into each pipeline state** (bowl catching source dots = ingest,
   dumpling = summarise, box = promote, lightbulb = Ask, raised hand = held,

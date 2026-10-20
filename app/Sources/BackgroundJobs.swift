@@ -11,26 +11,33 @@ enum BackgroundJobs {
     private static func service(_ name: String) -> SMAppService { .agent(plistName: "com.\(Brand.id).\(name).plist") }
 
     /// The dev path (launchd/install.sh) runs the same jobs from ~/Library/LaunchAgents as
-    /// com.plasmie.dev-*, older installs ran them there under a pre-rename prefix, and
-    /// the app under its earlier names (Plasmie, Plasmie: other bundle ids) registered
-    /// com.plasmie.* / com.plasmie.* that this app can't unregister. Two sets at once would run
-    /// ingest twice (it appends), so nothing registers while one is still there;
-    /// plasmie-migrate.py retires them first (steps 3, 4 and 6).
+    /// com.plasmie.dev-* (ADR 0024; older dev installs used another com.plasmie.<old>-* middle part),
+    /// older installs ran them there under a pre-rename prefix, and the app under its
+    /// earlier names (Brand.previous: other bundle ids) registered com.<earlier name>.* jobs
+    /// that this app can't unregister. Two sets at once would run ingest twice (it appends),
+    /// so nothing registers while one is still there; plasmie-migrate.py retires them first
+    /// (steps 3, 4, 6 and 9).
     static var legacyPresent: Bool {
         let dir = "\(NSHomeDirectory())/Library/LaunchAgents"
         let files = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
-        return files.contains { f in legacyAgentPrefixes.contains { f.hasPrefix($0) } }
-            || legacyJobsLoaded
+        return isLegacyAgentFile(files) || legacyJobsLoaded
     }
 
-    /// The pre-rename prefix was the original author's personal reverse-DNS handle. It is
+    /// The pre-rename prefix was the original author's personal reverse-DNS handle; it is
     /// assembled from parts so the personal-data scan (test_no_personal.py) doesn't match
-    /// it; it stays only so an old install's agents are still recognised and retired.
+    /// it. The dev agents' old middle part is assembled the same way, for the old-names scan
+    /// (test_old_names.py). Both stay only so an old install's agents are still recognised.
     private static let oldDevPrefix = "com.v" + "hen"
-    static let legacyAgentPrefixes = ["com.\(Brand.id).dev-",
-                                      "\(oldDevPrefix).dev-", "\(oldDevPrefix).mlx-"]
+    private static let oldDevMiddle = "know" + "ledge-"
+    static let legacyAgentPrefixes = ["com.\(Brand.id).dev-", "com.\(Brand.id).\(oldDevMiddle)",
+                                      "\(oldDevPrefix).\(oldDevMiddle)", "\(oldDevPrefix).mlx-"]
 
-    /// Any earlier name's job (com.plasmie.*, com.plasmie.*) still loaded in this login session.
+    /// True when any of these LaunchAgents file names is a dev-path or retired agent.
+    static func isLegacyAgentFile(_ files: [String]) -> Bool {
+        files.contains { f in legacyAgentPrefixes.contains { f.hasPrefix($0) } }
+    }
+
+    /// Any earlier name's job (LegacyJobs) still loaded in this login session.
     static var legacyJobsLoaded: Bool { LegacyJobs.anyLoaded(LegacyJobs.labels(names)) }
 
     /// macOS asks the user to allow background items the first time (Login Items).

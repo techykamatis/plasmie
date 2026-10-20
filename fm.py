@@ -4,7 +4,7 @@
 macOS 26+ exposes the model behind Apple Intelligence through the
 FoundationModels framework. Plasmie reaches it through `plasmie-fm`, a tiny Swift
 helper built by app/build-fm.sh and shipped inside Plasmie.app, so a stock Mac
-needs no Xcode, Homebrew or model download (ADR 0025). Apple's Python SDK
+needs no Xcode, Homebrew or model download (ADR 0002). Apple's Python SDK
 (`apple-fm-sdk`) is kept only as an optional dev fallback (fm_sdk.py): it
 installs only with a full Xcode, which friends won't have.
 
@@ -91,8 +91,9 @@ def helper_path() -> Optional[str]:
               SELF / "app" / "build" / HELPER,                       # app/build-fm.sh
               SELF / "app" / "build" / f"{paths.APP_NAME}.app" / "Contents" / "MacOS" / HELPER,
               Path(f"/Applications/{paths.APP_NAME}.app/Contents/MacOS/{HELPER}"),
-              Path("/Applications/Plasmie.app/Contents/MacOS/plasmie-fm"),  # pre-rename install (0028)
-              Path("/Applications/Plasmie.app/Contents/MacOS/plasmie-fm")):  # pre-rename install (0027)
+              # a not-yet-replaced install under an earlier name (ADR 0023), newest first
+              *(Path(f"/Applications/{n}.app/Contents/MacOS/{n.lower()}-fm")
+                for n in reversed(paths.PREVIOUS_NAMES))):
         if os.access(p, os.X_OK):
             return str(p)
     return None

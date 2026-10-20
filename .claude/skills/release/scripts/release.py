@@ -216,7 +216,7 @@ JARGON = [r"\bADR\b", r"\blaunchd\b", r"\bqmd\b", r"\bruff\b", r"\bpytest\b", r"
           r"\bCI\b", r"\bAPI\b", r"\bSDK\b", r"\bJSON\b", r"\bYAML\b", r"\bfrontmatter\b",
           r"\bMOC\b", r"map.?reduce", r"\bsanitiz", r"\bstdlib\b", r"\bcommits?\b", r"\brepo\b",
           r"\bPR\b", r"\bregex", r"\bsubprocess\b", r"\bmigrations?\b", r"\bplasmie-fm\b",
-          r"\bkl-", r"\bbackfill", r"\bdedupe\b", r"\bheartbeat\b", r"\bcodesign", r"\bad-hoc\b",
+          r"\bplasmie-", r"\bbackfill", r"\bdedupe\b", r"\bheartbeat\b", r"\bcodesign", r"\bad-hoc\b",
           r"\bSwiftUI\b", r"\bfeat\b", r"\bfix\(", r"\bchore\b"]
 FILE_RE = r"\b[\w./-]+\.(py|sh|swift|md|json|ya?ml|plist|tsv|log|env|txt)\b"
 HEADINGS = ["New", "Better", "Fixed", "Install"]

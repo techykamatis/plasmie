@@ -32,7 +32,7 @@ enum ResetPlasmie {
                 }
                 LoginItem.set(false)
                 if let id = Bundle.main.bundleIdentifier { UserDefaults.standard.removePersistentDomain(forName: id) }
-                // and the earlier names' (Plasmie, Plasmie), or the next launch would copy them back in
+                // and the earlier names' (Brand.previous), or the next launch would copy them back in
                 for old in RenameMigration.previousDomains { UserDefaults.standard.removePersistentDomain(forName: old) }
                 NSApp.terminate(nil)
             }

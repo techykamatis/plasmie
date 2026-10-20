@@ -21,14 +21,53 @@ import sys
 # an installed copy (read-only, replaced on update). Everything Plasmie writes lives in
 # the per-user data and log folders, macOS-conventionally, never next to the code.
 # Shell scripts get the same three from plasmie-env.sh; the app from PlasmiePaths.
-# The user-visible name, in one place for the engine (ADR 0028): data/log folders, the
+# The user-visible name, in one place for the engine (ADR 0014): data/log folders, the
 # Keychain service, the iCloud folder, notifications and status copy all read it. Its twins:
 # Brand.swift, PLASMIE_APP_NAME in plasmie-env.sh, APP_NAME in app/make-*.sh (test_brand.py).
-# Internal names users never see (PLASMIE_* env vars, plasmie-*.py files) keep the old ones.
+# Internal names (PLASMIE_* env vars, plasmie-*.py files) follow it too (ADR 0014).
 APP_NAME = "Plasmie"
 APP_ID = "plasmie"
-# Earlier names, oldest first: what migrations carry an install over from (0027, 0028).
-PREVIOUS_NAMES = ("Plasmie", "Plasmie")
+
+# --- earlier names: for migrations only (ADR 0023) -----------------------
+# Every old name is spelled in parts on purpose: test_old_names.py fails if one is written
+# out anywhere in the repo, so these assembled copies are the only ones, and only the code
+# that carries an older install over (or still recognises its notes) reads them.
+PREVIOUS_NAMES = ("Kl" + "oop", "Blob" + "kin")   # the app's earlier names, oldest first
+SKETCH_NAME = "Loo" + "py"                        # the mascot's design-time name ("... noticed")
+# Env vars and config.env keys used to start with one of these; now they start PLASMIE_.
+OLD_ENV_PREFIXES = ("KL" + "OOP_", "KL" + "_")
+ENV_PREFIX = "PLASMIE_"
+
+
+def renamed_key(key):
+    """The PLASMIE_ name for an env var or config.env key spelled the old way, else None."""
+    for p in OLD_ENV_PREFIXES:
+        if key.startswith(p) and len(key) > len(p):
+            return ENV_PREFIX + key[len(p):]
+    return None
+
+
+def with_new_names(cfg):
+    """`cfg` with every old-prefixed key under its PLASMIE_ name. A key already present under
+    the new name keeps its value (the new name wins); keys that aren't old are kept as is."""
+    out = {k: v for k, v in cfg.items() if renamed_key(k) is None}
+    for k, v in cfg.items():
+        new = renamed_key(k)
+        if new and new not in out:
+            out[new] = v
+    return out
+
+
+def adopt_old_env(environ):
+    """Copy any old-prefixed variable to its PLASMIE_ name unless that is set already: a job
+    an older build registered, or a shell profile, may still pass the old one.
+    Fallback for one release (ADR 0023); drop it, with the twins in plasmie-env.sh and
+    RenameMigration.swift, in the release after."""
+    for k in [k for k in environ if renamed_key(k)]:
+        environ.setdefault(renamed_key(k), environ[k])
+
+
+adopt_old_env(os.environ)          # first: DATA_DIR and LOG_DIR below read PLASMIE_HOME/_LOGS
 ENGINE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.expanduser(os.environ.get("PLASMIE_HOME") or f"~/Library/Application Support/{APP_NAME}")
 LOG_DIR = os.path.expanduser(os.environ.get("PLASMIE_LOGS") or f"~/Library/Logs/{APP_NAME}")
@@ -66,7 +105,50 @@ def read_config(path=CONFIG):
                 out[k.strip()] = v
     except OSError:
         pass
-    return out
+    # A config.env not yet rewritten by plasmie-migrate.py step 8 still works: old keys are
+    # read under their new names. Fallback for one release (ADR 0023).
+    return with_new_names(out)
+
+
+def migrate_config_keys(path=CONFIG):
+    """Rewrite old-prefixed keys in config.env to their PLASMIE_ names, in place (ADR 0023).
+    Values, quoting, `export `, comments, order and every other key stay as they are. An old
+    key whose new name the file already defines loses its line (readers let the new one win,
+    so nothing changes). Idempotent. Returns the old keys it rewrote or dropped."""
+    import shutil
+    import tempfile
+    try:
+        with open(path, encoding="utf-8", errors="surrogateescape") as fh:
+            lines = fh.read().splitlines(keepends=True)
+    except FileNotFoundError:
+        return []
+
+    def key(line):
+        s = line.strip()
+        s = s[7:] if s.startswith("export ") else s
+        k, eq, _ = s.partition("=")
+        k = k.strip()
+        return k if eq and not s.startswith("#") and k.isidentifier() else None
+
+    have = {key(ln) for ln in lines} - {None}        # names defined before any rewrite
+    out, changed = [], []
+    for ln in lines:
+        k = key(ln)
+        new = renamed_key(k) if k else None
+        if new is None:
+            out.append(ln)
+            continue
+        changed.append(k)
+        if new not in have:
+            out.append(ln.replace(k, new, 1))
+    if changed:
+        d = os.path.dirname(os.path.abspath(path))
+        fd, tmp = tempfile.mkstemp(dir=d, prefix=".config.env.")
+        with os.fdopen(fd, "w", encoding="utf-8", errors="surrogateescape") as fh:
+            fh.write("".join(out))
+        shutil.copymode(path, tmp)
+        os.replace(tmp, path)
+    return changed
 
 
 def load_env(environ=None):

@@ -117,9 +117,9 @@ export DB_PASSWORD=hunter2
 export SLACK_USER_TOKEN=xoxp-legacy
 JIRA_EMAIL="me@example.com"
 export JIRA_BASE_URL=https://example.atlassian.net
-export PLASMIE_GITHUB_ORGS=acme
-export PLASMIE_GIT_ROOTS=~/code
-"""
+export {old}GITHUB_ORGS=acme
+export {old}GIT_ROOTS=~/code
+""".format(old="KL" + "_")      # this file may predate PLASMIE_* (ADR 0009): its keys use the old prefix (in parts)
 
 
 @pytest.fixture
@@ -129,14 +129,14 @@ def legacy(tmp_path, monkeypatch, kc):
     data = tmp_path / "data"
     data.mkdir()
     (data / ".loop-state.json").write_text("{}")
-    (data / "config.env").write_text('VAULT_DIR="/v"\nKL_DISABLED_SOURCES="confluence,outlook"\n')
+    (data / "config.env").write_text('VAULT_DIR="/v"\nPLASMIE_DISABLED_SOURCES="confluence,outlook"\n')
     env = tmp_path / "dot.env"
     env.write_text(LEGACY)
     monkeypatch.setenv("PLASMIE_LEGACY_ENV", str(env))
     return data, env
 
 
-def test_migration_copies_plasmie_keys_and_leaves_the_shared_file_alone(legacy):
+def test_migration_copies_our_keys_and_leaves_the_shared_file_alone(legacy):
     data, env = legacy
     tokens, settings, errors = keychain.migrate_if_needed(str(data))
     assert errors == [] and set(tokens) == {"SLACK_USER_TOKEN", "JIRA_EMAIL"}

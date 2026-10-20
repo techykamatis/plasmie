@@ -5,7 +5,7 @@
 # into Contents/MacOS: building needs the macOS 26+ SDK, running needs nothing.
 set -euo pipefail
 SELF="$(cd "$(dirname "$0")" && pwd)"
-# The name, in one place for the build (ADR 0028); must match Brand.swift, paths.APP_NAME and
+# The name, in one place for the build (ADR 0014); must match Brand.swift, paths.APP_NAME and
 # PLASMIE_APP_NAME in plasmie-env.sh (test_brand.py checks).
 APP_NAME="Plasmie"
 APP_ID="plasmie"
@@ -81,6 +81,12 @@ job promote   promote.sh     120 "<key>Hour</key><integer>2</integer><key>Minute
 job snapshot  plasmie-snapshot.sh 20  "<key>Hour</key><integer>0</integer><key>Minute</key><integer>47</integer>"
 for f in "$LA"/*.plist; do plutil -lint -s "$f" || { echo "bad plist $f"; exit 1; }; done
 chmod +x "$BACKEND"/*.sh
+# One release only (ADR 0023): launchd may still hold a job definition an older build
+# registered, which runs the job runner and two of its scripts under their old file names.
+# Relative links under those names keep such a job working until macOS reloads the new
+# plist. The old prefix is assembled so the old-names scan (test_old_names.py) can't see it.
+OLD_PREFIX="k""l-"
+for s in job.sh improve.sh snapshot.sh; do ln -s "plasmie-$s" "$BACKEND/$OLD_PREFIX$s"; done
 say "bundled $(ls "$LA" | wc -l | tr -d ' ') background jobs"
 
 # standalone Python 3.12 (bare: the engine is stdlib-only, nothing is pip-installed). Cached

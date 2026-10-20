@@ -45,7 +45,7 @@ rounded:
 
 ## Overview
 
-Plasmie (formerly Plasmie, and before that Plasmie) is a personal, fully local macOS menu-bar app.
+Plasmie is a personal, fully local macOS menu-bar app.
 Its identity is one character: a soft **brain-pink blob** whose **silhouette is
 the pipeline status**. The owner chose a blob "because it can take any shape or
 form", so every state is a shape, not a label. The app chrome stays native
@@ -55,7 +55,7 @@ and the menu-bar glyph. Sources of truth:
 - `app/brand/gen_shapes.py` → `app/brand/plasmie-shapes.json` + `app/Sources/PlasmieShapes.swift`
   (48 anchors per state, generated; never hand-edit the outputs)
 - `app/Sources/Theme.swift` (`PlasmieHues`, type scale `klTitle…klMono`)
-- `app/Sources/Plasmie*.swift` (view, geometry/faces, menu-bar glyph; type and file names keep the old name)
+- `app/Sources/Plasmie*.swift` (view, geometry/faces, menu-bar glyph)
 - `app/brand/plasmie-brand.template.html` (brand sheet; build injects the JSON)
 
 ## Colors
@@ -166,7 +166,7 @@ chrome. No drop shadows, glass, glows or gradients.
 
 ## Plasmie's map
 
-The vault as the network Plasmie grew (ADR 0029). Plasmie (from *plasmodium*) is the living,
+The vault as the network Plasmie grew (ADR 0022). Plasmie (from *plasmodium*) is the living,
 pink heart; everything around it is calm and neutral, so the mascot reads at a glance.
 `MapPalette.swift` holds every colour; `MapRender.swift` draws.
 

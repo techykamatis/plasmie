@@ -12,7 +12,7 @@
 # app update; never copied out). Everything written goes to $PLASMIE_HOME (data: config,
 # state, venv) and $PLASMIE_LOGS. See plasmie-env.sh.
 #
-# Generation is Apple's on-device model via the bundled plasmie-fm helper (ADR 0025):
+# Generation is Apple's on-device model via the bundled plasmie-fm helper (ADR 0002):
 # nothing to download or pip-install for it, but Apple Intelligence must be on.
 set -uo pipefail
 
@@ -115,7 +115,7 @@ if blockers="$(check_all | awk -F: '$3!="ok" && $4=="required"{print $5}' | past
   fail "Missing: ${blockers//,/, }. Fix these, then try again."
 fi
 
-# 1) migrate data from the old ~/.plasmie layout (older installs) -------
+# 1) migrate data from the old home dot-folder layout (older installs) ---------
 p 5 "Preparing $PLASMIE_APP_NAME's data folder…"
 "$ENGINE/migrate-home.sh" >/dev/null 2>&1 || fail "couldn't move older $PLASMIE_APP_NAME data into place"
 
@@ -147,7 +147,7 @@ set_config PLASMIE_GIT_BIN "$GIT_NATIVE"
 set_config PLASMIE_GH_BIN "$(native_tool gh)"
 [ -n "$GIT_NATIVE" ] || xcode-select --install >/dev/null 2>&1 || true
 
-# 3) vault: adopt, never overwrite (ADR 0022) -------------------------------------
+# 3) vault: adopt, never overwrite (ADR 0023) -------------------------------------
 # The vault is the one thing that must never be lost: the folder the user chose in setup
 # is recorded (other config lines, e.g. connector switches, are kept), an existing vault
 # gets a restore point before anything else, a Plasmie vault is adopted untouched, and any

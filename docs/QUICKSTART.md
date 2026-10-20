@@ -44,9 +44,9 @@ In the Plasmie window, each source has an On/Off switch: Slack, GitHub, local gi
 - Your notes: the folder you chose. Keep it on your Mac (to read it on your phone, use the iCloud mirror instead).
 - Plasmie's own data: `~/Library/Application Support/Plasmie`; logs: `~/Library/Logs/Plasmie`.
 
-## Coming from Plasmie or Plasmie
+## Upgrading from an earlier version
 
-Plasmie used to be called Plasmie, and Plasmie before that. Quit the old app, move it from Applications to the Bin, install Plasmie as above, then open Plasmie: it brings your notes, data, settings and connector sign-ins along by itself. One thing to redo in the Plasmie window: turn **Open at login** back on if you used it.
+If you installed an earlier version under a different name, quit the old app, move it from Applications to the Bin, install Plasmie as above, then open Plasmie: it brings your notes, data, settings and connector sign-ins along by itself. One thing to redo in the Plasmie window: turn **Open at login** back on if you used it.
 
 ## Uninstall
 

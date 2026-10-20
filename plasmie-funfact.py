@@ -12,7 +12,7 @@ past daily digest), so nothing is invented. Three kinds:
   milestone    your first note
 Every fact also carries a `context` (project + note title, or a digest label /
 close wiki note / same-day sibling) so it names its subject; a digest bullet whose subject can't be established
-is dropped. Only ~/.plasmie/.funfacts.json is written (today's pick + recent ids).
+is dropped. Only $PLASMIE_HOME/.funfacts.json is written (today's pick + recent ids).
 """
 import datetime as dt
 import difflib
@@ -28,7 +28,7 @@ from pathlib import Path
 import paths
 
 # today's name and the earlier ones, so pattern notes from before a rename still count
-NOTICED_BY = tuple(f"{n} noticed" for n in (paths.APP_NAME, "Plasmie", *paths.PREVIOUS_NAMES))
+NOTICED_BY = tuple(f"{n} noticed" for n in (paths.APP_NAME, paths.SKETCH_NAME, *paths.PREVIOUS_NAMES))
 
 HERE = Path(__file__).resolve().parent
 _spec = importlib.util.spec_from_file_location("dedupe", HERE / "dedupe.py")

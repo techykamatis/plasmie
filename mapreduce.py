@@ -4,7 +4,7 @@
 Apple's on-device model has a small window (documented 4096 tokens; macOS 27
 reports 8192 — always read live via fm.context_size()). A day of raw activity
 is 30-100k tokens, so promote and the hourly digest can't send it in one call.
-Instead (ADR 0025):
+Instead (ADR 0002):
 
   chunk   split labelled sections ("===== slack 2026-10-02 =====") at line
           boundaries into pieces that fit the live budget; every piece keeps

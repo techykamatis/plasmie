@@ -6,7 +6,7 @@ Thanks for wanting to help.
 
 - **Bug reports and ideas:** open an issue. Copy diagnostics from the Plasmie window
   (Maintain › Copy diagnostics) if something's broken. It leaves out your notes and passwords.
-- **Questions** about using the code, the name or the mascot: email vhenjoseph@gmail.com.
+- **Questions** about using the code, the name or the mascot: email plasmie@vhenjoseph.com.
 
 ## Code changes
 

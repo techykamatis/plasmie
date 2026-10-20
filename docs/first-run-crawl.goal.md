@@ -2,7 +2,9 @@
 
 A prompt/spec to hand a fresh Claude Code session (or run by hand) so a **new
 install ends up with a seeded vault**, not an empty one. Self-contained — assumes
-no prior context beyond the repo at `~/.plasmie` and vault at `~/knowledge`.
+no prior context beyond the engine (`$ENGINE`: `/Applications/Plasmie.app/Contents/Resources/backend`,
+or a dev checkout), the data folder (`$PLASMIE_HOME`: `~/Library/Application Support/Plasmie`) and
+the vault at `~/knowledge`.
 
 ## Why this exists
 
@@ -42,7 +44,7 @@ spec and the checklist for verifying a seeded install.
 
 ## Steps
 
-0. **Preflight.** Source `~/.claude/.env` and `~/.plasmie/config.env`.
+0. **Preflight.** Source `~/.claude/.env` and `$PLASMIE_HOME/config.env`.
    Print which sources are configured (token present) vs skipped (`plasmie-doctor.py` does this). Confirm qmd is
    on PATH, the vault exists, and Apple Intelligence is on (`plasmie-fm --check`). Do NOT fail on a
    missing source — only fail if *zero* sources are available.
@@ -110,11 +112,11 @@ spec and the checklist for verifying a seeded install.
 for s in slack claude github git; do echo "$s: $(ls ~/knowledge/raw/$s/*.md 2>/dev/null | wc -l)"; done
 ls ~/knowledge/raw/confluence | wc -l                 # confluence spaces mirrored
 # wiki got starter notes
-python3 ~/.plasmie/reindex.py --check ~/knowledge   # "<n> wiki notes"
+python3 "$ENGINE/reindex.py" --check ~/knowledge   # "<n> wiki notes"
 # retrieval indexed
 qmd status
 # end-to-end answer works
-python3 ~/.plasmie/ask.py "what did I work on this month?" ~/knowledge
+python3 "$ENGINE/ask.py" "what did I work on this month?" ~/knowledge
 # bootstrap audited
 grep bootstrap ~/knowledge/log.md
 ```

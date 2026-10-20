@@ -1,4 +1,4 @@
-// Plasmie (Plasmie) — native menu-bar app (macOS 13+ MenuBarExtra, .window style).
+// Plasmie — native menu-bar app (macOS 13+ MenuBarExtra, .window style).
 // HIG-aligned panel: SF Symbols, system materials, native typography. Actions run
 // in-process (no Terminal pop-outs) and show output inline. Reads state via
 // the bundled plasmie-status.py; shells to the existing python/launchd you run.

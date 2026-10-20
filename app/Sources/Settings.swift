@@ -28,7 +28,7 @@ enum ConfigStore {
             }
             out[k] = v
         }
-        return out
+        return RenameMigration.withNewNames(out)   // old-prefixed keys too, for one release (ADR 0023)
     }
 
     /// Upsert keys, preserving every other line.

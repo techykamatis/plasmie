@@ -8,7 +8,7 @@ the full contributor history is mirrored by github-backfill.py into
 raw/github/<repo>/. Confluence *changes* and a one-line run summary go to the
 chronological log.md; the page content itself is mirrored by
 confluence-backfill.py. Tracks a
-high-water mark in ~/.plasmie/.loop-state.json so each run only covers
+high-water mark in $PLASMIE_HOME/.loop-state.json so each run only covers
 new material.
 
 Run via:  run-ingest.sh (launchd), or python3 loop-ingest.py — settings come from

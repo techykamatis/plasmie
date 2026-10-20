@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Plasmie's evolutions and trophies, computed from the vault's own history. Stdlib, read-only
-on the vault; the only file it writes is ~/.plasmie/.achievements.json (unlock dates).
+on the vault; the only file it writes is $PLASMIE_HOME/.achievements.json (unlock dates).
 
   plasmie-achievements.py            -> JSON for the app (stage, trophies, progress)
   plasmie-achievements.py --notify   -> also posts a notification for each newly unlocked trophy
@@ -80,10 +80,10 @@ TROPHIES = [
 SECRET = {"origin-story"}
 SECRET_LOCKED = {"name": "???", "description": "Some things are hidden. Look closely.", "symbol": "questionmark"}
 
-# "<name> noticed": today's name and every earlier one (Plasmie, Plasmie, Plasmie), so older
+# "<name> noticed": today's name and every earlier one (paths.SKETCH_NAME, PREVIOUS_NAMES), so older
 # pattern notes keep counting after a rename.
 NOTICED = re.compile(r"^source:.*(?:%s) noticed" % "|".join(
-    map(re.escape, (paths.APP_NAME, "Plasmie", *paths.PREVIOUS_NAMES))), re.M)
+    map(re.escape, (paths.APP_NAME, paths.SKETCH_NAME, *paths.PREVIOUS_NAMES))), re.M)
 
 _EVENT = re.compile(r"^## \[(\d{4}-\d\d-\d\d)T[\d:]+\] (\w+)")
 

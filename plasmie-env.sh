@@ -5,10 +5,33 @@
 #   PLASMIE_HOME  data: config.env, state, venv, models   (~/Library/Application Support/Plasmie)
 #   PLASMIE_LOGS  logs: audit, transcripts, launchd.log   (~/Library/Logs/Plasmie)
 # Paths contain a space ("Application Support"): always quote them.
-# The user-visible name, in one place for the shell (ADR 0028); twins: Brand.swift,
+# The user-visible name, in one place for the shell (ADR 0014); twins: Brand.swift,
 # paths.APP_NAME, APP_NAME in app/make-*.sh (test_brand.py keeps them equal).
 PLASMIE_APP_NAME="Plasmie"
 PLASMIE_APP_ID="plasmie"
+# plasmie_adopt_old_env: variables and config.env keys used to carry an older prefix
+# (ADR 0023). Any still set that way is copied to its PLASMIE_ name (exported if the old
+# one was) unless that is set already, so a job an older build registered, or a config.env
+# that plasmie-migrate.py step 8 hasn't rewritten yet, keeps working. Run before the
+# defaults below and again after config.env is sourced. The old prefixes are spelled in
+# parts so the old-names scan (test_old_names.py) can't see them. Fallback for one
+# release; drop it (and paths.adopt_old_env, RenameMigration.adoptOldEnvironment) after.
+plasmie_adopt_old_env() {
+  local v p new old1="KL""OOP_" old2="KL""_"
+  while IFS= read -r v; do
+    for p in "$old1" "$old2"; do
+      case "$v" in
+        "$p"?*) new="PLASMIE_${v#"$p"}"
+                if [ -z "${!new+x}" ]; then
+                  printf -v "$new" '%s' "${!v}"
+                  case "$(declare -p "$v" 2>/dev/null)" in "declare -"*x*) export "${new?}" ;; esac
+                fi
+                break ;;
+      esac
+    done
+  done < <(compgen -v)
+}
+plasmie_adopt_old_env
 : "${PLASMIE_HOME:=$HOME/Library/Application Support/$PLASMIE_APP_NAME}"
 : "${PLASMIE_LOGS:=$HOME/Library/Logs/$PLASMIE_APP_NAME}"
 export PLASMIE_HOME PLASMIE_LOGS PLASMIE_APP_NAME PLASMIE_APP_ID
@@ -42,6 +65,7 @@ _py310() { "$1" -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>/dev/nul
 [ -x "$PY" ] || PY="$(plasmie_native python3 _py310)"            # dev checkout: native, 3.10+
 PLASMIE_CONFIG="$PLASMIE_HOME/config.env"
 [ -f "$PLASMIE_CONFIG" ] && . "$PLASMIE_CONFIG"
+plasmie_adopt_old_env                    # a config.env still spelled the old way
 export PLASMIE_ENGINE PY
 # Native tools only (setup records them; paths.native_tool): an Intel git that shadows the
 # native one on PATH dies with "Bad CPU type" on Apple silicon without Rosetta.

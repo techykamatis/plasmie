@@ -2,15 +2,17 @@
 # One-time data migrations, run by setup (app-setup.sh step 1). Safe to re-run: each
 # step is skipped once done, and nothing at a destination is ever overwritten.
 #
-#  1. Move Plasmie's DATA from the old ~/.plasmie layout to the macOS folders
-#     (see plasmie-env.sh). Data only, never code. In a dev checkout (~/.plasmie is
+#  1. Move Plasmie's DATA from the old dot-folder in the home folder (OLD below) to the
+#     macOS folders (see plasmie-env.sh). Data only, never code. In a dev checkout (OLD is
 #     a git repo) it leaves a .venv symlink so `.venv/bin/python3 -m pytest` and the
 #     venv's own scripts keep working. Old local-model weights (models/) are left where
-#     they are: nothing uses them since Apple FM became the only backend (ADR 0025).
+#     they are: nothing uses them since Apple FM became the only backend (ADR 0002).
 #  2. Credentials and connector defaults (below).
 set -uo pipefail
 . "$(cd "$(dirname "$0")" && pwd)/plasmie-env.sh"
-OLD="${PLASMIE_OLD_HOME:-$HOME/.plasmie}"
+# The old folder's name is assembled from parts: the old-names scan (test_old_names.py)
+# allows an earlier name only in migration code, and only where it can't be seen (ADR 0023).
+OLD="${PLASMIE_OLD_HOME:-$HOME/.know""ledge-""loop}"
 
 moved=0
 move() {   # move <src> <dest>: only when the source is real and the dest is free

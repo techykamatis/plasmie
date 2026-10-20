@@ -1,6 +1,6 @@
 # How this vault works
 
-One vault, **for your work notes** (keep personal finances, family and health out of it). **Obsidian** is the editor; a local loop in `~/.plasmie` keeps it current. The full contract for LLM sessions is `../CLAUDE.md`; this page is the human-sized version.
+One vault, **for your work notes** (keep personal finances, family and health out of it). **Obsidian** is the editor; Plasmie, a local app on this Mac, keeps it current (its data lives in `~/Library/Application Support/Plasmie`, its logs in `~/Library/Logs/Plasmie`). The full contract for LLM sessions is `../CLAUDE.md`; this page is the human-sized version.
 
 ## Layers
 

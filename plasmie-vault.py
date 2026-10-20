@@ -51,11 +51,11 @@ def is_git(vault: Path) -> bool:
 def inspect(vault: Path) -> dict:
     exists = vault.is_dir()
     items = [p for p in vault.iterdir() if p.name != ".DS_Store"] if exists else []
-    plasmie = exists and (vault / paths.RAW).is_dir() and (vault / paths.WIKI).is_dir()
-    notes = sum(1 for _ in (vault / paths.WIKI).rglob("*.md")) if plasmie else 0
-    raw = sum(1 for _ in (vault / paths.RAW).rglob("*.md")) if plasmie else 0
+    ours = exists and (vault / paths.RAW).is_dir() and (vault / paths.WIKI).is_dir()
+    notes = sum(1 for _ in (vault / paths.WIKI).rglob("*.md")) if ours else 0
+    raw = sum(1 for _ in (vault / paths.RAW).rglob("*.md")) if ours else 0
     return {"path": str(vault), "exists": exists, "empty": exists and not items,
-            "plasmie_vault": plasmie, "wiki_notes": notes, "raw_files": raw, "git": exists and is_git(vault)}
+            "plasmie_vault": ours, "wiki_notes": notes, "raw_files": raw, "git": exists and is_git(vault)}
 
 
 def check_folder(path: Path) -> dict:

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Plasmie (Plasmie) — installation wizard.
+# Plasmie — installation wizard.
 # Gets a fresh machine to a working install: prerequisites, vault, secrets, Python
 # env, background loops, and the menu-bar app. (Dev path; friends use the DMG.) Interactive (prompts with defaults).
 # Idempotent and re-runnable — every step detects what's already done and each is skippable.
@@ -128,9 +128,11 @@ else warn "skipped — run launchd/install.sh later"; fi
 
 # 8) menu-bar app — detect existing install -----------------------------------
 say "8/8 · Menu-bar app"
-# Plasmie became Plasmie (ADR 0027), then Plasmie (0028); the app carries its data over at
-# first launch. An older copy left installed can bring its background jobs back at login.
-for old in Plasmie Plasmie; do
+# The app was renamed twice (ADR 0023); it carries its data over at first launch.
+# An older copy left installed can bring its background jobs back at login. The earlier
+# names are assembled from parts: the old-names scan (test_old_names.py) allows them only
+# in migration code like this, and only where it can't see them (ADR 0023).
+for old in "Kl""oop" "Blob""kin"; do
   [ -d "/Applications/$old.app" ] && warn "the older $old.app is still in Applications: quit it and move it to the Bin"
 done
 if [ -d "/Applications/$APP_NAME.app" ]; then

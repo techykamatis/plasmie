@@ -1,9 +1,9 @@
 import Foundation
 
 /// The background jobs the app registered under its earlier names (Brand.previous):
-/// com.plasmie.*, com.plasmie.*. They belong to other bundle ids, so this app can't
+/// com.<earlier name>.*. They belong to other bundle ids, so this app can't
 /// unregister them; plasmie-migrate.py boots them out, and BackgroundJobs holds the current
-/// set off while any is still loaded (ADRs 0027, 0028).
+/// set off while any is still loaded (ADR 0024).
 ///
 /// Foundation only, plus Brand, so a test can compile it with a fake launchctl
 /// (test_migrate.py).

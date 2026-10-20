@@ -82,7 +82,8 @@ inbound links.
 
 ## Goal context
 
-Machinery lives in `~/.plasmie` (ingest, promote, improve, reindex,
+Machinery lives in the Plasmie engine (inside `Plasmie.app`, or a dev checkout), with its
+config and state in `~/Library/Application Support/Plasmie` (ingest, promote, improve, reindex,
 dedupe, doctor, ask + their tests). This repo is data only. `VAULT_DIR` in
 `config.env` points here. Never hand-edit `raw/`, `index.md` or `log.md`.
 Each connector has an On/Off switch (app: Settings → Connectors, or

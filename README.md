@@ -103,7 +103,7 @@ The app drives [`app-setup.sh`](app-setup.sh). It is idempotent and resumable, a
 ```
 
 **The model.** Every model call goes through [`fm.py`](fm.py) to `plasmie-fm`, a small Swift
-helper over the system FoundationModels framework ([ADR 0025](docs/decisions/0025-apple-fm-only.md)).
+helper over the system FoundationModels framework ([ADR 0002](docs/decisions/0002-apple-on-device-model.md)).
 Nothing is downloaded and there is no network call. The on-device context window is small
 and is always read live, so promote and long digests **map-reduce**
 ([`mapreduce.py`](mapreduce.py)): chunk to the budget, extract, merge. Background calls
@@ -127,6 +127,10 @@ search with a BM25 fallback, over three collections:
 status or inventing specifics ([ADR 0006](docs/decisions/0006-faithfulness-guard.md)). The
 Sources list comes from retrieval, never from model output. Weak matches are logged to
 `meta/coverage-gaps.md` so coverage can grow.
+Summary questions ("any decisions lately?", "what's blocking me?", "what did I do last
+week?") read filed notes of that kind first, then get a plain-English rewording pass and a
+cleanup that strips commit IDs, file names and test names ([`plain.py`](plain.py),
+[ADR 0007](docs/decisions/0007-plain-summary-answers.md)). Direct lookups stay exact.
 
 ---
 
@@ -169,7 +173,7 @@ Render checks without the full app: `Plasmie.app/Contents/MacOS/Plasmie --map [-
 ## Connectors
 
 All connectors are **off on a fresh install** except local sources whose folder exists
-([ADR 0024](docs/decisions/0024-opt-in-connectors.md)).
+([ADR 0003](docs/decisions/0003-opt-in-connectors.md)).
 
 | Connector | Captures | Needs | Raw dir |
 |---|---|---|---|
@@ -183,11 +187,11 @@ All connectors are **off on a fresh install** except local sources whose folder 
 **Settings and secrets.** Secrets are generic passwords in the login Keychain: service
 `Plasmie`, account = the variable name. They are only ever accessed through `/usr/bin/security`,
 so no build or background job raises an access prompt
-([ADR 0021](docs/decisions/0021-secrets-in-keychain.md)). Everything else (URLs, orgs,
+([ADR 0009](docs/decisions/0009-secrets-in-keychain.md)). Everything else (URLs, orgs,
 folders, switches) lives in `config.env`. Python loads both with `paths.load_env()`; shell
 jobs call `plasmie_secrets` from `plasmie-env.sh`.
 
-**Off means off** ([ADR 0002](docs/decisions/0002-connector-switches.md)). A connector switched
+**Off means off** ([ADR 0003](docs/decisions/0003-opt-in-connectors.md)). A connector switched
 off (`PLASMIE_DISABLED_SOURCES`) makes no network call, and summarize and promote ignore its raw
 files. Its watermark still advances, so switching it back on does not backfill the off
 period. Each source keeps its own watermark in `.loop-state.json`. A failing source holds
@@ -213,7 +217,7 @@ JSON. It is what **Test** in Settings runs.
 
 The vault defaults to `~/knowledge` and must be on local disk. macOS blocks background
 helpers from reading iCloud and OneDrive folders, and offloaded files read as empty. The
-optional iCloud mirror ([`plasmie-icloud.py`](plasmie-icloud.py), [ADR 0023](docs/decisions/0023-icloud-mirror.md))
+optional iCloud mirror ([`plasmie-icloud.py`](plasmie-icloud.py), [ADR 0025](docs/decisions/0025-icloud-mirror.md))
 copies notes and digests one way, Mac to iCloud, for reading on iPhone. It never copies
 raw captures.
 
@@ -283,8 +287,14 @@ app/make-app.sh                       # Swift build (swiftc, no Xcode project)
   DMG. Commits follow Conventional Commits.
 - **Data migrations:** versioned and idempotent, in [`plasmie-migrate.py`](plasmie-migrate.py), and run
   at every launch and setup.
-- **Upgrading from Plasmie or Plasmie** (earlier names): the migrations carry the install over
-  (data, preferences, Keychain sign-ins, jobs; ADR 0027, 0028).
+- **Upgrades:** on launch the migrations carry an older install over: data and log folders,
+  preferences, Keychain sign-ins and jobs. Settings saved under older key names are moved to
+  their `PLASMIE_*` names ([ADR 0023](docs/decisions/0023-install-and-vault-safety.md)).
+- **Names:** settings and env vars are `PLASMIE_*` (`PLASMIE_HOME`, `PLASMIE_LOGS`,
+  `PLASMIE_VAULT`, `PLASMIE_DISABLED_SOURCES`, `PLASMIE_GIT_ROOTS`, `PLASMIE_KEYCHAIN`…),
+  defaults keys `plasmie.*`, the app's jobs `com.plasmie.<job>` and a dev checkout's jobs
+  (`launchd/install.sh`) `com.plasmie.dev-<job>`
+  ([ADR 0024](docs/decisions/0024-background-jobs.md)).
 - **Reset:** `plasmie-reset.sh [--dry-run]` removes jobs, data and logs, **never the vault**.
 
 ### Troubleshooting
@@ -309,7 +319,7 @@ The name "Plasmie" and the blob mascot are not covered by that license. See
 
 ## Get in touch
 
-Plasmie is made by Vhen Joseph. Email me at vhenjoseph@gmail.com, or open an issue in this repository.
+Plasmie is made by Vhen Joseph. Email me at plasmie@vhenjoseph.com, or open an issue in this repository.
 
 - **Building something with Plasmie?** I'd love to hear about it. Not required, just appreciated.
 - **Using the name "Plasmie" or the mascot** needs my permission first ([TRADEMARK.md](TRADEMARK.md)).

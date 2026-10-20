@@ -30,8 +30,10 @@ TAIL = {"feed.log": 10, "launchd.log": 25}           # metadata lines, newest la
 # handle) is assembled from parts so the personal-data scan doesn't match it; it is
 # only here so a diagnostics report still shows an old install's leftover jobs.
 _OLD_DEV = "com.v" + "hen"
-JOB_PREFIXES = (f"{_OLD_DEV}.knowledge", f"{_OLD_DEV}.mlx", "com.plasmie.", "com.plasmie.",
-                f"com.{paths.APP_ID}.")
+# com.<APP_ID>. covers the app's jobs, the dev-path com.<APP_ID>.dev-* ones and their
+# earlier labels; the earlier app names' labels come from paths.PREVIOUS_NAMES.
+JOB_PREFIXES = (f"{_OLD_DEV}.know" "ledge", f"{_OLD_DEV}.mlx",
+                *(f"com.{n.lower()}." for n in paths.PREVIOUS_NAMES), f"com.{paths.APP_ID}.")
 
 
 def clean(s: str) -> str:

@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-// A hidden easter egg (ADR 0028): where the name comes from, in the mascot's own voice.
+// A hidden easter egg (ADR 0014): where the name comes from, in the mascot's own voice.
 // Only for people who go looking: in the app window, click the small version line at the
 // very bottom of the sidebar five times in a row. No hint anywhere says so. Opening it
 // writes $PLASMIE_HOME/.found-origin (the date, once), which unlocks the secret

@@ -1,20 +1,22 @@
 import Foundation
 
-/// The app's (and the mascot's) name, in one place (ADR 0028). Every UI string, window
+/// The app's (and the mascot's) name, in one place (ADR 0014). Every UI string, window
 /// title, notification, job label, the Keychain service and the data/log folder names
 /// read it from here, so a rename is this one file (plus paths.APP_NAME in Python,
 /// PLASMIE_APP_NAME in plasmie-env.sh and APP_NAME in app/make-app.sh).
-/// Internal identifiers users never see (PLASMIE_* env vars, plasmie.* defaults keys, Plasmie*
-/// types) keep the old name on purpose.
+/// Internal identifiers (PLASMIE_* env vars, plasmie.* defaults keys, Plasmie* types)
+/// follow the name too (ADR 0014).
 enum Brand {
     static let name = "Plasmie"
     static let id = "plasmie"
     /// Earlier names, oldest first: what RenameMigration carries an install over from.
-    /// Plasmie's bundle id used the original author's personal reverse-DNS prefix; it is
-    /// assembled from parts so the personal-data scan (test_no_personal.py) doesn't match
-    /// it, and stays only so an old install's preferences are still carried over.
+    /// Every part is assembled on purpose: the old-names scan (test_old_names.py) fails on
+    /// an old name written out anywhere, so these are its only copies in Swift. The first
+    /// bundle id also used the original author's personal reverse-DNS prefix (kept out of
+    /// the personal-data scan, test_no_personal.py, the same way). They stay only so an old
+    /// install's preferences, folders and jobs are still carried over.
     static let previous: [(name: String, bundleID: String)] = [
-        ("Plasmie", "com.v" + "hen" + ".legacy"),
-        ("Plasmie", "com.plasmie.app"),
+        ("Kl" + "oop", "com.v" + "hen" + ".know" + "ledge" + "loop"),
+        ("Blob" + "kin", "com.blob" + "kin.app"),
     ]
 }

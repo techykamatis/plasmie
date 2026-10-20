@@ -8,7 +8,7 @@ timestamp: 2026-10-03T00:00:00Z
 
 # Auto-ingest loop
 
-A set of macOS LaunchAgents keeps this vault current with no Claude session open. They survive logout/reboot and coalesce missed runs on wake. Tooling lives **outside the vault** in `~/.plasmie/` (the vault is data only); schedules are in `launchd/*.plist`, installed by `launchd/install.sh`.
+A set of macOS LaunchAgents keeps this vault current with no Claude session open. They survive logout/reboot and coalesce missed runs on wake. Tooling lives **outside the vault**: the engine runs from `Plasmie.app/Contents/Resources/backend` (or a dev checkout; `$ENGINE` below), and its config, state and `feed.log` live in `$PLASMIE_HOME` = `~/Library/Application Support/Plasmie`, logs in `~/Library/Logs/Plasmie` (the vault is data only); schedules are in `launchd/*.plist`, installed by `launchd/install.sh`.
 
 | Agent | Runs | Does |
 |-------|------|------|
@@ -30,7 +30,7 @@ A set of macOS LaunchAgents keeps this vault current with no Claude session open
 | Outlook | `raw/outlook/` | optional; needs a Microsoft 365 refresh token (tenant-admin approval may be required) |
 | Manual | `raw/inbox/` | `plasmie-capture.sh`; the nightly promote reads inbox content |
 
-Per-connector On/Off: `PLASMIE_DISABLED_SOURCES="github,confluence"` in `~/.plasmie/config.env` (or the app's Settings → Connectors). Off means no fetch, watermark still advances (re-enabling does not backfill), summarize/promote ignore its raw files, `plasmie-doctor.py` reports `enabled:false`. The env var overrides `config.env`.
+Per-connector On/Off: `PLASMIE_DISABLED_SOURCES="github,confluence"` in `$PLASMIE_HOME/config.env` (or the app's Settings → Connectors). Off means no fetch, watermark still advances (re-enabling does not backfill), summarize/promote ignore its raw files, `plasmie-doctor.py` reports `enabled:false`. The env var overrides `config.env`.
 
 ## Promote: propose → dedupe → auto-apply → reindex
 
@@ -55,13 +55,13 @@ Safe by construction: paths confined to the vault, bodies scrubbed (emails too),
 - **Fire ingest now:** `launchctl kickstart -p gui/$(id -u)/com.plasmie.ingest` (same for summarize/improve/promote/snapshot; on the dev path the labels are `com.plasmie.dev-<job>`).
 - **Stop / start:** switch Plasmie off or on in System Settings › General › Login Items. On the dev path: `launchctl bootout gui/$(id -u)/com.plasmie.dev-ingest` · `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.plasmie.dev-ingest.plist` (or `launchd/install.sh` to refresh all).
 - **Look back N hours:** `.loop-state.json` holds per-source watermarks: `{"last_run": <epoch>, "sources": {"slack": <epoch>, "confluence": ..., "github": ..., "outlook": ..., "claude": ..., "git": ...}}`. A source that errors keeps its old watermark so the next run re-covers the gap. To re-read the last N hours for every source:
-  `python3 -c "import json,time,os;t=time.time()-3600*N;p=os.path.expanduser('~/.plasmie/.loop-state.json');json.dump({'last_run':t,'sources':{s:t for s in ['slack','confluence','github','outlook','claude','git']}},open(p,'w'))"` then kickstart ingest. **Ingest appends, so re-reading duplicates already-captured blocks** — only look back over a window you know was missed. A bare legacy `{"last_run": ...}` also works (it seeds every source). Missing file = first run: last `PLASMIE_BOOTSTRAP_DAYS` (30) days.
-- **Bounded backfill without touching the watermark:** `PLASMIE_SINCE=2026-10-01T09:00 PLASMIE_UNTIL=2026-10-01T18:00 ~/.plasmie/run-ingest.sh` (raw files are dated by the window end).
-- **Health:** `tail ~/.plasmie/feed.log` (one line per ingest, `QMD-ERR`/`*-ERR` mark failures); `python3 ~/.plasmie/plasmie-doctor.py` for per-connector reachability and freshness.
+  `python3 -c "import json,time,os;t=time.time()-3600*N;p=os.path.expanduser('~/Library/Application Support/Plasmie/.loop-state.json');json.dump({'last_run':t,'sources':{s:t for s in ['slack','confluence','github','outlook','claude','git']}},open(p,'w'))"` then kickstart ingest. **Ingest appends, so re-reading duplicates already-captured blocks** — only look back over a window you know was missed. A bare legacy `{"last_run": ...}` also works (it seeds every source). Missing file = first run: last `PLASMIE_BOOTSTRAP_DAYS` (30) days.
+- **Bounded backfill without touching the watermark:** `PLASMIE_SINCE=2026-10-01T09:00 PLASMIE_UNTIL=2026-10-01T18:00 "$ENGINE/run-ingest.sh"` (raw files are dated by the window end).
+- **Health:** `tail "$PLASMIE_HOME/feed.log"` (one line per ingest, `QMD-ERR`/`*-ERR` mark failures); `python3 "$ENGINE/plasmie-doctor.py"` for per-connector reachability and freshness.
 
 ## Logs
 
-`~/.plasmie/feed.log` (last 2000 lines), `logs/ingest-*.log` (14 days), `logs/audit-*.log` (90 days; summarize, promote, improve), `logs/transcript-*.log` (exact prompts to the on-device model), `launchd.log` (launchd-level errors only).
+`$PLASMIE_HOME/feed.log` (last 2000 lines); in `~/Library/Logs/Plasmie`: `ingest-*.log` (14 days), `audit-*.log` (90 days; summarize, promote, improve), `transcript-*.log` (exact prompts to the on-device model), `launchd.log` (launchd-level errors only).
 
 ## Safety
 

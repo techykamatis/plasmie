@@ -19,11 +19,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Quarantine.offerMoveIfNeeded() { return }
         // Data migrations (versioned, idempotent): an upgrade over an older install brings the
         // data along before anything reads it. Cheap when there's nothing to do.
-        // (The earlier names' folder/preferences move already ran, in PlasmieApp.init.)
+        // (Older installs' folders and preferences were already carried over, in PlasmieApp.init.)
         if backendReady() {
             DispatchQueue.global(qos: .utility).async {
                 _ = runCapture(PlasmiePaths.python, [PlasmiePaths.script("plasmie-migrate.py")], timeout: 600)
-                // An earlier name's jobs (LegacyJobs) can come back (the old app
+                // Older versions' jobs (LegacyJobs) can come back (an older copy
                 // still installed, at login): retire them again, or the new set stays held off
                 // (BackgroundJobs.legacyPresent).
                 if BackgroundJobs.legacyJobsLoaded {
@@ -59,7 +59,7 @@ struct PlasmieApp: App {
     @ObservedObject private var m: Model
 
     init() {
-        // Earlier names -> Plasmie, first: Model.shared reads the data folder and preferences as
+        // Carry an older install over first: Model.shared reads the data folder and preferences as
         // soon as it exists, which is before applicationDidFinishLaunching. Old-prefixed env
         // vars are adopted before anything reads one (and before any child process inherits).
         // Before anything spawns the bundled Python: a downloaded copy's nested programs are

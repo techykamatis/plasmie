@@ -11,7 +11,7 @@
 set -uo pipefail
 . "$(cd "$(dirname "$0")" && pwd)/plasmie-env.sh"
 # The old folder's name is assembled from parts: the old-names scan (test_old_names.py)
-# allows an earlier name only in migration code, and only where it can't be seen (ADR 0023).
+# allows an older version's name only in migration code, and only where it can't be seen (ADR 0023).
 OLD="${PLASMIE_OLD_HOME:-$HOME/.know""ledge-""loop}"
 
 moved=0
@@ -35,7 +35,7 @@ if [ -d "$OLD" ]; then
     done
     rmdir "$OLD/logs" 2>/dev/null || true
   fi
-  if [ -d "$OLD/.git" ]; then          # dev checkout: keep the old names working
+  if [ -d "$OLD/.git" ]; then          # dev checkout: keep the old folder's .venv working
     [ -e "$OLD/.venv" ] || ln -s "$PLASMIE_HOME/venv" "$OLD/.venv"
   fi
   echo "migrated $moved item(s) to $PLASMIE_HOME"

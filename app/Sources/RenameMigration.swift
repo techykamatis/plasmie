@@ -1,23 +1,23 @@
 import Foundation
 
-/// Carries an install over from the app's earlier names (Brand.previous, oldest first;
-/// ADR 0023). Each rename changed the bundle id and the data/log folder
-/// names, and the internal prefixes changed too, so this runs at launch, before anything reads a
+/// Carries an older install over (Brand.previous, oldest first; ADR 0023). Older
+/// versions used other bundle ids, data/log folder names and internal prefixes,
+/// so this runs at launch, before anything reads a
 /// path, a preference or an env var (PlasmieApp.init).
 ///
 /// Lossless and idempotent:
-/// - Folders: the newest earlier name's folder is renamed to the current one, only when
+/// - Folders: the newest older install's folder is renamed to the current one, only when
 ///   the current one doesn't exist yet (same volume, so the move is atomic). Once it
 ///   exists, every other old folder is left alone and logged: never merge, never overwrite.
 /// - Preferences: keys under the old `<old>.` prefix in this app's own domain move to
 ///   `plasmie.` (a value already under the new key wins), then, once (marker), keys are
-///   copied from the earlier bundle ids, newest first, under their new names and never over
+///   copied from the older bundle ids, newest first, under their new names and never over
 ///   a value the current domain already has; per-build keys stay behind so the new
 ///   bundle's jobs register afresh.
 /// - Environment: a variable still spelled with an old prefix is copied to its PLASMIE_
 ///   name (for one release; the twins are paths.adopt_old_env and plasmie-env.sh).
 ///
-/// Every old name and prefix here is assembled from parts (or comes from Brand.previous):
+/// Every older name and prefix here is assembled from parts (or comes from Brand.previous):
 /// the old-names scan (test_old_names.py) fails on one written out anywhere.
 /// Foundation only, plus Brand, so a test can compile it on its own (test_rename_migration.py).
 enum RenameMigration {
@@ -30,7 +30,7 @@ enum RenameMigration {
     static let oldEnvPrefixes = ["KL" + "OOP_", "KL" + "_"]
     static let envPrefix = "PLASMIE_"
 
-    /// Earlier names and bundle ids, newest first (the order they are tried in).
+    /// Older versions' names and bundle ids, newest first (the order they are tried in).
     static var previousNames: [String] { Brand.previous.reversed().map(\.name) }
     static var previousDomains: [String] { Brand.previous.reversed().map(\.bundleID) }
 
@@ -76,7 +76,7 @@ enum RenameMigration {
         for r in adopt(olds: previousNames.map(appSupport), into: home)
             + adopt(olds: previousNames.map(logsFolder), into: logs)
         where r.outcome != .nothingToMove && r.outcome != .alreadyMoved {
-            NSLog("\(Brand.name): rename migration %@ -> %@: %@", r.old, r.new, r.outcome.rawValue)
+            NSLog("\(Brand.name): older install migration %@ -> %@: %@", r.old, r.new, r.outcome.rawValue)
         }
         copyDefaults(into: defaults)
     }

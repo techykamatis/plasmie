@@ -1,4 +1,4 @@
-"""keychain.adopt_service: sign-ins saved under an earlier name (paths.PREVIOUS_NAMES) are copied to
+"""keychain.adopt_service: sign-ins saved under an older version's service (paths.PREVIOUS_NAMES) are copied to
 the current service, never overwriting; plasmie-migrate step 7 tries the newest name first."""
 import importlib.util
 from pathlib import Path
@@ -7,7 +7,7 @@ import keychain
 import paths
 
 HERE = Path(__file__).resolve().parent
-FIRST, SECOND = paths.PREVIOUS_NAMES       # the earlier Keychain service names, oldest first
+FIRST, SECOND = paths.PREVIOUS_NAMES       # older versions' Keychain service names, oldest first
 
 
 def fake_store(monkeypatch, store):
@@ -25,18 +25,18 @@ def test_copies_missing_and_keeps_existing(monkeypatch):
     assert store[(FIRST, "SLACK_USER_TOKEN")] == "old-slack"      # copy only
 
 
-def test_step7_adopts_from_the_newest_earlier_name_first(monkeypatch):
+def test_step7_adopts_from_the_newest_older_service_first(monkeypatch):
     spec = importlib.util.spec_from_file_location("plasmie_migrate_kc", HERE / "plasmie-migrate.py")
     km = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(km)
-    store = {(SECOND, "SLACK_USER_TOKEN"): "interim-slack", (FIRST, "SLACK_USER_TOKEN"): "first-slack",
+    store = {(SECOND, "SLACK_USER_TOKEN"): "newer-slack", (FIRST, "SLACK_USER_TOKEN"): "first-slack",
              (FIRST, "JIRA_API_TOKEN"): "first-jira", ("Plasmie", "GITHUB_TOKEN"): "mine",
              (SECOND, "GITHUB_TOKEN"): "stale"}
     fake_store(monkeypatch, store)
     km.m7_adopt_old_signins()
-    assert store[("Plasmie", "SLACK_USER_TOKEN")] == "interim-slack"   # the newer name wins
+    assert store[("Plasmie", "SLACK_USER_TOKEN")] == "newer-slack"   # the newer name wins
     assert store[("Plasmie", "JIRA_API_TOKEN")] == "first-jira"        # only the oldest had it
     assert store[("Plasmie", "GITHUB_TOKEN")] == "mine"                # never overwritten
-    assert store[(SECOND, "SLACK_USER_TOKEN")] == "interim-slack"   # copy only
+    assert store[(SECOND, "SLACK_USER_TOKEN")] == "newer-slack"   # copy only
     km.m7_adopt_old_signins()                                          # idempotent
-    assert store[("Plasmie", "SLACK_USER_TOKEN")] == "interim-slack"
+    assert store[("Plasmie", "SLACK_USER_TOKEN")] == "newer-slack"

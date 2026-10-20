@@ -28,11 +28,11 @@ import sys
 APP_NAME = "Plasmie"
 APP_ID = "plasmie"
 
-# --- earlier names: for migrations only (ADR 0023) -----------------------
-# Every old name is spelled in parts on purpose: test_old_names.py fails if one is written
+# --- older versions' names: for migrations only (ADR 0023) --------------
+# Every one is spelled in parts on purpose: test_old_names.py fails if one is written
 # out anywhere in the repo, so these assembled copies are the only ones, and only the code
 # that carries an older install over (or still recognises its notes) reads them.
-PREVIOUS_NAMES = ("Kl" + "oop", "Blob" + "kin")   # the app's earlier names, oldest first
+PREVIOUS_NAMES = ("Kl" + "oop", "Blob" + "kin")   # older versions' names, oldest first
 SKETCH_NAME = "Loo" + "py"                        # the mascot's design-time name ("... noticed")
 # Env vars and config.env keys used to start with one of these; now they start PLASMIE_.
 OLD_ENV_PREFIXES = ("KL" + "OOP_", "KL" + "_")
@@ -411,6 +411,5 @@ def log_event(vault, header, bullets=()):
 
 
 if __name__ == "__main__":  # `paths.py activity-dirs` — for the shell jobs
-    import sys
     if sys.argv[1:] == ["activity-dirs"]:
         print(" ".join(activity_dirs()))

@@ -1,14 +1,14 @@
 import Foundation
 
-/// The background jobs the app registered under its earlier names (Brand.previous):
-/// com.<earlier name>.*. They belong to other bundle ids, so this app can't
+/// The background jobs older versions of the app registered (Brand.previous):
+/// com.<previous>.*. They belong to other bundle ids, so this app can't
 /// unregister them; plasmie-migrate.py boots them out, and BackgroundJobs holds the current
 /// set off while any is still loaded (ADR 0024).
 ///
 /// Foundation only, plus Brand, so a test can compile it with a fake launchctl
 /// (test_migrate.py).
 enum LegacyJobs {
-    /// Every label an earlier name registered for these job names, oldest name first.
+    /// Every label older versions registered for these job names, oldest first.
     static func labels(_ jobs: [String]) -> [String] {
         Brand.previous.flatMap { old in jobs.map { "com.\(old.name.lowercased()).\($0)" } }
     }

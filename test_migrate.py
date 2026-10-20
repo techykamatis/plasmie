@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 HERE = Path(__file__).resolve().parent
-# The app's earlier names, oldest first, assembled from parts so the old-names scan
+# Older versions' names, oldest first, assembled from parts so the old-names scan
 # (test_old_names.py) finds no trace of them here (ADR 0023).
 FIRST, SECOND = "kl" + "oop", "blob" + "kin"
 OLD_ENV = ("KL" + "OOP_", "KL" + "_")
@@ -60,7 +60,7 @@ def test_registry_is_numbered_without_gaps():
     assert nums == list(range(1, len(nums) + 1))
 
 
-# --- step 4: the first earlier name's jobs (ADR 0024), against a fake launchctl on PATH ------
+# --- step 4: the oldest version's jobs (ADR 0024), against a fake launchctl on PATH ---------
 FAKE_LAUNCHCTL = """#!/bin/bash
 # loaded jobs are files in $FAKE_LAUNCHD; every call is logged
 echo "$*" >> "$FAKE_LAUNCHD/calls"
@@ -131,7 +131,7 @@ def test_an_install_at_version_3_runs_step4_onward(monkeypatch, tmp_path):
     vf = tmp_path / "v"
     vf.write_text("3\n")
     r = km.migrate(_no_dev_agents(monkeypatch, km), vf)
-    assert r["ok"] and r["version"] == km.LATEST and r["applied"][0] == "retire the first earlier name's background jobs"
+    assert r["ok"] and r["version"] == km.LATEST and r["applied"][0] == "retire older versions' background jobs (1 of 2)"
     assert loaded_now(state) == []
 
 
@@ -146,8 +146,8 @@ def test_retire_flag_runs_steps_4_and_6_alone(monkeypatch, tmp_path, flag):
     assert not (tmp_path / "home" / ".schema-version").exists()       # not a versioned run
 
 
-# --- step 6: the interim name's jobs (ADR 0024) ------------------------------------------------
-def test_step6_boots_out_every_loaded_interim_name_job_and_nothing_else(monkeypatch, tmp_path):
+# --- step 6: the second older version's jobs (ADR 0024) ---------------------------------------
+def test_step6_boots_out_every_loaded_second_old_version_job_and_nothing_else(monkeypatch, tmp_path):
     km = load(monkeypatch, tmp_path)
     state = fake_launchd(monkeypatch, tmp_path,
                          loaded=[f"com.{SECOND}.ingest", f"com.{SECOND}.snapshot", "com.plasmie.ingest", f"com.{FIRST}.promote"])
@@ -158,7 +158,7 @@ def test_step6_boots_out_every_loaded_interim_name_job_and_nothing_else(monkeypa
         assert f"bootout gui/{os.getuid()}/com.{SECOND}.{name}" in calls
 
 
-def test_an_interim_name_install_at_version_5_runs_steps_6_onward(monkeypatch, tmp_path):
+def test_a_second_old_version_install_at_version_5_runs_steps_6_onward(monkeypatch, tmp_path):
     km = load(monkeypatch, tmp_path)
     state = fake_launchd(monkeypatch, tmp_path, loaded=[f"com.{SECOND}.ingest", f"com.{SECOND}.promote"])
     adopted = []
@@ -168,12 +168,12 @@ def test_an_interim_name_install_at_version_5_runs_steps_6_onward(monkeypatch, t
     vf.write_text("5\n")
     r = km.migrate(steps, vf)
     assert r["ok"] and r["version"] == 9 and r["applied"] == [
-        "retire the interim name's background jobs", "copy every earlier name's sign-ins in the Keychain",
+        "retire older versions' background jobs (2 of 2)", "copy older versions' sign-ins in the Keychain (2 of 2)",
         "rename old settings keys in config.env", "retire dev-path agents under their earlier labels"]
     assert loaded_now(state) == [] and adopted == [True]
 
 
-def test_step6_fails_while_an_interim_name_job_stays_loaded(monkeypatch, tmp_path):
+def test_step6_fails_while_a_second_old_version_job_stays_loaded(monkeypatch, tmp_path):
     km = load(monkeypatch, tmp_path)
     fake_launchd(monkeypatch, tmp_path, loaded=[f"com.{SECOND}.ingest"], stuck=[f"com.{SECOND}.ingest"])
     vf = tmp_path / "v"

@@ -1,16 +1,16 @@
-"""Earlier names -> Plasmie at app launch (app/Sources/RenameMigration.swift, LegacyJobs.swift,
-BackgroundJobs.swift; ADR 0023): first name -> interim name -> Plasmie. The data
-and log folders move once, losslessly, newest earlier name first, never over an existing
+"""Older installs -> Plasmie at app launch (app/Sources/RenameMigration.swift, LegacyJobs.swift,
+BackgroundJobs.swift; ADR 0023), from either older version. The data
+and log folders move once, losslessly, newest older folder first, never over an existing
 Plasmie folder; preferences move from the old key prefix to plasmie.* in the app's own
 domain, then copy once from both old bundle ids (newest wins), never the per-build keys,
 never over a value already set; old-prefixed env vars and config keys are also read under
-their PLASMIE_ names; any loaded job under an earlier label holds the new jobs off.
+their PLASMIE_ names; any loaded job under an older label holds the new jobs off.
 
 The Swift files are compiled on their own with a small driver and run against temp folders
 and a fake launchctl (never ~/Library, never the real launchd). Preferences are tested
 through the pure functions, so no defaults domain is ever written.
 
-The old names are assembled from parts (FIRST, SECOND, OLD_PREFS, OLD_ENV) so the old-names
+Older versions' names are assembled from parts (FIRST, SECOND, OLD_PREFS, OLD_ENV) so the old-names
 scan (test_old_names.py) finds no trace of them here either."""
 import json
 import os
@@ -25,7 +25,7 @@ SOURCES = HERE / "app" / "Sources"
 SWIFT = [SOURCES / "RenameMigration.swift", SOURCES / "LegacyJobs.swift", SOURCES / "Brand.swift",
          SOURCES / "BackgroundJobs.swift"]
 
-FIRST, SECOND = "Kl" + "oop", "Blob" + "kin"            # the app's earlier names, oldest first
+FIRST, SECOND = "Kl" + "oop", "Blob" + "kin"            # older versions' names, oldest first
 first, second = FIRST.lower(), SECOND.lower()
 OLD_PREFS = first + "."                                 # the defaults keys' old prefix
 OLD_ENV = ("KL" + "OOP_", "KL" + "_")                   # the env vars' and config keys' old prefixes
@@ -161,20 +161,20 @@ def test_chain_a_first_name_only_install_moves_straight_to_plasmie(migrate_bin, 
     assert (new / "config.env").read_text() == "k" and not oldest.exists()
 
 
-def test_chain_first_to_interim_to_plasmie_is_lossless_and_never_merges(migrate_bin, tmp_path):
-    # last night: first name -> interim name (the oldest folder is gone); today: -> Plasmie
-    oldest, interim, new = tmp_path / FIRST, tmp_path / SECOND, tmp_path / "Plasmie"
+def test_chain_oldest_to_newer_to_plasmie_is_lossless_and_never_merges(migrate_bin, tmp_path):
+    # an oldest -> newer move already ran (the oldest folder is gone); now newer -> Plasmie
+    oldest, newer, new = tmp_path / FIRST, tmp_path / SECOND, tmp_path / "Plasmie"
     oldest.mkdir()
-    (oldest / "state.json").write_text("first-era")
-    assert json.loads(drive(migrate_bin, "chain", interim, oldest)) == ["moved"]
-    (interim / "state.json").write_text("interim-era")
+    (oldest / "state.json").write_text("oldest-era")
+    assert json.loads(drive(migrate_bin, "chain", newer, oldest)) == ["moved"]
+    (newer / "state.json").write_text("newer-era")
     oldest.mkdir()                                               # a stray older folder came back
     (oldest / "stray.txt").write_text("stray")
-    out = json.loads(drive(migrate_bin, "chain", new, interim, oldest))
+    out = json.loads(drive(migrate_bin, "chain", new, newer, oldest))
     assert out == ["moved", "bothExist"]
-    assert tree(new) == {"state.json": "interim-era"}           # newest wins, nothing merged in
+    assert tree(new) == {"state.json": "newer-era"}           # newest wins, nothing merged in
     assert tree(oldest) == {"stray.txt": "stray"}                # the older one is left alone
-    assert json.loads(drive(migrate_bin, "chain", new, interim, oldest)) == ["alreadyMoved", "bothExist"]
+    assert json.loads(drive(migrate_bin, "chain", new, newer, oldest)) == ["alreadyMoved", "bothExist"]
 
 
 # --- preferences ------------------------------------------------------------------------------
@@ -197,9 +197,9 @@ def test_preferences_copy_old_keys_under_new_names_except_per_build_ones_and_nev
 
 
 def test_preferences_come_from_both_old_domains_and_the_newer_one_wins(migrate_bin):
-    interim = old(seenTrophies=["a", "b", "c"], notch=True, jobsRegisteredBuild="230")
+    newer = old(seenTrophies=["a", "b", "c"], notch=True, jobsRegisteredBuild="230")
     oldest = old(seenTrophies=["a"], notch=False, toured=True, migratedDefaults=True)
-    assert filter_(migrate_bin, [interim, oldest], {}) == {
+    assert filter_(migrate_bin, [newer, oldest], {}) == {
         "plasmie.seenTrophies": ["a", "b", "c"], "plasmie.notch": True, "plasmie.toured": True}
     assert filter_(migrate_bin, [{}, oldest], {"plasmie.toured": False}) == {
         "plasmie.seenTrophies": ["a"], "plasmie.notch": False}
@@ -250,7 +250,7 @@ def test_swift_and_python_agree_on_the_old_prefixes():
 
 
 # --- legacy jobs ------------------------------------------------------------------------------
-def test_legacy_labels_cover_every_earlier_name(migrate_bin):
+def test_legacy_labels_cover_every_older_version(migrate_bin):
     assert json.loads(drive(migrate_bin, "labels")) == [
         f"com.{first}.ingest", f"com.{first}.promote", f"com.{second}.ingest", f"com.{second}.promote"]
 
@@ -262,7 +262,7 @@ def test_legacy_labels_cover_every_earlier_name(migrate_bin):
     ([f"com.{second}.ingest"], True),
     ([f"com.{second}.snapshot", "com.plasmie.ingest"], True),
 ])
-def test_any_loaded_earlier_job_holds_the_new_jobs_off(migrate_bin, tmp_path, loaded, held):
+def test_any_loaded_older_job_holds_the_new_jobs_off(migrate_bin, tmp_path, loaded, held):
     state = tmp_path / "launchd"
     state.mkdir()
     for label in loaded:
@@ -284,7 +284,7 @@ OLD_MID = "know" + "ledge-"                                     # the dev agents
     (["com.plasmie.ingest.plist", "com.apple.x.plist"], False),   # the app's own labels never hold it off
     (["com.plasmie.dev-ingest.plist"], True),                    # the dev path, current labels
     ([f"com.plasmie.{OLD_MID}promote.plist"], True),             # the dev path, older labels
-    ([f"com.v" + "hen" + f".{OLD_MID}ingest.plist"], True),      # the dev path, before com.plasmie
+    (["com.v" + "hen" + f".{OLD_MID}ingest.plist"], True),      # the dev path, before com.plasmie
     (["com.v" + "hen" + ".mlx-server.plist"], True),
 ])
 def test_startup_guard_recognises_old_and_new_dev_agents(migrate_bin, files, held):

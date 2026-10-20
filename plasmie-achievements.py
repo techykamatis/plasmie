@@ -80,8 +80,8 @@ TROPHIES = [
 SECRET = {"origin-story"}
 SECRET_LOCKED = {"name": "???", "description": "Some things are hidden. Look closely.", "symbol": "questionmark"}
 
-# "<name> noticed": today's name and every earlier one (paths.SKETCH_NAME, PREVIOUS_NAMES), so older
-# pattern notes keep counting after a rename.
+# "<name> noticed": the current name and older versions' (paths.SKETCH_NAME, PREVIOUS_NAMES), so
+# pattern notes written by older versions keep counting.
 NOTICED = re.compile(r"^source:.*(?:%s) noticed" % "|".join(
     map(re.escape, (paths.APP_NAME, paths.SKETCH_NAME, *paths.PREVIOUS_NAMES))), re.M)
 

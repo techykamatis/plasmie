@@ -46,7 +46,7 @@ In the Plasmie window, each source has an On/Off switch: Slack, GitHub, local gi
 
 ## Upgrading from an earlier version
 
-If you installed an earlier version under a different name, quit the old app, move it from Applications to the Bin, install Plasmie as above, then open Plasmie: it brings your notes, data, settings and connector sign-ins along by itself. One thing to redo in the Plasmie window: turn **Open at login** back on if you used it.
+If an older version is installed, quit it, move it from Applications to the Bin, install Plasmie as above, then open Plasmie: it brings your notes, data, settings and connector sign-ins along by itself. One thing to redo in the Plasmie window: turn **Open at login** back on if you used it.
 
 ## Uninstall
 

@@ -22,14 +22,14 @@ mkdir -p "$DEST"
 
 # Agents this repo no longer ships. An old install keeps them loaded (and pointing at
 # deleted scripts) until something boots them out, so every install/uninstall does.
-# Before the com.plasmie.* rename these agents used the original author's personal
+# Older installs ran these agents under the original author's personal
 # reverse-DNS prefix. That prefix is assembled from parts here on purpose: this is the
 # only place it is still needed (to retire an old install's jobs), and spelling it out
 # would trip the personal-data scan (test_no_personal.py).
-#   <old>.<OLD_MID><job> — the same five jobs under their pre-rename labels
+#   <old>.<OLD_MID><job> — the same five jobs under their oldest labels
 #   <old>.mlx-server  — the local Gemma server, retired (ADR 0002) (Apple FM only)
-# The same five jobs also ran as com.plasmie.<old>-<job> until their labels became
-# com.plasmie.dev-<job> (ADR 0024); that old middle part is assembled from parts too, so
+# Later older installs ran the same five jobs as com.plasmie.<old>-<job> (now
+# com.plasmie.dev-<job>, ADR 0024); that old middle part is assembled from parts too, so
 # the old-names scan (test_old_names.py) only ever sees it here, in migration code.
 OLD="com.v""hen"
 OLD_MID="know""ledge-"

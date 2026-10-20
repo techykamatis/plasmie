@@ -91,7 +91,7 @@ def helper_path() -> Optional[str]:
               SELF / "app" / "build" / HELPER,                       # app/build-fm.sh
               SELF / "app" / "build" / f"{paths.APP_NAME}.app" / "Contents" / "MacOS" / HELPER,
               Path(f"/Applications/{paths.APP_NAME}.app/Contents/MacOS/{HELPER}"),
-              # a not-yet-replaced install under an earlier name (ADR 0023), newest first
+              # an older version still installed (ADR 0023), newest first
               *(Path(f"/Applications/{n}.app/Contents/MacOS/{n.lower()}-fm")
                 for n in reversed(paths.PREVIOUS_NAMES))):
         if os.access(p, os.X_OK):

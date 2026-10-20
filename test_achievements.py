@@ -117,7 +117,7 @@ def test_pattern_spotter_counts_only_patterns_plasmie_noticed(tmp_path):
 
 
 @pytest.mark.parametrize("name", [*paths.PREVIOUS_NAMES, paths.SKETCH_NAME])
-def test_patterns_noticed_before_the_rename_still_count(tmp_path, name):
+def test_patterns_noticed_by_older_versions_still_count(tmp_path, name):
     v = _vault(tmp_path, ingest_days=["2026-07-02"])
     (v / "wiki" / "old.md").write_text(f"---\ntype: pattern\nsource: \"{name} noticed · 3 days\"\ntimestamp: 2026-10-03T00:00:00Z\n---\n")
     r, _ = A.evaluate(v, today=D(2026, 10, 4))

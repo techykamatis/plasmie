@@ -104,7 +104,7 @@ def put(name, value):
 
 
 def adopt_service(old):
-    """Copy sign-ins saved under one of the app's earlier names (ADR 0023) to SERVICE. Copy only:
+    """Copy sign-ins saved under an older version's service (ADR 0023) to SERVICE. Copy only:
     the old items stay, and a value already under SERVICE is never overwritten. Raises
     KeychainError if any copy fails (a locked keychain), so a migration retries."""
     copied = []

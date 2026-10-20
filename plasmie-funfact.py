@@ -27,7 +27,7 @@ from pathlib import Path
 
 import paths
 
-# today's name and the earlier ones, so pattern notes from before a rename still count
+# the current name and older versions', so pattern notes written by older versions still count
 NOTICED_BY = tuple(f"{n} noticed" for n in (paths.APP_NAME, paths.SKETCH_NAME, *paths.PREVIOUS_NAMES))
 
 HERE = Path(__file__).resolve().parent

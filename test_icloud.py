@@ -109,11 +109,11 @@ def test_a_note_that_looks_like_it_holds_a_secret_stays_home(monkeypatch, tmp_pa
     assert not (d / "wiki" / "creds.md").exists() and r["held_back"] == ["wiki/creds.md"]
 
 
-# The app's earlier names, oldest first, in parts (test_old_names.py) — as paths.PREVIOUS_NAMES.
+# Older versions' names, oldest first, in parts (test_old_names.py) — as paths.PREVIOUS_NAMES.
 FIRST, SECOND = "Kl" + "oop", "Blob" + "kin"
 
 
-def test_the_first_name_mirror_is_renamed_once_and_never_merged(monkeypatch, tmp_path):
+def test_the_oldest_mirror_is_renamed_once_and_never_merged(monkeypatch, tmp_path):
     ic = load(monkeypatch, tmp_path)
     cloud = tmp_path / "CloudDocs"
     (cloud / FIRST / "knowledge" / "wiki").mkdir(parents=True)
@@ -133,16 +133,16 @@ def test_no_old_mirror_means_nothing_to_do(monkeypatch, tmp_path):
     assert not (tmp_path / "CloudDocs").exists()
 
 
-def test_the_interim_name_mirror_wins_over_an_older_one(monkeypatch, tmp_path):
-    """Interim name -> Plasmie (ADR 0025): the newest earlier name moves; an older leftover is never merged."""
+def test_the_newer_old_mirror_wins_over_an_older_one(monkeypatch, tmp_path):
+    """Older installs -> Plasmie (ADR 0025): the newest older folder moves; an older leftover is never merged."""
     ic = load(monkeypatch, tmp_path)
     cloud = tmp_path / "CloudDocs"
     (cloud / SECOND / "knowledge" / "wiki").mkdir(parents=True)
-    (cloud / SECOND / "knowledge" / "wiki" / "new.md").write_text("interim")
+    (cloud / SECOND / "knowledge" / "wiki" / "new.md").write_text("newer")
     (cloud / FIRST / "knowledge" / "wiki").mkdir(parents=True)
     (cloud / FIRST / "knowledge" / "wiki" / "old.md").write_text("first")
     assert ic.adopt_old_mirror(cloud)
-    assert (cloud / "Plasmie" / "knowledge" / "wiki" / "new.md").read_text() == "interim"
+    assert (cloud / "Plasmie" / "knowledge" / "wiki" / "new.md").read_text() == "newer"
     assert not (cloud / "Plasmie" / "knowledge" / "wiki" / "old.md").exists()
     assert (cloud / FIRST / "knowledge" / "wiki" / "old.md").read_text() == "first"
     assert not ic.adopt_old_mirror(cloud)                         # idempotent

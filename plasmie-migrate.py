@@ -5,7 +5,7 @@ there is nothing to do) and by setup.
   plasmie-migrate.py                      apply pending migrations, print JSON
   plasmie-migrate.py --status             current and latest version
   plasmie-migrate.py --retire-old-jobs    steps 4 and 6 again, on their own (the app runs it
-                                          whenever a job under an earlier name's label is
+                                          whenever a job under an older version's label is
                                           loaded again, e.g. after a login)
 
 Each migration runs once, in order; the reached version is saved in
@@ -14,7 +14,7 @@ the next launch. Every step must itself be safe to re-run (the version file can 
 Never touches the vault except through plasmie-vault.py (restore points, adoption).
 Add a step: append (number, description, function) to STEPS; never renumber or remove.
 
-The app's earlier names appear only as paths.PREVIOUS_NAMES (spelled in parts there, so
+Older versions' names appear only as paths.PREVIOUS_NAMES (spelled in parts there, so
 the old-names scan, test_old_names.py, finds no trace of them); every old label, folder and
 flag below is built from it or assembled the same way (ADR 0023).
 """
@@ -63,7 +63,7 @@ def _launchctl(*args: str) -> subprocess.CompletedProcess:
 
 
 def _retire_jobs(prefix: str) -> None:
-    """Boot out <prefix>.<job> for every job, so an earlier name's set never runs beside
+    """Boot out <prefix>.<job> for every job, so an older version's set never runs beside
     the current one (ingest appends; a double run duplicates data). A job that isn't
     loaded is fine; one that is still loaded afterwards fails the step (retried next launch)."""
     domain = f"gui/{os.getuid()}"
@@ -78,32 +78,32 @@ def _retire_jobs(prefix: str) -> None:
 
 
 def _old_label_prefix(i: int) -> str:
-    """com.<earlier name>: the prefix the app's i-th earlier name (oldest = 0) registered
-    its jobs under."""
+    """com.<previous>: the prefix the i-th older version (oldest = 0) registered its jobs
+    under."""
     return f"com.{paths.PREVIOUS_NAMES[i].lower()}"
 
 
 def m4_retire_first_name_jobs() -> None:
-    """First earlier name (ADR 0024): the old app registered its jobs through SMAppService under its
-    old bundle id, which the new app can't unregister."""
+    """The oldest version (ADR 0024) registered its jobs through SMAppService under its own
+    bundle id, which this app can't unregister."""
     _retire_jobs(_old_label_prefix(0))
 
 
 def m5_adopt_first_name_signins() -> None:
-    """Sign-ins saved in the Keychain under the first earlier name's service before the first
-    rename are copied to the current service (copy only). Without this, an enabled
+    """Sign-ins saved in the Keychain under the oldest version's service are copied to the
+    current service (copy only). Without this, an enabled
     connector silently loses its token."""
     import keychain
     keychain.adopt_service(paths.PREVIOUS_NAMES[0])
 
 
 def m6_retire_second_name_jobs() -> None:
-    """Second earlier name (ADR 0024): the same as step 4 for the interim name's jobs."""
+    """The same as step 4, for the second older version's jobs (ADR 0024)."""
     _retire_jobs(_old_label_prefix(1))
 
 
 def m7_adopt_old_signins() -> None:
-    """Sign-ins under the earlier names' Keychain services (newest first, so its value
+    """Sign-ins under every older version's Keychain service (newest first, so its value
     wins) are copied to the current one. Copy only; never overwrites."""
     import keychain
     for old in reversed(paths.PREVIOUS_NAMES):
@@ -111,7 +111,7 @@ def m7_adopt_old_signins() -> None:
 
 
 def retire_old_jobs() -> None:
-    """Steps 4 and 6 again, on their own (`--retire-old-jobs`): every earlier name's jobs.
+    """Steps 4 and 6 again, on their own (`--retire-old-jobs`): every older version's jobs.
     Both are tried even when one fails; any failure is raised after both ran."""
     errors = []
     for i in range(len(paths.PREVIOUS_NAMES)):
@@ -130,7 +130,7 @@ def m8_rename_config_keys() -> None:
 
 
 def m9_retire_old_dev_agents() -> None:
-    """The dev-path agents' labels changed (ADR 0024): any still installed under the earlier
+    """Dev-path agents (ADR 0024): any still installed under the older
     com.plasmie.<old>-* labels is booted out and its plist removed (launchd/install.sh
     retire). Agents under the current com.plasmie.dev-* labels are left alone."""
     _sh("launchd/install.sh", "retire")
@@ -140,10 +140,10 @@ STEPS = [
     (1, "move data out of the old home dot-folder", m1_move_out_of_dotfolder),
     (2, "seed ingest watermarks from the vault", m2_seed_watermarks_from_vault),
     (3, "retire the dev-path launchd background jobs", m3_retire_legacy_jobs),
-    (4, "retire the first earlier name's background jobs", m4_retire_first_name_jobs),
-    (5, "copy the first earlier name's sign-ins in the Keychain", m5_adopt_first_name_signins),
-    (6, "retire the interim name's background jobs", m6_retire_second_name_jobs),
-    (7, "copy every earlier name's sign-ins in the Keychain", m7_adopt_old_signins),
+    (4, "retire older versions' background jobs (1 of 2)", m4_retire_first_name_jobs),
+    (5, "copy older versions' sign-ins in the Keychain (1 of 2)", m5_adopt_first_name_signins),
+    (6, "retire older versions' background jobs (2 of 2)", m6_retire_second_name_jobs),
+    (7, "copy older versions' sign-ins in the Keychain (2 of 2)", m7_adopt_old_signins),
     (8, "rename old settings keys in config.env", m8_rename_config_keys),
     (9, "retire dev-path agents under their earlier labels", m9_retire_old_dev_agents),
 ]

@@ -128,8 +128,8 @@ else warn "skipped — run launchd/install.sh later"; fi
 
 # 8) menu-bar app — detect existing install -----------------------------------
 say "8/8 · Menu-bar app"
-# The app was renamed twice (ADR 0023); it carries its data over at first launch.
-# An older copy left installed can bring its background jobs back at login. The earlier
+# The app carries an older install's data over at first launch (ADR 0023).
+# An older copy left installed can bring its background jobs back at login. Older versions'
 # names are assembled from parts: the old-names scan (test_old_names.py) allows them only
 # in migration code like this, and only where it can't see them (ADR 0023).
 for old in "Kl""oop" "Blob""kin"; do

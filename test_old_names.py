@@ -1,8 +1,8 @@
-"""No trace of the app's earlier names is left anywhere in the repo (ADR 0023).
+"""No trace of older versions' names is left anywhere in the repo (ADR 0023).
 
-Plasmie had earlier working names, and its internal names (env vars, config.env keys,
-defaults keys, file names, Swift types, dev-path job labels) used to carry them. They all
-follow the brand now. The old spellings survive only inside the migration code that carries
+Older versions used other names, and in older installs the internal names (env vars,
+config.env keys, defaults keys, file names, Swift types, dev-path job labels) carry them.
+Everything follows the brand now. The old spellings survive only inside the migration code that carries
 an older install over, and there only assembled from parts ("KL" + "_"), next to a comment
 saying why, so this scan cannot see them. Anything it does find is a leftover.
 
@@ -21,11 +21,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 _K, _L = "kl", "oop"
 OLD = re.compile("|".join([
-    _K + _L,                                   # the first earlier name, any case
-    "know" + r"ledge[- ]?" + "loop",          # the name before it, and its old dot-folder
+    _K + _L,                                   # an older version's name, any case
+    "know" + r"ledge[- ]?" + "loop",          # an older version's name, and its dot-folder
     r"\b" + _K + "[-_]",                      # the old script / function prefix
     "KL" + "_", "KL" + "OOP_",                # the old env var / config key prefixes
-    "blob" + "kin",                           # the interim name
+    "blob" + "kin",                           # an older version's name
     "loo" + "py",                             # the mascot's design-time name
     r"com\.plasmie\.know" + "ledge-",         # the dev-path job labels of older installs
 ]), re.I)
@@ -53,7 +53,7 @@ def test_no_old_name_in_any_file():
             m = OLD.search(line)
             if m:
                 hits.append(f"{f}:{i}: {m.group(0)!r}")
-    assert hits == [], "old names may only appear assembled from parts, in migration code"
+    assert hits == [], "older versions' names may only appear assembled from parts, in migration code"
 
 
 def test_the_scan_would_catch_each_old_spelling():
@@ -78,7 +78,7 @@ def test_migration_constants_still_spell_the_old_names():
 
 def test_keychain_accounts_never_used_an_old_prefix():
     """Sign-ins are stored under the token's own name (SLACK_USER_TOKEN, ...), never under an
-    old-prefixed account, so the upgrade has no Keychain items to move (earlier service names are
+    old-prefixed account, so the upgrade has no Keychain items to move (older versions' service names are
     adopted by plasmie-migrate.py step 7)."""
     assert all(paths.renamed_key(s) is None and not s.startswith(paths.ENV_PREFIX) for s in keychain.SECRETS)
     assert all(paths.renamed_key(s) is None for s in keychain.SETTINGS)

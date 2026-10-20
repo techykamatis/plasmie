@@ -12,8 +12,8 @@ enum BackgroundJobs {
 
     /// The dev path (launchd/install.sh) runs the same jobs from ~/Library/LaunchAgents as
     /// com.plasmie.dev-* (ADR 0024; older dev installs used another com.plasmie.<old>-* middle part),
-    /// older installs ran them there under a pre-rename prefix, and the app under its
-    /// earlier names (Brand.previous: other bundle ids) registered com.<earlier name>.* jobs
+    /// older installs ran them there under an older prefix, and older versions of the app
+    /// (Brand.previous: other bundle ids) registered com.<previous>.* jobs
     /// that this app can't unregister. Two sets at once would run ingest twice (it appends),
     /// so nothing registers while one is still there; plasmie-migrate.py retires them first
     /// (steps 3, 4, 6 and 9).
@@ -23,7 +23,7 @@ enum BackgroundJobs {
         return isLegacyAgentFile(files) || legacyJobsLoaded
     }
 
-    /// The pre-rename prefix was the original author's personal reverse-DNS handle; it is
+    /// The older prefix was the original author's personal reverse-DNS handle; it is
     /// assembled from parts so the personal-data scan (test_no_personal.py) doesn't match
     /// it. The dev agents' old middle part is assembled the same way, for the old-names scan
     /// (test_old_names.py). Both stay only so an old install's agents are still recognised.
@@ -37,7 +37,7 @@ enum BackgroundJobs {
         files.contains { f in legacyAgentPrefixes.contains { f.hasPrefix($0) } }
     }
 
-    /// Any earlier name's job (LegacyJobs) still loaded in this login session.
+    /// Any older version's job (LegacyJobs) still loaded in this login session.
     static var legacyJobsLoaded: Bool { LegacyJobs.anyLoaded(LegacyJobs.labels(names)) }
 
     /// macOS asks the user to allow background items the first time (Login Items).

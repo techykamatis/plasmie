@@ -1,5 +1,5 @@
-"""The name lives in one place per language (ADR 0014). Earlier names are checked by
-test_old_names.py (ADR 0023): they may not appear anywhere at all.
+"""The name lives in one place per language (ADR 0014). Older versions' names are checked by
+test_old_names.py (ADR 0023): they may not appear written out anywhere.
 
   Swift   app/Sources/Brand.swift          Brand.name / Brand.id
   Python  paths.py                         APP_NAME / APP_ID
@@ -10,8 +10,6 @@ import io
 import re
 import tokenize
 from pathlib import Path
-
-import pytest
 
 import paths
 

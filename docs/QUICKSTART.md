@@ -1,6 +1,6 @@
 # Plasmie quickstart
 
-Plasmie is a small pink blob that lives beside your MacBook's notch. It quietly gathers what you work on (messages, code, notes), writes it into a folder of notes you can read right in Plasmie, and answers questions about it. Everything runs on your Mac; nothing is uploaded.
+Plasmie is a small pink blob that lives beside your MacBook's notch. It gathers what you work on (messages, code, notes), writes it into a folder of notes you can read in Plasmie, and answers questions about it. Everything runs on your Mac. Nothing is uploaded.
 
 ## What you need
 
@@ -11,11 +11,13 @@ Plasmie is a small pink blob that lives beside your MacBook's notch. It quietly 
 
 ## Install
 
-1. Open the Plasmie disk image and drag **Plasmie** onto **Applications**.
-2. Open Plasmie from Applications. macOS says it can't check it for malicious software, because Plasmie isn't from the App Store yet. Click **Done**.
-3. Open **System Settings > Privacy & Security**, scroll down, and click **Open Anyway** next to Plasmie. Enter your password.
+It takes a minute.
 
-You only do this once. (On recent macOS, right-click > Open no longer skips this step.)
+- **Step 1.** Open the Plasmie disk image and drag **Plasmie** onto **Applications**.
+- **Step 2.** Open Plasmie from Applications. When your Mac warns you, click **Done**. (It warns because Plasmie isn't from the App Store.)
+- **Step 3.** Go to **System Settings > Privacy & Security**. Click **Open Anyway** and enter your password.
+
+You only do this once, and it's the only warning you'll see. If you open Plasmie straight from the disk image, it offers to move itself to Applications first. Say yes.
 
 ## First run
 
@@ -35,7 +37,7 @@ Then Plasmie shows you around the notch in three short steps.
 
 ## Connectors
 
-In the Plasmie window, each source has an On/Off switch: Slack, GitHub, local git commits, Confluence, Outlook, Claude Code and AgentCLI sessions. Network ones start **off**; local ones start on only if they exist on your Mac. Off means nothing is read. Sign-ins are kept in your Mac's Keychain. For GitHub, paste a token from github.com › Settings › Developer settings (read-only access is enough); nothing else to install.
+In the Plasmie window, each source has an On/Off switch: Slack, GitHub, local git commits, Confluence, Outlook and Claude Code sessions. Network ones start **off**; local ones start on only if they exist on your Mac. Off means nothing is read. Sign-ins are kept in your Mac's Keychain. For GitHub, paste a token from github.com › Settings › Developer settings (read-only access is enough); nothing else to install.
 
 ## Where things live
 
@@ -52,7 +54,7 @@ Plasmie window > Maintain > **Reset Plasmie…** removes Plasmie's background jo
 
 ## Trouble?
 
-1. **"Plasmie can't be opened"**: use the Open Anyway steps above.
+1. **"Plasmie can't be opened"**: do Step 3 above.
 2. **Apple Intelligence is off or still downloading**: the island tells you; turn it on in System Settings, or wait for the download.
 3. **Nothing captured yet**: switch a connector on, then press **Ingest**. Quiet sources can take a day to show anything.
 4. **Something looks broken**: Plasmie window > Maintain > **Run setup again…** repairs it and keeps your notes and settings.

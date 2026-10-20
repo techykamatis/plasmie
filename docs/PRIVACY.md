@@ -11,7 +11,7 @@ Only sources you switch on, and only your own:
 - **Local git commits**: your own commit messages from repositories on your Mac, in the folders you list. No network.
 - **Confluence**: pages you created or edited (your Atlassian address, email and API token).
 - **Outlook** (mail and calendar): only after you click Connect and approve the sign-in.
-- **Claude Code / AgentCLI sessions**: their local session logs on your Mac. No network.
+- **Claude Code sessions**: their local session logs on your Mac. No network.
 
 Before anything is written, a redactor strips things that look like passwords, API keys and tokens.
 
@@ -35,10 +35,14 @@ Summaries, nightly filing and answers all run on your Mac with Apple's on-device
 
 If you turn it on, Plasmie copies your curated notes, daily digests and Obsidian display settings to iCloud Drive › Plasmie so you can read them on your iPhone or iPad. It never copies raw captures (your Slack messages, sessions), your questions, plugin settings, or any note that looks like it holds a password. While it's on, those notes are also stored in your iCloud account (end-to-end encrypted only if you use Apple's Advanced Data Protection).
 
+## What it changes on your Mac when it opens
+
+Files you download are marked "from the internet". The first time Plasmie opens, it removes that mark from its own files, inside Plasmie.app only, so its built-in Python can run without more warnings. If you opened it from the disk image and say yes to moving it, it copies itself to Applications and moves any older copy of Plasmie to the Bin. Nothing else on your Mac is changed.
+
 ## Diagnostics
 
 **Copy diagnostics** puts a report on your clipboard for you to send if you choose: versions, which connectors are on and working, and recent run summaries. It leaves out your notes, messages, account names and passwords. Nothing is sent automatically.
 
 ## Deleting everything
 
-Plasmie window > Maintain > **Reset Plasmie…** removes Plasmie's background jobs, data, logs and preferences, then quits. Then delete the app. Your notes folder is never touched; delete it yourself if you want the notes gone. Plasmie's Keychain items can be removed in Keychain Access (search "Plasmie").
+Plasmie window > Maintain > **Reset Plasmie…** saves a restore point of your notes, then removes Plasmie's background jobs, data, logs, preferences and the sign-ins it saved in your Keychain, and quits. Then delete the app. Your notes folder is never touched; delete it yourself if you want the notes gone.

@@ -295,3 +295,14 @@ app/make-app.sh                       # Swift build (swiftc, no Xcode project)
 | Nothing filed overnight | `~/Library/Logs/Plasmie/audit-*.log`, and whether Apple Intelligence is on |
 | Search misses your notes | `qmd collection list`: all three collections should point inside the vault. Re-run setup to repoint |
 | Sending a bug report | The Plasmie window › **Copy diagnostics**: a scrubbed report with no notes or secrets ([`plasmie-diagnostics.py`](plasmie-diagnostics.py)) |
+
+## License
+
+Copyright (C) 2026 techykamatis.
+
+Plasmie is free software: you can redistribute it and/or modify it under the terms of the
+GNU General Public License as published by the Free Software Foundation, version 3 or
+(at your option) any later version. See [LICENSE](LICENSE).
+
+The name "Plasmie" and the blob mascot are not covered by that license. See
+[TRADEMARK.md](TRADEMARK.md).

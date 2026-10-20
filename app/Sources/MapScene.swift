@@ -82,6 +82,7 @@ final class MapScene: ObservableObject {
         vaultIndex = nil
         relatedCache = nil
         let reduce = reduceMotion
+        MapSpace.prewarm()                             // the sky's layers, rendered once, off the main thread
         DispatchQueue.global(qos: .userInitiated).async {
             let result = loadGraph()
             var built: (MapGraph, MapLayout)?

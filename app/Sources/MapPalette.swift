@@ -1,7 +1,7 @@
 import SwiftUI
 
 // Plasmie's map: colour. Pink is Plasmie's alone (the owner's rule), so the mascot reads as
-// the one living, pink heart of a calm, neutral network. Notes are graphite blobs; the
+// the one living, pink heart of a calm, neutral network on a space backdrop (MapSpace.swift). Notes are graphite blobs; the
 // accents come from tokens that already mean something: sparkle gold for decisions, sweat
 // blue for gotchas, leaf green for patterns, deep ink for how-tos. Maps (mocs) are graphite
 // with a ring. Veins are translucent ink; the lit vein glow and the nutrient pulses are a
@@ -36,11 +36,12 @@ enum MapKind: Int, CaseIterable, Identifiable {
     }
 
     /// Fill. Recency: fresh notes are full strength, older ones ease part of the way toward
-    /// the ground (never further: the palest graphite stays >= 3:1 on the ground). Maps are
-    /// a light graphite: their ring (MapPalette.ring) carries the edge.
+    /// the ground (never further: the palest graphite stays >= 3:1 on the space backdrop,
+    /// checked at its brightest bokeh in dark and its deepest lavender cloud in light).
+    /// Maps are a light graphite: their ring (MapPalette.ring) carries the edge.
     func fill(_ s: ColorScheme, fresh: Double) -> Color {
         if self == .map { return hue.mixed(PlasmieHues.mapGround, 0.4, s) }
-        return hue.mixed(PlasmieHues.mapGround, (s == .dark ? 0.35 : 0.15) * (1 - fresh), s)
+        return hue.mixed(PlasmieHues.mapGround, (s == .dark ? 0.3 : 0.1) * (1 - fresh), s)
     }
 
     /// Fresh accents glow softly; neutral notes don't (a grey glow reads as a smudge).

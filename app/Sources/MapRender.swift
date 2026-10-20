@@ -11,7 +11,7 @@ private let freshBuckets = 4
 extension MapScene {
     func draw(_ ctx: GraphicsContext, now: Date, scheme: ColorScheme) {
         let t0 = CFAbsoluteTimeGetCurrent()
-        drawGround(ctx, scheme)
+        // the ground is the space backdrop beneath this Canvas (MapSpace.swift)
         guard let g = graph, let l = layout, !g.isEmpty else { return }
         let dim = dimLevel(now)
         let shownFocus = focus ?? (dim > 0.001 ? lastFocus : nil)
@@ -45,26 +45,6 @@ extension MapScene {
         drawLabels(ctx, g, l, scheme, focusSet: dim > 0.3 ? focusSet : [], focus: shownFocus, dim: dim)
         drawIntroWave(ctx, scheme)
         perf.frame(draw: CFAbsoluteTimeGetCurrent() - t0, nodes: g.nodes.count, edges: g.edges.count)
-    }
-
-    // MARK: ground
-
-    /// Brand ground plus a faint dot grid that drifts at half the camera's speed (parallax)
-    /// and spaces out only gently with zoom.
-    private func drawGround(_ ctx: GraphicsContext, _ s: ColorScheme) {
-        ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(MapPalette.ground(s)))
-        let step = 26 * pow(camera.zoom, 0.3)
-        let ox = (-camera.x * camera.zoom * 0.5).truncatingRemainder(dividingBy: step)
-        let oy = (-camera.y * camera.zoom * 0.5).truncatingRemainder(dividingBy: step)
-        var dots = Path()
-        var y = oy - step
-        while y < size.height + step {
-            var x = ox - step
-            while x < size.width + step { dots.addEllipse(in: CGRect(x: x - 1, y: y - 1, width: 2, height: 2)); x += step }
-            y += step
-        }
-        let dot = MapPalette.ink(s).opacity(s == .dark ? 0.09 : 0.08)
-        ctx.fill(dots, with: .color(dot))
     }
 
     private func worldViewport(margin: Double) -> CGRect {

@@ -74,13 +74,13 @@ enum PlasmieHues {
     static let git = PlasmieHue(0xF07A3E)
     static let confluence = PlasmieHue(0x3D7BE0)
     static let claude = PlasmieHue(0xD97757)
-    static let agentcli = PlasmieHue(0x2BB3A0)
     static let outlook = PlasmieHue(0x5B8DEF)
     static let eggshell = PlasmieHue(0xFFF7EC)
     /// Plasmie's map (DESIGN.md › Plasmie's map): pink is Plasmie's alone, so the map around
     /// it is neutral. Ground, the ordinary note (>= 3:1 on the ground at its palest), and ink
-    /// for labels, how-tos and veins. Accents reuse sparkle, sweat and leaf.
-    static let mapGround = PlasmieHue(0xF4F4F2, dark: 0x17171A)
+    /// for labels, how-tos and veins. Accents reuse sparkle, sweat and leaf. The ground is the
+    /// space backdrop's mean (MapSpace.swift: a dusk sky / deep space); older notes fade toward it.
+    static let mapGround = PlasmieHue(0xE9E6F0, dark: 0x0D0E1A)
     static let mapNote = PlasmieHue(0x6B7285, dark: 0xA3AABA)
     static let mapInk = PlasmieHue(0x2A2E3A, dark: 0xDADDE4)
     static let leaf = PlasmieHue(0x6CC18E)
@@ -102,6 +102,5 @@ extension Color {
     static let sourceGit = PlasmieHues.git.adaptive
     static let sourceConfluence = PlasmieHues.confluence.adaptive
     static let sourceClaude = PlasmieHues.claude.adaptive
-    static let sourceAgentcli = PlasmieHues.agentcli.adaptive
     static let sourceOutlook = PlasmieHues.outlook.adaptive
 }

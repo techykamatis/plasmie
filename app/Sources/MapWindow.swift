@@ -27,6 +27,7 @@ final class MapController: NSObject, NSWindowDelegate {
     func show(_ m: Model) {
         if let w = win { bringForward(w); return }
         if LaunchMode.mapOnly && CommandLine.arguments.contains("--dark") { NSApp.appearance = NSAppearance(named: .darkAqua) }
+        if LaunchMode.mapOnly && CommandLine.arguments.contains("--light") { NSApp.appearance = NSAppearance(named: .aqua) }
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 720),
                          styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
         w.title = "\(Brand.name)'s map"
@@ -87,6 +88,11 @@ struct MapWindowView: View {
             if NSWorkspace.shared.isVoiceOverEnabled { scene.listShown = true }
             DispatchQueue.main.async { findFocused = true }   // type to find, straight away
             scene.reload()
+            // render checks: `--map --map-zoom=2.5` zooms once the opening has played
+            if LaunchMode.mapOnly, let a = CommandLine.arguments.first(where: { $0.hasPrefix("--map-zoom=") }),
+               let z = Double(a.dropFirst("--map-zoom=".count)) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) { scene.zoom(by: z) }
+            }
         }
         .onChange(of: reduce) { scene.reduceMotion = $0; scene.wake() }
     }
@@ -122,7 +128,9 @@ private struct MapArea: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                Rectangle().fill(PlasmieHues.mapGround.adaptive)
+                if !isLive {                       // live, the sky moves with the camera (below)
+                    MapSpaceView(size: geo.size, camera: MapCamera(), scheme: scheme)
+                }
                 switch scene.load {
                 case .loading:
                     message(.ask, "Growing your map…", nil)
@@ -139,6 +147,11 @@ private struct MapArea: View {
             .onAppear { scene.size = geo.size }
             .onChange(of: geo.size) { scene.size = $0; scene.wake() }
         }
+    }
+
+    private var isLive: Bool {
+        if case .ready(let g) = scene.load { return !g.isEmpty }
+        return false
     }
 
     private func message(_ state: PlasmieState, _ title: String, _ detail: String?, retry: Bool = false) -> some View {
@@ -161,6 +174,8 @@ private struct MapArea: View {
             TimelineView(.animation(minimumInterval: nil, paused: !scene.awake)) { tl in
                 let _ = scene.advance(to: tl.date)
                 ZStack(alignment: .topLeading) {
+                    MapSpaceView(size: scene.size, camera: MapSpace.camera(scene), scheme: scheme,
+                                 now: tl.date, twinkle: scene.twinkle(tl.date))
                     Canvas { ctx, _ in scene.draw(ctx, now: tl.date, scheme: scheme) }
                     PlasmieView(state: plasmieState, size: scene.plasmieSize,
                               frozenAt: scene.awake ? nil : 0, accessory: m.ach?.accessory)

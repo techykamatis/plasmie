@@ -231,11 +231,13 @@ HEADINGS = ["New", "Better", "Fixed", "Install"]
 
 
 def deny_terms():
-    """test_no_personal.py's DENY list, plus every commit author name and email."""
+    """The owner terms test_no_personal.py reads from .personal-deny.txt, its generic terms, and every commit author name and email."""
     spec = importlib.util.spec_from_file_location("tnp", os.path.join(ROOT, "test_no_personal.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    terms = list(mod.DENY)
+    found = mod._deny_terms() if hasattr(mod, "_deny_terms") else (list(getattr(mod, "DENY", [])), [])
+    terms = list(found[0]) if found else []          # the git-ignored .personal-deny.txt terms
+    terms += [t for t in getattr(mod, "GENERIC", []) if t not in terms]
     for line in out("git", "log", "--format=%an%n%ae").splitlines():
         if line and line not in terms:
             terms.append(line)

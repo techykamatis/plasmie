@@ -16,6 +16,7 @@ If you distribute your own build or a fork, give it a different name, app icon, 
 and mascot, so nobody mistakes it for the official Plasmie. Don't sell or publish anything
 as "Plasmie", or with the blob mascot, without written permission.
 
-The official builds are the ones published by the Plasmie project.
+The official builds are the ones published by Vhen Joseph.
 
-Questions: open an issue in this repository.
+To ask for permission, or if you're not sure whether something is fine, open an issue in this
+repository and ask. I'd rather hear from you early.

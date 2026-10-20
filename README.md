@@ -298,7 +298,7 @@ app/make-app.sh                       # Swift build (swiftc, no Xcode project)
 
 ## License
 
-Copyright (C) 2026 techykamatis.
+Copyright (C) 2026 Vhen Joseph.
 
 Plasmie is free software: you can redistribute it and/or modify it under the terms of the
 GNU General Public License as published by the Free Software Foundation, version 3 or
@@ -306,3 +306,13 @@ GNU General Public License as published by the Free Software Foundation, version
 
 The name "Plasmie" and the blob mascot are not covered by that license. See
 [TRADEMARK.md](TRADEMARK.md).
+
+## Get in touch
+
+Plasmie is made by Vhen Joseph. Open an issue in this repository to reach me.
+
+- **Building something with Plasmie?** I'd love to hear about it. Not required, just appreciated.
+- **Using the name "Plasmie" or the mascot** needs my permission first ([TRADEMARK.md](TRADEMARK.md)).
+- **Using the code in a closed-source or commercial product** that can't follow the GPL needs a
+  separate license from me. Get in touch and we'll sort it out.
+- **Contributing code:** see [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -32,8 +32,9 @@ Run from the repo root. Stop at the first failure and report the exact error, fi
    `make-app.sh` wipes `app/build`, including any installer the user is testing. Say so before
    running it if `app/build/Plasmie.dmg` exists.
 
-6. **No traces.** `git grep --untracked -I -l -i -f .personal-deny.txt -- . ':!.personal-deny.txt' ':!.gitignore'`
-   must print nothing (skip if the file is missing).
+6. **No traces.** Covered by `test_no_personal.py` in step 1. It allows the owner's public
+   name (the `allow:` lines in `.personal-deny.txt`) only in LICENSE, README.md, TRADEMARK.md
+   and CONTRIBUTING.md. If that test was skipped because the file is missing, say so.
 
 ## Report
 

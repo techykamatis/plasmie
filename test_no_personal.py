@@ -35,7 +35,12 @@ def _files():
     return sorted({f for f in out if f != SELF})
 
 
-def _hits(terms):
+# The owner's public name may appear in these files only (copyright and contact lines).
+# Which name is allowed comes from "allow:" lines in the deny file, so it isn't spelled out here.
+PUBLIC_IDENTITY = {"LICENSE", "README.md", "TRADEMARK.md", "CONTRIBUTING.md"}
+
+
+def _hits(terms, allowed=()):
     hits = []
     for f in _files():
         try:
@@ -43,6 +48,9 @@ def _hits(terms):
         except OSError:                       # deleted in the working tree, or not a file
             continue
         text = f"{f}\n{text}".lower()        # a file's name ships too
+        if f in PUBLIC_IDENTITY:
+            for name in allowed:
+                text = text.replace(name, "")
         hits += [f"{f}: {t}" for t in terms if t in text]
     return hits
 
@@ -52,15 +60,18 @@ def _deny_terms():
         lines = open(DENY_FILE, encoding="utf-8").read().splitlines()
     except OSError:
         return None
-    return [ln.strip().lower() for ln in lines if ln.strip() and not ln.lstrip().startswith("#")]
+    rows = [ln.strip().lower() for ln in lines if ln.strip() and not ln.lstrip().startswith("#")]
+    allowed = [r[len("allow:"):].strip() for r in rows if r.startswith("allow:")]
+    return [r for r in rows if not r.startswith("allow:")], allowed
 
 
 def test_no_owner_specific_values_anywhere():
-    terms = _deny_terms()
-    if terms is None:
+    found = _deny_terms()
+    if found is None:
         pytest.skip(f"{os.path.basename(DENY_FILE)} not found: owner-specific scan skipped "
                     "(create it, one term per line, to run it)")
-    assert _hits(terms) == []
+    terms, allowed = found
+    assert _hits(terms, allowed) == []
 
 
 def test_nothing_says_it_runs_on_a_work_machine():

@@ -1,47 +1,53 @@
 # Decisions
 
-Short records of the design and architecture decisions behind Plasmie (formerly Plasmie,
-Plasmie before that, briefly Plasmie). One file per decision: context, decision, alternatives, consequences. Newest
-work is from 2026-10-04. Product truth lives in `/PRODUCT.md`, the visual system in
-`/DESIGN.md`; these records explain **why**.
+Short records of the design and architecture decisions behind Plasmie, one file per
+decision: context, decision, alternatives, consequences. Product truth lives in
+`/PRODUCT.md` and the visual system in `/DESIGN.md`; these records explain **why**.
 
-## Architecture
+## Foundations
 | # | Decision | Status |
 |---|---|---|
-| [0001](0001-local-llm-wiki-vault.md) | Local-only pipeline over an llm-wiki vault | Accepted |
-| [0002](0002-connector-switches.md) | Per-connector On/Off switches ("off means off") | Accepted |
-| [0003](0003-promote-all-sources-fair-share.md) | Summarize and promote read every source, fair share each | Accepted |
-| [0004](0004-on-device-models-first.md) | Apple Foundation Models first; Gemma as fallback | Superseded by 0021 |
-| [0005](0005-promote-kind-hints-and-confinement.md) | Promote keeps the drafter's kind; notes stay inside wiki/ | Accepted |
+| [0001](0001-local-first-vault.md) | A local-only pipeline over an llm-wiki vault | Accepted |
+| [0002](0002-apple-on-device-model.md) | Apple's on-device model only, through a native helper; map-reduce for long input | Accepted |
+| [0003](0003-opt-in-connectors.md) | Connectors are opt-in, with one On/Off switch each ("off means off") | Accepted |
+
+## Pipeline and safety
+| # | Decision | Status |
+|---|---|---|
+| [0004](0004-every-source-fair-share.md) | Summarize and promote read every source, with a fair share each | Accepted |
+| [0005](0005-promote-kinds-and-confinement.md) | Promote keeps the drafter's kind; created notes stay inside wiki/ | Accepted |
 | [0006](0006-faithfulness-guard.md) | Generated text may reword, never re-specify | Accepted |
-| [0007](0007-fun-facts.md) | Fun facts: nostalgic or useful, phrased by Plasmie | Accepted |
-| [0008](0008-pattern-noticing.md) | Plasmie notices recurring patterns; you approve them | Accepted |
-| [0009](0009-achievements.md) | Evolutions and trophies earned from existing records | Accepted |
-| [0010](0010-quality-gates.md) | Quality gates the pipeline enforces on itself | Accepted |
-| [0011](0011-app-structure.md) | App files by surface, shared tokens, rename to Plasmie | Accepted |
-| [0012](0012-brand-plasmie-shape-shifter.md) | Plasmie, a soft blob whose shape is the status | Accepted |
-| [0013](0013-geometry-sdf-48-anchors.md) | SDF primitives sampled to 48 anchors, one generator | Accepted |
-| [0014](0014-palette-and-face.md) | Brain pink with a berry face; no literal brain cue | Accepted |
-| [0015](0015-interaction-reactions.md) | Click says hi, rapid clicks annoy, dragging pets | Accepted |
-| [0016](0016-hero-sizing-and-surfaces.md) | Plasmie is the focal point of each surface | Accepted |
-| [0017](0017-evolution-accessories.md) | Evolution shown as accessories | Accepted |
-| [0018](0018-motion-language.md) | Glide and pop, with fun physics | Accepted |
-| [0019](0019-notch-prototype.md) | Plasmie in the notch | Experimental |
-| [0020](0020-rename-plasmie.md) | Rename: Plasmie (app and mascot) | Superseded by 0027 |
-| [0021](0021-secrets-in-keychain.md) | Credentials in the login Keychain, via /usr/bin/security only | Accepted |
-| [0022](0022-install-layout-and-vault-safety.md) | Install like a Mac app; the vault is never put at risk | Accepted |
-| [0023](0023-icloud-mirror.md) | iCloud sync: a one-way mirror the app runs | Accepted |
-| [0024](0024-opt-in-connectors.md) | Connectors are opt-in; nothing about the owner is a default | Accepted |
-| [0025](0025-apple-fm-only.md) | Apple FM only, via a native helper; map-reduce for long input | Accepted |
-| [0026](0026-background-jobs-smappservice.md) | Background jobs belong to the app (SMAppService) | Accepted |
-| [0027](0027-rename-plasmie.md) | Rename: Plasmie (app and mascot); lossless migration | Name superseded by 0028 |
-| [0028](0028-rename-plasmie.md) | Rename: Plasmie, the name as one constant per language, a hidden origin story | Accepted |
+| [0007](0007-plain-summary-answers.md) | Summary questions get plain English; lookups stay exact | Accepted |
+| [0008](0008-quality-gates.md) | Quality gates the pipeline enforces on itself | Accepted |
+| [0009](0009-secrets-in-keychain.md) | Credentials in the login Keychain, via /usr/bin/security only | Accepted |
 
-## Design
+## Product
 | # | Decision | Status |
 |---|---|---|
-| [0029](0029-plasmies-map.md) | Plasmie's map: the vault as a living network, one Canvas, pink is Plasmie's alone | Accepted |
+| [0010](0010-fun-facts.md) | Fun facts: nostalgic or useful, chosen deterministically, phrased by the mascot | Accepted |
+| [0011](0011-pattern-noticing.md) | The mascot notices recurring patterns, and you approve them | Accepted |
+| [0012](0012-achievements.md) | Evolutions and first-year trophies are earned from existing records | Accepted |
+
+## App, brand and design
+| # | Decision | Status |
+|---|---|---|
+| [0013](0013-app-structure.md) | App structure: files by surface, shared tokens, parallel-safe ownership | Accepted |
+| [0014](0014-brand-plasmie.md) | Brand: Plasmie, a soft blob whose shape is the status | Accepted |
+| [0015](0015-shape-geometry.md) | The mascot's geometry: SDF primitives sampled to 48 anchors, one generator | Accepted |
+| [0016](0016-palette-and-face.md) | Palette: brain pink with a berry face; no literal brain cue | Accepted |
+| [0017](0017-reactions.md) | The mascot reacts: click says hi, rapid clicks annoy it, dragging pets it | Accepted |
+| [0018](0018-surfaces.md) | The mascot is the focal point of each surface | Accepted |
+| [0019](0019-evolution-accessories.md) | Evolution is shown as accessories | Accepted |
+| [0020](0020-motion-language.md) | Motion language: glide and pop, with a little fun physics | Accepted |
+| [0021](0021-notch.md) | The mascot lives in the notch | Experimental |
+| [0022](0022-map.md) | Plasmie's map: the vault as a living network, drawn natively | Accepted |
+
+## Distribution
+| # | Decision | Status |
+|---|---|---|
+| [0023](0023-install-and-vault-safety.md) | Install like a Mac app; upgrades are lossless; the vault is never put at risk | Accepted |
+| [0024](0024-background-jobs.md) | Background jobs belong to the app (SMAppService) | Accepted |
+| [0025](0025-icloud-mirror.md) | iCloud sync is a one-way mirror the app runs; edits there are kept | Accepted |
 
 ## Adding a record
-Copy the shape of any file above, take the next number, and add a row here. Supersede
-rather than edit: mark the old record "Superseded by NNNN" and link forward.
+Copy the shape of any file above, take the next number, and add a row here.

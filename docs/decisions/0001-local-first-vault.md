@@ -1,23 +1,30 @@
-# 0001 · Local-only pipeline over an llm-wiki vault
+# 0001 · A local-only pipeline over an llm-wiki vault
 
-- **Status:** Accepted (pre-dates 2026-10-03; recorded here as the foundation)
+- **Status:** Accepted
 - **Area:** Architecture
 
 ## Context
-The tool turns one person's work activity (Slack, GitHub, local git, Confluence,
-Claude Code sessions) into durable, searchable memory on their own Mac.
-The record contains DMs, code, and incident details: it must not leave the machine.
+Plasmie turns one person's work activity (Slack, GitHub, local git, Confluence, Outlook,
+Claude Code sessions) into durable, searchable memory on their own Mac. That record holds
+DMs, code and incident details, so it must not leave the machine.
 
 ## Decision
-- Vault at `~/knowledge` (local disk only; cloud-synced folders break launchd reads
-  under TCC). Layers: `raw/` (transient, pruned after 14 days) → `wiki/` (flat,
-  curated, the only answer layer) → `archive/`; `meta/` for drafts, digests, state.
-  `index.md` and `log.md` are generated; `log.md` is the durable audit.
-- Hourly ingest, hourly summarize, nightly promote (draft → dedupe → auto-apply or
-  hold), plus an improve/prune pass and a nightly git snapshot of the vault.
-- Retrieval by qmd (BM25 + vectors) over `raw` and `wiki`; Ask answers from `wiki` only.
-- All generation on-device (see 0004). The only network calls read the owner's own accounts.
+- **The vault is a folder on local disk:** `~/knowledge` unless the user picks another
+  (`PLASMIE_VAULT`). Cloud-synced folders are refused as the vault, because launchd jobs
+  can't read them under TCC (see [0025](0025-icloud-mirror.md) for the iCloud mirror).
+- **Layers:** `raw/` (captures, pruned after 14 days) → `wiki/` (flat, curated) →
+  `archive/`; `meta/` holds drafts, digests and state. `index.md` and `log.md` are
+  generated; `log.md` is the durable audit.
+- **Jobs:** hourly ingest, hourly summarize, an improve/prune pass, a nightly promote
+  (draft → dedupe → auto-apply or hold) and a nightly git snapshot of the vault
+  ([0024](0024-background-jobs.md) has the schedule).
+- **Retrieval** is qmd (BM25 + vectors). Ask answers from `wiki/` and the user's own notes.
+  `raw/` is source material: Ask reads it only for recaps and summary questions
+  ([0007](0007-plain-summary-answers.md)).
+- **Generation is on-device** ([0002](0002-apple-on-device-model.md)). The only network calls
+  read the user's own accounts.
 
 ## Consequences
-- Old raw activity disappears; anything worth keeping must be promoted before it ages out.
-- Email stays a blind spot (Outlook needs tenant-admin consent this tool won't get).
+- Raw activity ages out after 14 days. Anything worth keeping has to be promoted first.
+- The vault is plain Markdown in a git repository, so it opens in Obsidian and survives the
+  app being deleted.

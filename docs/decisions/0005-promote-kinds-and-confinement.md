@@ -1,22 +1,22 @@
 # 0005 · Promote keeps the drafter's kind; created notes stay inside wiki/
 
-- **Status:** Accepted · 2026-10-03
+- **Status:** Accepted
 - **Area:** Architecture, security
 
 ## Context
-After the flat-wiki change, auto-apply rewrote every create's `Target:` hint to `wiki`
-*before* deriving the note's type and tag, so every auto-promoted note became a
-tagless `note`, and the drafter couldn't say gotcha / decision / pattern at all, though
-the vault contract calls those load-bearing.
+The wiki is flat, but the kind of a note (gotcha, decision, pattern…) is load-bearing: the
+vault contract relies on it, and so do summary answers and fun facts. Promotion drafts are
+model output, so the apply step must treat them as untrusted.
 
 ## Decision
 - `Target:` is a **kind** hint (gotcha, decision, pattern, how-to, concept, person,
-  project, tech, security, clipping); it sets type + tag, and the file lands flat in `wiki/`.
-- Path-like targets keep containment and no-overwrite checks.
-- **Security (found by the background commit review):** the first version let an
-  untrusted draft name any in-vault path, e.g. plant a fake draft in `meta/` or files
-  in `raw/`. Created notes must now resolve inside `wiki/`, or the item is refused.
+  project, tech, security, clipping). It sets the note's type and tag, and the file lands
+  flat in `wiki/`. Type and tag come from the hint itself, so placing the file never erases
+  the kind.
+- Path-like targets keep the containment and no-overwrite checks.
+- **Created notes must resolve inside `wiki/`**, or the item is refused. A draft can't name
+  any other path in the vault, so it can't plant a fake draft in `meta/` or files in `raw/`.
 
 ## Consequences
-~100 notes promoted before the fix remain mislabelled `note`; they can be re-typed
-from their archived drafts on request.
+Every auto-promoted note carries a type and a tag, which summary answers
+([0007](0007-plain-summary-answers.md)) and fun facts ([0010](0010-fun-facts.md)) depend on.

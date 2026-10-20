@@ -116,7 +116,7 @@ def _projects(vault, notes):
 
 
 def _display(token, notes):
-    """Most common casing of the token in the vault's own titles/descriptions (Orbit, WorkChat)."""
+    """Most common casing of the token in the vault's own titles/descriptions (e.g. API, GraphQL)."""
     seen = Counter(m for n in notes for m in re.findall(rf"\b{re.escape(token)}\b", f"{n['title']} {n['text']}", re.I))
     cased = Counter({k: v for k, v in seen.items() if k != k.lower()}) or seen
     return cased.most_common(1)[0][0] if cased else (token.upper() if len(token) <= 3 else token.capitalize())

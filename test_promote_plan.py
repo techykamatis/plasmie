@@ -40,12 +40,12 @@ def test_parse_items_reads_the_draft_shape_and_nothing_to_promote():
 def test_parse_items_survives_the_shapes_a_small_model_drifts_into():
     """Measured on real days: bold titles, and title + Target on one line."""
     text = ("**PR review request** Target: person\nDescription: Review PR #98.\n\n"
-            "agentcli-homepage · Target: gotcha\nDescription: The feed has 0 items.\n\n"
-            "annohub · Target: pattern\nDescription: CI passed on PR #55.\nSource: claude 2026-10-02\n\n"
+            "docs-homepage · Target: gotcha\nDescription: The feed has 0 items.\n\n"
+            "widget-api · Target: pattern\nDescription: CI passed on PR #55.\nSource: claude 2026-10-02\n\n"
             "Nothing to promote.\n")
     got = [(i.title, i.target, i.source) for i in pi.parse_items(text)]
-    assert got == [("PR review request", "person", ""), ("agentcli-homepage", "gotcha", ""),
-                   ("annohub", "pattern", "claude 2026-10-02")]
+    assert got == [("PR review request", "person", ""), ("docs-homepage", "gotcha", ""),
+                   ("widget-api", "pattern", "claude 2026-10-02")]
 
 
 def test_tidy_repairs_a_kind_word_heading_both_ways():

@@ -27,8 +27,8 @@ struct Connector: Identifiable {
     let blurb: String
     /// How often this source normally delivers new data, in hours. One concept
     /// drives both the verdict ("Quiet" = nothing new for 4x this) and the
-    /// freshness bar (empty at 4x). Slack/Outlook/Claude: daily. GitHub, local
-    /// git, AgentCLI: bursty, every ~3 days. Confluence: weekly.
+    /// freshness bar (empty at 4x). Slack/Outlook/Claude: daily. GitHub and local
+    /// git: bursty, every ~3 days. Confluence: weekly.
     let cadenceHours: Double
     let cadenceLabel: String
     /// Hours without new data after which the card reads "Quiet".
@@ -54,9 +54,6 @@ struct Connector: Identifiable {
         Connector(id: "claude", name: "Claude Code sessions", symbol: "terminal.fill",
                   ageKey: "sessions", errCode: "", blurb: "What you worked on, from local session logs.",
                   cadenceHours: 24, cadenceLabel: "daily"),
-        Connector(id: "agentcli", name: "AgentCLI sessions", symbol: "sparkles.rectangle.stack",
-                  ageKey: "agentcli", errCode: "AGENTCLI", blurb: "What you worked on in AgentCLI, from its local session database.",
-                  cadenceHours: 72, cadenceLabel: "every ~3 days"),
     ]
 }
 

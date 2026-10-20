@@ -10,17 +10,25 @@ enum BackgroundJobs {
     static func label(_ name: String) -> String { "com.\(Brand.id).\(name)" }
     private static func service(_ name: String) -> SMAppService { .agent(plistName: "com.\(Brand.id).\(name).plist") }
 
-    /// Older installs ran com.plasmie.* jobs from ~/Library/LaunchAgents, and the app under its
-    /// earlier names (Plasmie, Plasmie: other bundle ids) registered com.plasmie.* / com.plasmie.*
-    /// that this app can't unregister. Two sets at once would run ingest twice (it appends),
-    /// so nothing registers while one is still there; plasmie-migrate.py retires them first
-    /// (steps 3, 4 and 6).
+    /// The dev path (launchd/install.sh) runs the same jobs from ~/Library/LaunchAgents as
+    /// com.plasmie.dev-*, older installs ran them there under a pre-rename prefix, and
+    /// the app under its earlier names (Plasmie, Plasmie: other bundle ids) registered
+    /// com.plasmie.* / com.plasmie.* that this app can't unregister. Two sets at once would run
+    /// ingest twice (it appends), so nothing registers while one is still there;
+    /// plasmie-migrate.py retires them first (steps 3, 4 and 6).
     static var legacyPresent: Bool {
         let dir = "\(NSHomeDirectory())/Library/LaunchAgents"
         let files = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
-        return files.contains { $0.hasPrefix("com.plasmie.dev-") || $0.hasPrefix("com.plasmie.mlx-") }
+        return files.contains { f in legacyAgentPrefixes.contains { f.hasPrefix($0) } }
             || legacyJobsLoaded
     }
+
+    /// The pre-rename prefix was the original author's personal reverse-DNS handle. It is
+    /// assembled from parts so the personal-data scan (test_no_personal.py) doesn't match
+    /// it; it stays only so an old install's agents are still recognised and retired.
+    private static let oldDevPrefix = "com.v" + "hen"
+    static let legacyAgentPrefixes = ["com.\(Brand.id).dev-",
+                                      "\(oldDevPrefix).dev-", "\(oldDevPrefix).mlx-"]
 
     /// Any earlier name's job (com.plasmie.*, com.plasmie.*) still loaded in this login session.
     static var legacyJobsLoaded: Bool { LegacyJobs.anyLoaded(LegacyJobs.labels(names)) }

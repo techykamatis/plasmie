@@ -65,7 +65,7 @@ is merged or overwritten; all of it is tested on temp folders and fakes.
    Once it does, any other old folder is left alone and logged. The ingest lock lives in
    the data folder, so it moves with it.
 2. **Preferences:** once (marker `plasmie.migratedDefaults`), `plasmie.*` keys are copied from
-   `com.plasmie.app`, then `com.plasmie.legacy` (newer wins), never over a value already
+   `com.plasmie.app`, then Plasmie's earlier bundle id (newer wins), never over a value already
    set and never the per-build `plasmie.jobsRegisteredBuild`. Reset removes all old domains.
 3. **Jobs:** `plasmie-migrate.py` step 6 boots out `com.plasmie.*` (step 4 still covers
    `com.plasmie.*`); a step fails, to be retried, while a job stays loaded.

@@ -44,11 +44,11 @@ app/make-app.sh              # build app/build/Plasmie.app (downloads pinned Pyt
 app/make-release.sh          # quality gates, then app/build/Plasmie-<VERSION>.dmg + .sha256
 ```
 
-`install.sh` is the dev path. It runs the engine from the checkout and installs `com.plasmie.*`
-launchd agents. The shipped app instead registers its own `com.plasmie.*` jobs, which run the
-engine bundled inside the app. **Never run both sets**: ingest appends, so two sets would
-capture everything twice. The app refuses to register its jobs while any `com.plasmie.*` agent
-is loaded (`launchd/install.sh uninstall` removes them).
+`install.sh` is the dev path. It runs the engine from the checkout and installs
+`com.plasmie.dev-*` launchd agents in `~/Library/LaunchAgents`. The shipped app instead
+registers its own `com.plasmie.<job>` jobs (SMAppService), which run the engine bundled inside
+the app. **Never run both sets**: ingest appends, so two sets would capture everything twice.
+The app refuses to register its jobs while any dev-path agent is present (`launchd/install.sh uninstall` removes them).
 
 ### What first-run setup does
 
@@ -178,7 +178,7 @@ All connectors are **off on a fresh install** except local sources whose folder 
 | Local git | your own commits from local clones, one-liners and chores filtered out | `PLASMIE_GIT_ROOTS` (setup detects `~/code`, `~/Developer`, …); no network | `raw/git` |
 | Confluence | pages you created or edited | `JIRA_BASE_URL`, plus `JIRA_EMAIL` and `JIRA_API_TOKEN` (or `CONFLUENCE_*`) | `raw/confluence` |
 | Outlook | mail and calendar via Microsoft Graph | `MS_REFRESH_TOKEN` (often needs tenant-admin approval) | `raw/outlook` |
-| Claude Code / AgentCLI | local session logs | nothing | `raw/claude` |
+| Claude Code | local session logs | nothing | `raw/claude` |
 
 **Settings and secrets.** Secrets are generic passwords in the login Keychain: service
 `Plasmie`, account = the variable name. They are only ever accessed through `/usr/bin/security`,

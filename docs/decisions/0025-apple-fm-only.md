@@ -46,7 +46,7 @@ must work on a stock Apple-silicon Mac **without Xcode, Homebrew, Claude Code or
   skip it. Apple's `permissiveContentTransformations` guardrails for summarize/promote,
   which transform the user's own text.
 - **Removed:** `gen.sh`, `cc-local.sh`, `mlx-ctl.sh`, `mlx_serve.py`, the
-  `com.plasmie.mlx-server` agent (and `launchd/install.sh` now boots it out of old
+  `mlx-server` launchd agent (and `launchd/install.sh` now boots it out of old
   installs), `models/`, the Gemma download and `mlx-vlm`/`huggingface_hub` installs,
   Ask's Gemma fallback and `PLASMIE_ASK_BACKEND`. The engine is stdlib-only: setup
   pip-installs nothing.

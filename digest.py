@@ -4,7 +4,7 @@
 summarize.sh gathers today's raw activity ("===== <source> =====" blocks, each
 source's newest tail) and pipes it here. When the prompt fits the LIVE context
 window it is one call with the measured prompt (faithfulness rules cut
-unsupported claims from 14/15 to 3/15 digests, docs/fm-baseline.md). When it
+unsupported claims from 14/15 to 3/15 digests in an A/B). When it
 doesn't — always on a 4096-token Mac — it map-reduces (ADR 0025): each chunk
 condenses to a few bullets, then the bullet lists merge into the digest.
 

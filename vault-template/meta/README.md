@@ -1,6 +1,6 @@
 # How this vault works
 
-One vault, **work-only** (laptop — no personal finances, family, or health). **Obsidian** is the editor; a local loop in `~/.plasmie` keeps it current. The full contract for LLM sessions is `../CLAUDE.md`; this page is the human-sized version.
+One vault, **for your work notes** (keep personal finances, family and health out of it). **Obsidian** is the editor; a local loop in `~/.plasmie` keeps it current. The full contract for LLM sessions is `../CLAUDE.md`; this page is the human-sized version.
 
 ## Layers
 
@@ -43,7 +43,7 @@ timestamp: 2026-10-03T00:00:00Z
 
 ## Sensitive data
 
-Laptop. Keep personal docs out. Even for work data, don't store credentials, payroll, or PII — reference originals by path. Everything the loop captures is passed through `scrub.py` (tokens, keys, passwords; emails too on the promotion path), but scrubbing is a backstop, not permission. Never commit secrets.
+Keep personal finances, family and health out of this vault. Even for work data, don't store credentials, payroll, or PII — reference originals by path. Everything the loop captures is passed through `scrub.py` (tokens, keys, passwords; emails too on the promotion path), but scrubbing is a backstop, not permission. Never commit secrets.
 
 ## Automation
 

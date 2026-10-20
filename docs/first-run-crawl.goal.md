@@ -35,7 +35,6 @@ spec and the checklist for verifying a seeded install.
 |--------|----------------------------------|------------------|
 | Slack | `SLACK_USER_TOKEN` (`xoxp-…`) | ingest with the bootstrap window — `search.messages` already queries by date from `last_run - 86400`, so a wide `last_run` pulls the window |
 | Claude Code sessions | none (local `~/.claude/projects`) | ingest picks up every `*.jsonl` modified inside the window (capped per run) |
-| AgentCLI sessions | none (local SQLite, `PLASMIE_AGENTCLI_DB`) | ingest reads sessions inside the window into `raw/claude/` |
 | GitHub | `gh` CLI signed in; orgs in `PLASMIE_GITHUB_ORGS` | ingest covers the window; run `github-backfill.py` for full contributor history (`raw/github/<org>-<repo>/`) |
 | Local git | none (`PLASMIE_GIT_ROOTS`, default `~/code`) | ingest reads your own commits in the window from local clones |
 | Confluence | `JIRA_BASE_URL` / `JIRA_EMAIL` / `JIRA_API_TOKEN` (or `CONFLUENCE_*`) | run `confluence-backfill.py` — full mirror of `contributor = currentUser()` into `raw/confluence/<space>/` |
@@ -56,7 +55,7 @@ spec and the checklist for verifying a seeded install.
 2. **Look-back is built in.** `loop-ingest.py` handles this itself: on a genuine
    first run (no `.loop-state.json`) it seeds `last_run = NOW - PLASMIE_BOOTSTRAP_DAYS`
    days, so the first ingest treats the whole window as "new" for every source (Slack,
-   GitHub, local git, Confluence changes, Outlook, Claude + AgentCLI sessions). No manual state-file poke needed. (Claude sessions use the
+   GitHub, local git, Confluence changes, Outlook, Claude Code sessions). No manual state-file poke needed. (Claude sessions use the
    same window rather than "all local" — a full-history dump would exceed what one
    promote pass can distill; the loop compounds older context forward.)
 
@@ -85,7 +84,7 @@ spec and the checklist for verifying a seeded install.
    `## [ts] bootstrap · <n> sources crawled, <window> days, <k> notes promoted`.
 
 8. **Verify** (see below), then confirm the loops are loaded
-   (`launchctl print` the `com.plasmie.dev-*` agents).
+   (`launchctl print` the `com.plasmie.*` jobs (`com.plasmie.dev-*` on the dev path)).
 
 ## Constraints
 

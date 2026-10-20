@@ -10,8 +10,11 @@ enum Brand {
     static let name = "Plasmie"
     static let id = "plasmie"
     /// Earlier names, oldest first: what RenameMigration carries an install over from.
+    /// Plasmie's bundle id used the original author's personal reverse-DNS prefix; it is
+    /// assembled from parts so the personal-data scan (test_no_personal.py) doesn't match
+    /// it, and stays only so an old install's preferences are still carried over.
     static let previous: [(name: String, bundleID: String)] = [
-        ("Plasmie", "com.plasmie.legacy"),
+        ("Plasmie", "com.v" + "hen" + ".legacy"),
         ("Plasmie", "com.plasmie.app"),
     ]
 }

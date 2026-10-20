@@ -16,7 +16,6 @@ colors:
   source-git: "#F07A3E"
   source-confluence: "#3D7BE0"
   source-claude: "#D97757"
-  source-agentcli: "#2BB3A0"
   source-outlook: "#5B8DEF"
   brand-ground: "#FDF1F4"
   brand-ground-dark: "#1E1218"
@@ -71,7 +70,7 @@ Restrained: one body colour, one ink, everything else semantic and rare.
 - **Sparkle `#FFC94A`** only for success, held "!", the Ask spark and hourglass
   sand. **Sweat `#6EC5F0`** only for the failing state.
 - **Source dots** are the only multicolour moment (ingest): Slack aubergine,
-  GitHub graphite, git orange, Confluence blue, Claude clay, AgentCLI teal,
+  GitHub graphite, git orange, Confluence blue, Claude clay,
   Outlook blue.
 - App UI keeps macOS semantic colours (`.primary/.secondary`, green/orange/red
   verdicts); no hard-coded hex outside `PlasmieHues`.
@@ -171,10 +170,18 @@ The vault as the network Plasmie grew (ADR 0029). Plasmie (from *plasmodium*) is
 pink heart; everything around it is calm and neutral, so the mascot reads at a glance.
 `MapPalette.swift` holds every colour; `MapRender.swift` draws.
 
-- **Pink is Plasmie's alone.** No body/belly/blush anywhere else on the map. Ground
-  `mapGround` (`#F4F4F2` / `#17171A`) with a faint ink dot grid that drifts at half the
-  camera's speed. Notes are graphite (`mapNote` `#6B7285` / `#A3AABA`, >= 3:1 on the ground
-  even at their palest); decisions sparkle gold, gotchas sweat blue, patterns leaf green,
+- **Pink is Plasmie's alone.** No body/belly/blush anywhere else on the map.
+- **The ground is space** (`MapSpace.swift`): deep space in dark, a dusk sky in light; a
+  nebula wash, then three depths of soft bokeh that follow the camera at 5 / 13 / 28 % of its
+  movement (parallax). Among the pinpoint stars are other Plasmies far away: the real body
+  silhouettes (PlasmieShapes anchors, the glyph's knocked-out face from 11 pt) at 6–24 pt,
+  blurred, in lavender, periwinkle, peach, aqua, lilac, apricot and ice, never Plasmie's pink.
+  A future, hinted: stars first, Plasmies on a second look. Every layer is pre-rendered once
+  (seeded, the same sky every open) and only composited; a few pinpoints twinkle while the map
+  is awake. Reduce Motion: no parallax, no twinkle. `mapGround` (`#E9E6F0` / `#0D0E1A`) is
+  the sky's mean, what older notes fade toward.
+- Notes are graphite (`mapNote` `#6B7285` / `#A3AABA`, >= 3:1 on the backdrop even at their
+  palest, checked at the brightest bokeh in dark and the deepest lavender cloud in light); decisions sparkle gold, gotchas sweat blue, patterns leaf green,
   how-tos ink; maps (mocs) light graphite with a full-graphite ring. Older notes ease toward
   the ground (recency); fresh accents glow softly.
 - **Minute blobs, big mascot.** At zoom 1: notes 2–5 pt radius (sqrt of links), maps 5.5–6.5 pt

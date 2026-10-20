@@ -34,7 +34,7 @@ Lossless and idempotent; nothing is merged or overwritten.
    move is atomic). When both exist, both are left and the conflict is logged.
 2. **Preferences:** the bundle id changed, so the new defaults domain starts empty. Once
    (marker `plasmie.migratedDefaults`) every `plasmie.*` key is copied from
-   `com.plasmie.legacy`, never over a value already set and never
+   Plasmie's old defaults domain (its earlier bundle id, `Brand.previous`), never over a value already set and never
    `plasmie.jobsRegisteredBuild` (the new jobs must register afresh). Reset removes the old
    domain too, so it can't be copied back.
 3. **Jobs:** Plasmie registered `com.plasmie.*` through SMAppService under the old bundle id,

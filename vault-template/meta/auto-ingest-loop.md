@@ -1,7 +1,7 @@
 ---
 type: reference
 title: Auto-ingest loop
-description: The launchd pipeline that ingests Slack, GitHub, git, Confluence, Claude/AgentCLI sessions into raw/, digests them hourly, promotes durable notes into the flat wiki nightly, and maintains the vault.
+description: The launchd pipeline that ingests Slack, GitHub, git, Confluence, Claude Code sessions into raw/, digests them hourly, promotes durable notes into the flat wiki nightly, and maintains the vault.
 tags: [meta, automation]
 timestamp: 2026-10-03T00:00:00Z
 ---
@@ -12,18 +12,18 @@ A set of macOS LaunchAgents keeps this vault current with no Claude session open
 
 | Agent | Runs | Does |
 |-------|------|------|
-| `com.plasmie.dev-ingest` | hourly :07 | `run-ingest.sh` → `loop-ingest.py` appends scrubbed activity to `raw/<source>/YYYY-MM-DD.md`, one line to `log.md`; then `qmd update` + `qmd embed` so it's searchable |
-| `com.plasmie.dev-summarize` | hourly :15 | `summarize.sh` condenses today's `raw/{slack,claude,outlook}` into 4-8 bullets → `meta/digests/YYYY-MM-DD.md` (Apple on-device model; map-reduce when the day doesn't fit its windowk; skipped if the input is unchanged) |
-| `com.plasmie.dev-improve` | hourly :17 | `plasmie-improve.py`: retag, regenerate `wiki/mocs/` + `index.md`, archive resolved drafts, prune raw past retention, close coverage gaps, add `## Related` links, propose duplicate merges, retire stale event notes |
-| `com.plasmie.dev-promote` | nightly 02:30 | `promote.sh` (on-device map-reduce drafts) → `dedupe.py` → `promote-apply.py --auto` → `reindex.py` |
-| `plasmie-snapshot.sh` | daily 00:47 | commits the vault to its own git repo (pushes only if a remote exists); agent `com.plasmie.dev-snapshot` |
+| `com.plasmie.ingest` | hourly :07 | `run-ingest.sh` → `loop-ingest.py` appends scrubbed activity to `raw/<source>/YYYY-MM-DD.md`, one line to `log.md`; then `qmd update` + `qmd embed` so it's searchable |
+| `com.plasmie.summarize` | hourly :15 | `summarize.sh` condenses today's `raw/{slack,claude,outlook}` into 4-8 bullets → `meta/digests/YYYY-MM-DD.md` (Apple on-device model; map-reduce when the day doesn't fit its windowk; skipped if the input is unchanged) |
+| `com.plasmie.improve` | hourly :17 | `plasmie-improve.py`: retag, regenerate `wiki/mocs/` + `index.md`, archive resolved drafts, prune raw past retention, close coverage gaps, add `## Related` links, propose duplicate merges, retire stale event notes |
+| `com.plasmie.promote` | nightly 02:30 | `promote.sh` (on-device map-reduce drafts) → `dedupe.py` → `promote-apply.py --auto` → `reindex.py` |
+| `plasmie-snapshot.sh` | daily 00:47 | commits the vault to its own git repo (pushes only if a remote exists); job `com.plasmie.snapshot` |
 
 ## Sources
 
 | Source | Lands in | Notes |
 |--------|----------|-------|
 | Slack | `raw/slack/` | user token; your sent + to-you messages via `search.messages` |
-| Claude Code + AgentCLI sessions | `raw/claude/` | local `~/.claude/projects/**/*.jsonl` and the AgentCLI SQLite DB; no network |
+| Claude Code sessions | `raw/claude/` | local `~/.claude/projects/**/*.jsonl`; no network |
 | GitHub | `raw/github/` | `gh` CLI, optional orgs from `PLASMIE_GITHUB_ORGS` (blank = all your activity); per-repo backfill mirror in `raw/github/<repo>/` |
 | Local git | `raw/git/` | your own commits from clones under `PLASMIE_GIT_ROOTS` (folders you choose in Settings); low-signal commits are dropped |
 | Confluence | `raw/confluence/` | backfill mirror; needs `JIRA_*` credentials (run `confluence-backfill.py`) |
@@ -52,8 +52,8 @@ Safe by construction: paths confined to the vault, bodies scrubbed (emails too),
 
 ## Operate it
 
-- **Fire ingest now:** `launchctl kickstart -p gui/$(id -u)/com.plasmie.dev-ingest` (same for summarize/improve/promote).
-- **Stop / start:** `launchctl bootout gui/$(id -u)/com.plasmie.dev-ingest` · `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.plasmie.dev-ingest.plist` (or `launchd/install.sh` to refresh all).
+- **Fire ingest now:** `launchctl kickstart -p gui/$(id -u)/com.plasmie.ingest` (same for summarize/improve/promote/snapshot; on the dev path the labels are `com.plasmie.dev-<job>`).
+- **Stop / start:** switch Plasmie off or on in System Settings › General › Login Items. On the dev path: `launchctl bootout gui/$(id -u)/com.plasmie.dev-ingest` · `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.plasmie.dev-ingest.plist` (or `launchd/install.sh` to refresh all).
 - **Look back N hours:** `.loop-state.json` holds per-source watermarks: `{"last_run": <epoch>, "sources": {"slack": <epoch>, "confluence": ..., "github": ..., "outlook": ..., "claude": ..., "git": ...}}`. A source that errors keeps its old watermark so the next run re-covers the gap. To re-read the last N hours for every source:
   `python3 -c "import json,time,os;t=time.time()-3600*N;p=os.path.expanduser('~/.plasmie/.loop-state.json');json.dump({'last_run':t,'sources':{s:t for s in ['slack','confluence','github','outlook','claude','git']}},open(p,'w'))"` then kickstart ingest. **Ingest appends, so re-reading duplicates already-captured blocks** — only look back over a window you know was missed. A bare legacy `{"last_run": ...}` also works (it seeds every source). Missing file = first run: last `PLASMIE_BOOTSTRAP_DAYS` (30) days.
 - **Bounded backfill without touching the watermark:** `PLASMIE_SINCE=2026-10-01T09:00 PLASMIE_UNTIL=2026-10-01T18:00 ~/.plasmie/run-ingest.sh` (raw files are dated by the window end).

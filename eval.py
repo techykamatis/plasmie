@@ -10,9 +10,9 @@ the same way ask.py retrieves — and prints a comparison table.
   python3 eval.py --k 6          # different cutoff
   python3 eval.py --only query   # one mode
 
-ponytail: gold set is a plain list of (question, expected-basename) — no
-fixtures, no framework. Match by path.endswith(expected). Add cases by
-appending tuples.
+ponytail: gold set is a plain TSV of (question, expected-basename) kept in
+the data folder (see GOLD_FILE) — no fixtures, no framework. Match by
+path.endswith(expected). Add cases by appending lines.
 """
 import json
 import os
@@ -40,11 +40,34 @@ def qmd_retriever(verb):
             return []
     return f
 
-# (question a user would type, the concept note that answers it)
-GOLD = [
+# (question a user would type, the concept note that answers it). The gold set is
+# about YOUR vault, so it lives with your data, not in the repo: one case per line,
+# "question<TAB>expected-basename.md", '#' comments allowed. PLASMIE_EVAL_GOLD overrides
+# the path. The two examples below only show the shape; they match nothing.
+GOLD_FILE = os.path.expanduser(os.environ.get("PLASMIE_EVAL_GOLD")
+                               or os.path.join(paths.DATA_DIR, "eval-gold.tsv"))
+EXAMPLE = [
     ("why can't I shrink my database disk?", "db-cannot-shrink-storage-in-place.md"),
     ("which hostname do I use for the metrics API?", "metrics-api-host-not-app-host.md"),
 ]
+
+
+def load_gold(path=GOLD_FILE):
+    """[(question, expected-basename)] from a TSV file; [] when it doesn't exist."""
+    try:
+        lines = open(path, encoding="utf-8").read().splitlines()
+    except OSError:
+        return []
+    out = []
+    for ln in lines:
+        if not ln.strip() or ln.lstrip().startswith("#") or "\t" not in ln:
+            continue
+        q, want = ln.split("\t", 1)
+        out.append((q.strip(), want.strip()))
+    return out
+
+
+GOLD = load_gold()
 
 
 def score(retriever, k):
@@ -78,6 +101,10 @@ if __name__ == "__main__":
     if "--only" in a:
         only = a[a.index("--only") + 1]
 
+    if not GOLD:
+        print(f"no gold set at {GOLD_FILE}. Write one line per case:\n"
+              + "\n".join(f"  {q}\t{w}" for q, w in EXAMPLE), file=sys.stderr)
+        sys.exit(2)
     print(f"gold cases: {len(GOLD)}  k={k}\n")
     for name in ("search", "vsearch", "query"):
         if only and name != only:

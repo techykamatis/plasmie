@@ -97,7 +97,6 @@ _SRC_PATTERNS = {
     "outlook": re.compile(r"outlook (\d+) mail"),
     # \bgit followed by a space cannot match inside "github 2 item(s)".
     "git": re.compile(r"\bgit (\d+) commit"),
-    "agentcli": re.compile(r"agentcli (\d+) session"),
 }
 
 
@@ -129,7 +128,7 @@ source_ages = _source_ages(feed, datetime.datetime.now())
 # log line (goal item 7).
 # feed.log marks failures as CODE-ERR (loop-ingest.py / run-ingest.sh)
 SOURCE_NAMES = {"SLACK": "Slack", "GH": "GitHub", "CONF": "Confluence", "MS": "Outlook",
-                "GIT": "your git folders", "AGENTCLI": "AgentCLI", "QMD": "vault search",
+                "GIT": "your git folders", "QMD": "vault search",
                 "TRUNC": "a source (too much at once; the rest comes next run)"}
 
 

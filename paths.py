@@ -40,7 +40,9 @@ os.makedirs(LOG_DIR, exist_ok=True)
 CONFIG = os.path.join(DATA_DIR, "config.env")
 
 # Every connector the menu-bar app shows a card (and an On/Off switch) for.
-SOURCES = ("slack", "github", "git", "confluence", "outlook", "claude", "agentcli")
+SOURCES = ("slack", "github", "git", "confluence", "outlook", "claude")
+# Ids that are no longer connectors (an old config.env may still list them) are
+# simply ignored: disabled_sources() intersects with SOURCES.
 
 
 def read_config(path=CONFIG):
@@ -184,7 +186,7 @@ def source_enabled(name, config=CONFIG):
 
 
 # connector -> its dated raw/ activity dir (confluence is a mirror, not dated dumps)
-_ACTIVITY = (("slack", "slack"), ("claude", "claude"), ("agentcli", "claude"),
+_ACTIVITY = (("slack", "slack"), ("claude", "claude"),
              ("outlook", "outlook"), ("github", "github"), ("git", "git"))
 
 

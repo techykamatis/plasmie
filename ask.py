@@ -11,7 +11,7 @@ and shows the matching notes, so you still get an answer.
 
 The model is never asked to cite: the UI shows the real retrieved Sources list
 (printed from retrieval, not from model output), and a model-written citation
-was the one thing FM fabricated in the A/B (docs/fm-baseline.md).
+was the one thing FM fabricated in the A/B (ADR 0004).
 
 qmd owns retrieval (see the vault's CLAUDE.md); ask.py owns the private
 synthesis and the promote/improve loops that depend on it. Retrieval

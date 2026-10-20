@@ -127,8 +127,8 @@ def session_project(dirname, home, roots=()):
     """A readable project label for a Claude Code session folder.
 
     Claude Code names the folder after the session's working directory with every
-    non-alphanumeric character turned into "-" (/Users/me/code/app ->
-    -Users-me-code-app). A repo under one of the git roots is labelled by its own
+    non-alphanumeric character turned into "-" (/Users/example/code/app ->
+    -Users-example-code-app). A repo under one of the git roots is labelled by its own
     name ("app"); anything else under home reads "home-..." ("home" for home itself).
     """
     def slug(p):

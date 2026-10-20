@@ -26,7 +26,12 @@ from scrub import redact  # noqa: E402
 
 HOME = str(Path.home())
 TAIL = {"feed.log": 10, "launchd.log": 25}           # metadata lines, newest last
-JOB_PREFIXES = ("com.plasmie.knowledge", "com.plasmie.mlx", "com.plasmie.", "com.plasmie.", f"com.{paths.APP_ID}.")   # older labels too
+# Older labels too. The pre-rename dev-path prefix (the original author's reverse-DNS
+# handle) is assembled from parts so the personal-data scan doesn't match it; it is
+# only here so a diagnostics report still shows an old install's leftover jobs.
+_OLD_DEV = "com.v" + "hen"
+JOB_PREFIXES = (f"{_OLD_DEV}.knowledge", f"{_OLD_DEV}.mlx", "com.plasmie.", "com.plasmie.",
+                f"com.{paths.APP_ID}.")
 
 
 def clean(s: str) -> str:

@@ -48,7 +48,7 @@ if [ -f "$DIGEST" ] && [ -f "$STAMP" ] && [ "$hash" = "$(cat "$STAMP" 2>/dev/nul
 fi
 
 # Generation lives in digest.py: Apple's on-device model, the measured
-# faithfulness prompt (docs/fm-baseline.md), one call when the day fits the live
+# faithfulness prompt (see digest.py), one call when the day fits the live
 # context window and map-reduce when it doesn't. It defers (rc 3) while the
 # machine is busy or hot, like every background job.
 model="Apple on-device"

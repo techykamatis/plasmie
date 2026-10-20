@@ -55,7 +55,6 @@ if [ -f "$PLASMIE_HOME/.loop-state.json" ]; then
 elif ! grep -q '^PLASMIE_DISABLED_SOURCES=' "$PLASMIE_CONFIG" 2>/dev/null; then
   off="slack,github,confluence,outlook"
   [ -d "$HOME/.claude/projects" ] || off="$off,claude"
-  [ -f "${PLASMIE_AGENTCLI_DB:-$HOME/.agentcli/cli/db/db.sqlite}" ] || off="$off,agentcli"
   roots=""
   if xcode-select -p >/dev/null 2>&1; then     # no developer tools = /usr/bin/git is a stub
     for d in code Developer src Projects dev repos git workspace GitHub Documents/GitHub; do

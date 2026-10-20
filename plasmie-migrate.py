@@ -43,8 +43,9 @@ def m2_seed_watermarks_from_vault() -> None:
 
 
 def m3_retire_legacy_jobs() -> None:
-    """The app owns the background jobs now (SMAppService). The old
-    com.plasmie.* agents in ~/Library/LaunchAgents must go first: both sets at once would
+    """The app owns the background jobs now (SMAppService). The dev-path launchd agents
+    in ~/Library/LaunchAgents (com.plasmie.dev-*, and the same jobs under their
+    pre-rename labels, which install.sh retires) must go first: both sets at once would
     run ingest twice. The app registers the new ones only once these are gone."""
     _sh("launchd/install.sh", "uninstall")
 
@@ -113,7 +114,7 @@ def retire_old_jobs() -> None:
 STEPS = [
     (1, "move data out of ~/.plasmie", m1_move_out_of_dotfolder),
     (2, "seed ingest watermarks from the vault", m2_seed_watermarks_from_vault),
-    (3, "retire the old com.legacy background jobs", m3_retire_legacy_jobs),
+    (3, "retire the dev-path launchd background jobs", m3_retire_legacy_jobs),
     (4, "retire Plasmie's com.plasmie background jobs", m4_retire_plasmie_jobs),
     (5, "copy Plasmie sign-ins in the Keychain", m5_adopt_plasmie_signins),
     (6, "retire Plasmie's com.plasmie background jobs", m6_retire_plasmie_jobs),

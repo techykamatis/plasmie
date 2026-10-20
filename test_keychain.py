@@ -244,7 +244,7 @@ def test_fresh_install_starts_with_every_connector_off(tmp_path):
 def test_fresh_install_turns_on_local_sources_whose_folder_exists(tmp_path):
     cfg, _ = _setup(tmp_path, claude=True, repo=True)
     off = _off(cfg)
-    assert {"slack", "github", "confluence", "outlook", "agentcli"} <= off and "claude" not in off
+    assert {"slack", "github", "confluence", "outlook"} <= off and "claude" not in off
     has_tools = subprocess.run(["xcode-select", "-p"], capture_output=True).returncode == 0
     if has_tools:                                          # git is a stub without them
         assert "git" not in off and paths.read_config(str(cfg))["PLASMIE_GIT_ROOTS"] == "~/code"

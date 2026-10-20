@@ -8,7 +8,7 @@ cross-linked; the human curates sources and asks questions.
 
 | Layer | Path | Who owns it | Rule |
 |-------|------|-------------|------|
-| **Raw sources** | `raw/` | the hourly loop | **Transient staging.** The loop appends; you never hand-edit it. One subdir per source: `slack/ claude/ (Claude Code + AgentCLI sessions) outlook/ (optional) github/ git/ (local commits) confluence/ inbox/`. Dated activity dumps (`YYYY-MM-DD.md` in `slack/ claude/ outlook/ github/ git/`) are **pruned after ~14 days** — don't rely on old raw being present. `github/<repo>/` (backfill mirror) and `confluence/` (backfill mirrors) are rebuilt on demand, not pruned; `inbox/` is manual drops (`plasmie-capture.sh`). Durable knowledge = promoted wiki notes; durable record = `log.md`. |
+| **Raw sources** | `raw/` | the hourly loop | **Transient staging.** The loop appends; you never hand-edit it. One subdir per source: `slack/ claude/ (Claude Code sessions) outlook/ (optional) github/ git/ (local commits) confluence/ inbox/`. Dated activity dumps (`YYYY-MM-DD.md` in `slack/ claude/ outlook/ github/ git/`) are **pruned after ~14 days** — don't rely on old raw being present. `github/<repo>/` (backfill mirror) and `confluence/` (backfill mirrors) are rebuilt on demand, not pruned; `inbox/` is manual drops (`plasmie-capture.sh`). Durable knowledge = promoted wiki notes; durable record = `log.md`. |
 | **Wiki** | `wiki/` | **you** (the LLM) | Curated, synthesized pages, **flat**: notes sit directly in `wiki/` (no subfolders — structure is `tags` plus generated maps). `wiki/mocs/` holds generated per-tag maps of content (never hand-edit); `wiki/attachments/` holds the PDFs/HTML/SVG that notes refer to. Create, merge, and cross-link notes. This is the answer layer — `ask` retrieves only from here. |
 | **Meta** | `meta/` | tooling | Templates, promotion drafts (`promotion-drafts/`), digests, `coverage-gaps.md`, `improvement-loop.md`, `usage.tsv`. Not knowledge. |
 
@@ -76,7 +76,8 @@ inbound links.
 - Don't hand-edit or hand-delete `raw/` — the maintenance loop owns it (appends,
   then prunes on retention). What actually happened is preserved in `log.md`, not
   in old raw files. So **promote durable facts into `wiki/` before they age out**.
-- Work content only (laptop): no personal finances, family, or health.
+- Work notes only: keep personal finances, family and health out of this vault, and
+  never store credentials or PII (reference originals by path instead).
 - Don't hand-edit `index.md` / `log.md`; change the generators instead.
 
 ## Goal context

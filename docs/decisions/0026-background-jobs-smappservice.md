@@ -11,8 +11,9 @@ General › Login Items as Plasmie, survive a restart, run the bundled engine, a
 the app is deleted. Reset unregisters them.
 - A plist inside a bundle can't name a log path in the user's home, so jobs pass
   `PLASMIE_JOB_LOG` and `plasmie-env.sh` redirects their output to `~/Library/Logs/Plasmie`.
-- **Never two sets at once.** Ingest appends (it doesn't de-duplicate), so the old
-  `com.plasmie.*` agents from `~/Library/LaunchAgents` are retired by migration step 3 and
+- **Never two sets at once.** Ingest appends (it doesn't de-duplicate), so the dev-path
+  agents in `~/Library/LaunchAgents` (now `com.plasmie.dev-*`; older installs used a
+  pre-rename prefix, which `launchd/install.sh` also retires) are retired by migration step 3 and
   the app registers only once none remain; `run-ingest.sh` also takes a lock.
 - If macOS holds the jobs for approval, the island and window say so with a button to
   Login Items. Open-at-login is separate and only ever the user's choice.

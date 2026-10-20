@@ -295,7 +295,7 @@ def test_ingest_with_every_source_off_fetches_and_writes_nothing(tmp_path):
     assert r.returncode == 0, r.stderr
     summary = next(ln for ln in r.stdout.splitlines() if ln.startswith("SUMMARY: "))
     assert "-ERR" not in summary and "raw 0 file(s)" in summary
-    assert "off agentcli,claude,confluence,git,github,outlook,slack" in summary
+    assert "off claude,confluence,git,github,outlook,slack" in summary
     assert not (tmp_path / "raw").exists()
 
 
@@ -305,19 +305,26 @@ def test_activity_dirs_follow_the_switches(tmp_path, monkeypatch):
     monkeypatch.delenv("PLASMIE_DISABLED_SOURCES", raising=False)
     f = _cfg(tmp_path, "")
     assert paths.activity_dirs(f) == ["slack", "claude", "outlook", "github", "git"]
-    # claude + agentcli share raw/claude: it drops only when both are Off
-    assert "claude" in paths.activity_dirs(_cfg(tmp_path, 'PLASMIE_DISABLED_SOURCES="claude"\n'))
-    assert paths.activity_dirs(_cfg(tmp_path, 'PLASMIE_DISABLED_SOURCES="claude,agentcli,github"\n')) == \
+    assert paths.activity_dirs(_cfg(tmp_path, 'PLASMIE_DISABLED_SOURCES="claude,github"\n')) == \
         ["slack", "outlook", "git"]
 
 
+def test_unknown_source_ids_in_an_old_config_are_ignored(tmp_path, monkeypatch):
+    """A connector that was removed may still be listed Off in an existing config.env.
+    It must not crash anything or count as a source; the known ids still apply."""
+    monkeypatch.delenv("PLASMIE_DISABLED_SOURCES", raising=False)
+    f = _cfg(tmp_path, 'PLASMIE_DISABLED_SOURCES="retired-source,github"\n')
+    assert paths.disabled_sources(f) == {"github"}
+    assert paths.activity_dirs(f) == ["slack", "claude", "outlook", "git"]
+
+
 def test_session_project_labels_come_from_home_and_git_roots_not_a_hardcoded_user():
-    home, roots = "/Users/jane.doe", ["/Users/jane.doe/code"]
+    home, roots = "/Users/example.user", ["/Users/example.user/code"]
     sp = ingest_window.session_project
-    assert sp("-Users-jane-doe-code-my-app", home, roots) == "my-app"
-    assert sp("-Users-jane-doe", home, roots) == "home"
-    assert sp("-Users-jane-doe-Documents-notes", home, roots) == "home-Documents-notes"
-    assert sp("-Users-jane-doe-code-app", home, []) == "home-code-app"   # no roots chosen
+    assert sp("-Users-example-user-code-my-app", home, roots) == "my-app"
+    assert sp("-Users-example-user", home, roots) == "home"
+    assert sp("-Users-example-user-Documents-notes", home, roots) == "home-Documents-notes"
+    assert sp("-Users-example-user-code-app", home, []) == "home-code-app"   # no roots chosen
 
 
 # --- no network is not a broken connector (the 2026-10-05 07:07 run after wake) -------------

@@ -292,7 +292,7 @@ def test_safe_tag_rejects_traversal_and_accepts_normal_tags():
     spec.loader.exec_module(ri)
     for bad in ("../x", "../../etc/passwd", "/abs", "a/b", "", "." * 3, "x" * 65):
         assert not ri.safe_tag(bad), bad
-    for good in ("orbit", "agent-cli", "how-to", "aws", "v1.2"):
+    for good in ("sql", "vs-code", "how-to", "aws", "v1.2"):
         assert ri.safe_tag(good), good
 
 

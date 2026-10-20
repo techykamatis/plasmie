@@ -11,23 +11,24 @@ pipeline. No web surface; brand sheets are published as standalone HTML artifact
 
 ## Users
 
-One person: the developer who built it (an engineer at Contoso), on a MacBook. Confirmed 2026-10-03: the tool and its brand are **just for him** — no
-colleagues, no public release. It runs all day in the menu bar; he glances at it
-between tasks and summons Ask (⌃⌥⌘K) mid-work.
+One person per install: a developer who wants a private memory of their own work, on
+their own Mac. Each install serves exactly one person and their accounts — there is no
+team, sharing or server side. It runs all day in the menu bar; they glance at it
+between tasks and summon Ask (⌃⌥⌘K) mid-work.
 
 ## Product Purpose
 
 Turns a day's scattered work activity into a durable, searchable memory without
 sending it anywhere. Hourly it captures Slack, GitHub, local git commits,
-Confluence, Outlook (never connected), Claude Code and AgentCLI sessions; on-device
+Confluence, Outlook and Claude Code sessions (each an opt-in connector); on-device
 models condense it; nightly it promotes durable knowledge into a curated Obsidian
-wiki; Ask answers questions over that wiki. Success = he can ask "what did I do /
+wiki; Ask answers questions over that wiki. Success = they can ask "what did I do /
 decide / learn about X" and get a grounded answer, and the loop runs unattended.
 
 ## Positioning
 
 Fully local and personal: summarisation and answers run on-device (Apple
-Foundation Models, the only backend since ADR 0025); the only network calls read his own
+Foundation Models, the only backend since ADR 0025); the only network calls read the user's own
 accounts. Unlike cloud agents (OpenAI dots, Meta Muse, Grok Bot) it never uploads
 the work record — it is a private memory, not a cloud coworker.
 
@@ -44,7 +45,8 @@ the work record — it is a private memory, not a cloud coworker.
 - Pipeline states worth expressing: idle/healthy, ingesting, summarising,
   promoting, answering (Ask), held items need review, a connector failing,
   machine busy (jobs defer), quiet (no new data), off.
-- Work-only content (laptop); no personal data in the vault.
+- Work notes only: personal finances, family and health stay out of the vault, and
+  credentials or PII are never stored in it.
 - Name is free to change (confirmed 2026-10-03). "Plasmie" may survive as a
   descriptor. Existing asset: `kLogo` loop-arrow glyph that spins while jobs run.
 

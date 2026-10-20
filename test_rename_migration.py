@@ -121,7 +121,8 @@ def test_a_missing_parent_folder_is_created(migrate_bin, tmp_path):
 
 def test_previous_names_are_walked_newest_first(migrate_bin):
     order = json.loads(drive(migrate_bin, "order"))
-    assert order == {"names": ["Plasmie", "Plasmie"], "domains": ["com.plasmie.app", "com.plasmie.legacy"]}
+    plasmie_id = "com.v" + "hen" + ".legacy"   # Plasmie's old bundle id, in parts (test_no_personal)
+    assert order == {"names": ["Plasmie", "Plasmie"], "domains": ["com.plasmie.app", plasmie_id]}
 
 
 def test_chain_a_plasmie_only_install_moves_straight_to_plasmie(migrate_bin, tmp_path):

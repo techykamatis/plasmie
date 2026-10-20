@@ -5,7 +5,7 @@
 
 ## Context
 The tool turns one person's work activity (Slack, GitHub, local git, Confluence,
-Claude Code / AgentCLI sessions) into durable, searchable memory on a laptop.
+Claude Code sessions) into durable, searchable memory on their own Mac.
 The record contains DMs, code, and incident details: it must not leave the machine.
 
 ## Decision

@@ -40,8 +40,8 @@ def test_stderr_never_carries_env_lines_or_assignments(tmp_path):
 def test_report_hides_any_user_path(monkeypatch):
     d = load()
     for name in ("system", "connectors", "jobs", "config_keys", "audit_tail"):
-        monkeypatch.setattr(d, name, lambda *a, **k: ["/Users/alice/secret-project"])
+        monkeypatch.setattr(d, name, lambda *a, **k: ["/Users/example/secret-project"])
     monkeypatch.setattr(d, "apple_intelligence", lambda: "available=True")
-    monkeypatch.setattr(d, "tail", lambda *a, **k: ["/Users/bob/notes.md"])
+    monkeypatch.setattr(d, "tail", lambda *a, **k: ["/Users/example2/notes.md"])
     text = d.report()
     assert "/Users/" not in text and "No notes, messages or secrets" in text

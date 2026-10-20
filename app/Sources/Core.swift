@@ -189,6 +189,10 @@ enum PlasmiePaths {
     static var python: String {
         let v = "\(home)/venv/bin/python3"
         if FileManager.default.isExecutableFile(atPath: v) { return v }
+        // Run from the DMG/translocated, the bundled copy is still quarantined and would pop
+        // "python3.12 Not Opened": hand back the (missing) venv so the run just fails quietly
+        // until the app has moved itself to Applications (Quarantine.swift).
+        if Quarantine.mustMove { return v }
         let bundled = (Bundle.main.resourcePath ?? "") + "/python/bin/python3"
         return FileManager.default.isExecutableFile(atPath: bundled) ? bundled : "/usr/bin/python3"
     }

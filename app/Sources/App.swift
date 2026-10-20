@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             else { MapController.shared.show(.shared) }
             return
         }
+        // Run from the DMG or a translocated copy: offer to move to Applications and reopen.
+        if Quarantine.offerMoveIfNeeded() { return }
         // Data migrations (versioned, idempotent): an upgrade over an older install brings the
         // data along before anything reads it. Cheap when there's nothing to do.
         // (The Plasmie/Plasmie -> Plasmie folder/preferences move already ran, in PlasmieApp.init.)
@@ -59,6 +61,9 @@ struct PlasmieApp: App {
     init() {
         // Plasmie/Plasmie -> Plasmie, first: Model.shared reads the data folder and preferences as soon
         // as it exists, which is before applicationDidFinishLaunching.
+        // Before anything spawns the bundled Python: a downloaded copy's nested programs are
+        // still quarantined after the app itself was approved (Quarantine.swift).
+        Quarantine.clearOwnBundle()
         if !LaunchMode.mapOnly { RenameMigration.run(home: PlasmiePaths.home, logs: PlasmiePaths.logs) }
         _m = ObservedObject(wrappedValue: Model.shared)
     }

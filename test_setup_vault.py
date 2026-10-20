@@ -18,14 +18,14 @@ pytestmark = pytest.mark.skipif(not (HERE / "app/build/Plasmie.app/Contents/MacO
 BUNDLED_PY = HERE / "app/build/Plasmie.app/Contents/Resources/python"
 
 
-def setup_until_vault(tmp_path, vault: Path, venv_python: str = ""):
+def setup_until_vault(tmp_path, vault: Path, venv_python: str = "", bundled: Path = BUNDLED_PY):
     res = tmp_path / "Resources"
     res.mkdir()
     (res / "backend").symlink_to(HERE)                     # engine = this checkout
     env = {**os.environ, "PLASMIE_HOME": str(tmp_path / "home"), "PLASMIE_LOGS": str(tmp_path / "logs"),
            "PLASMIE_SETUP_UNTIL": "vault", "PLASMIE_OLD_HOME": str(tmp_path / "no-old"),
            "PLASMIE_FM_BIN": str(HERE / "app/build/Plasmie.app/Contents/MacOS/plasmie-fm")}
-    (res / "python").symlink_to(BUNDLED_PY)             # setup copies this into the venv
+    (res / "python").symlink_to(bundled)                # setup copies this into the venv
     if venv_python:                                      # a runtime left by an older install
         py = tmp_path / "home" / "venv" / "bin"
         py.mkdir(parents=True)
@@ -44,7 +44,7 @@ def plasmie_vault(path: Path) -> Path:
 
 
 def test_existing_plasmie_vault_is_adopted_untouched(tmp_path):
-    v = plasmie_vault(tmp_path / "Vhen's notes")              # apostrophe on purpose
+    v = plasmie_vault(tmp_path / "Alex's notes")              # apostrophe on purpose
     before = sorted(p.relative_to(v).as_posix() for p in v.rglob("*"))
     r = setup_until_vault(tmp_path, v)
     assert r.returncode == 0 and "DONE" in r.stdout, r.stdout + r.stderr
@@ -97,3 +97,17 @@ def test_setup_records_native_tools_never_intel(tmp_path):
     assert paths.runs_natively(cfg["PLASMIE_GIT_BIN"])
     if cfg.get("PLASMIE_GH_BIN"):
         assert paths.runs_natively(cfg["PLASMIE_GH_BIN"])
+
+
+def test_a_downloaded_runtime_is_copied_without_its_quarantine_flag(tmp_path):
+    """A downloaded app's runtime carries com.apple.quarantine, and cp keeps it: a flagged
+    venv python is killed by Gatekeeper ("python3.12 Not Opened") when the app spawns it."""
+    import shutil
+    res_py = tmp_path / "dl-python"
+    shutil.copytree(BUNDLED_PY, res_py, symlinks=True)
+    flag = "0083;6a000000;Safari;"
+    subprocess.run(["xattr", "-rw", "com.apple.quarantine", flag, str(res_py)], check=True)
+    r = setup_until_vault(tmp_path, tmp_path / "vault", bundled=res_py)
+    assert r.returncode == 0 and "DONE" in r.stdout, r.stdout + r.stderr
+    left = subprocess.run(["xattr", "-lr", str(tmp_path / "home" / "venv")], capture_output=True, text=True).stdout
+    assert "com.apple.quarantine" not in left

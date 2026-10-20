@@ -94,6 +94,8 @@ PYTGZ="$CACHE/python-${PYVER}-${ARCH}.tar.gz"
 [ -f "$PYTGZ" ] || { say "downloading standalone Python…"; curl -sL "$PYURL" -o "$PYTGZ"; }
 mkdir -p "$RES/pytmp" && tar xzf "$PYTGZ" -C "$RES/pytmp"
 mv "$RES/pytmp/python" "$RES/python" && rm -rf "$RES/pytmp"
+# setup reads the version from here instead of running the bundled binary (app-setup.sh step 2)
+printf '%s\n' "$PYVER" > "$RES/python/.plasmie-pyver"
 
 # standalone Node 22 LTS for vault search (qmd is a Node CLI): pinned, checksum-verified
 # against nodejs.org's SHASUMS256, cached. Setup installs qmd with it into
@@ -144,6 +146,22 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 
-codesign --force --deep -s - "$APP"
+# Pre-build every .pyc before signing. Otherwise the first run of the bundled Python writes
+# __pycache__ files into the signed bundle and breaks its seal. unchecked-hash: Python never
+# re-validates or rewrites them, even if a copy changes the source files' timestamps.
+PYTHONDONTWRITEBYTECODE= "$RES/python/bin/python3" -m compileall -q -j0 \
+  --invalidation-mode unchecked-hash "$RES" >/dev/null 2>&1 || true   # a few stdlib test files never compile
+
+# Ad-hoc sign inside-out (--deep skips Contents/Resources): every nested Mach-O, then the
+# bundle, so `codesign --verify --deep --strict` vouches for all of it. Node keeps its own
+# Developer ID signature. Gatekeeper still judges an ad-hoc app once ("Open Anyway"); the
+# quarantine flag a download puts on the nested programs is cleared by the app itself at
+# launch (Quarantine.swift), so that is the only prompt.
+find "$APP/Contents/MacOS" "$RES/python" -type f ! -name "$APP_NAME" -print0 \
+  | while IFS= read -r -d '' f; do
+      if file -b "$f" | grep -q '^Mach-O'; then codesign --force -s - "$f"; fi
+    done
+codesign --force -s - "$APP"
+codesign --verify --deep --strict "$APP" || { echo "codesign verify failed"; exit 1; }
 echo "built: $APP"
 codesign -dv "$APP" 2>&1 | grep -E "Identifier|Signature" || true

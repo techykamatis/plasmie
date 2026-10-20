@@ -94,9 +94,12 @@ check_all() {
   else chk clt missing recommended "Command Line Tools" "Without them there's no vault history (git). Setup will offer to install them."; fi
 }
 # The native (Apple-silicon) copy of a tool, "" if none: Intel copies are skipped
-# (paths.native_tool). Runs on the bundled Python, so it works before the venv exists.
+# (paths.native_tool). Runs on the venv (never quarantined, see step 2); the bundled
+# runtime only if the venv isn't there yet.
 native_tool() {
-  "$RES/python/bin/python3" -c 'import sys; sys.path.insert(0, sys.argv[1]); import paths; print(paths.native_tool(sys.argv[2]))' \
+  local py="$PY"; [ -x "$py" ] || py="$RES/python/bin/python3"
+  xattr -p com.apple.quarantine "$py" >/dev/null 2>&1 && return 0   # would prompt: skip, not block
+  "$py" -c 'import sys; sys.path.insert(0, sys.argv[1]); import paths; print(paths.native_tool(sys.argv[2]))' \
     "$ENGINE" "$1" 2>/dev/null
 }
 set_config() {   # set_config KEY VALUE: one line in config.env, every other line kept
@@ -120,12 +123,18 @@ p 5 "Preparing $PLASMIE_APP_NAME's data folder…"
 # The venv is a copy of the bundled runtime. Missing, broken, or a different version than
 # this app ships (left by an older install) -> replaced, so the engine always runs on the
 # Python it was tested with.
+# The bundled copy is never run here: in a downloaded app it can still carry
+# com.apple.quarantine, and running it pops Gatekeeper's "python3.12 Not Opened". Its version
+# comes from the stamp make-app.sh writes, and the flag is stripped from the copy (cp keeps
+# it, even with -X), here and on a venv an older setup copied with the flag still on.
 pyver() { "$1" -c 'import sys; print(sys.version.split()[0])' 2>/dev/null; }
-WANT_PY="$(pyver "$RES/python/bin/python3")"
+WANT_PY="$(cat "$RES/python/.plasmie-pyver" 2>/dev/null || pyver "$RES/python/bin/python3")"
+[ -d "$VENV" ] && xattr -dr com.apple.quarantine "$VENV" 2>/dev/null
 if [ -n "$WANT_PY" ] && [ "$(pyver "$PY")" != "$WANT_PY" ]; then
   p 8 "Setting up the Python runtime…"
   rm -rf "$VENV" && mkdir -p "$VENV"
   cp -R "$RES/python/." "$VENV/" || fail "python copy failed"
+  xattr -dr com.apple.quarantine "$VENV" 2>/dev/null
 fi
 "$PY" -c 'import sys; sys.exit(sys.version_info < (3, 10))' || fail "the bundled Python runtime is broken — reinstall $PLASMIE_APP_NAME"
 p 20 "Python runtime ready"

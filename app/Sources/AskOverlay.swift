@@ -160,6 +160,7 @@ struct AskOverlay: View {
     @State private var clearOutcome: DispatchWorkItem?
     @State private var gapLogged = false
     @State private var answerHeight: CGFloat = 0
+    @State private var resolved: [String: AskSource] = [:]   // path -> title + kind, read off-main
     @FocusState private var focused: Bool
 
     private var maxAnswerHeight: CGFloat { inNotch ? 300 : 460 }
@@ -216,22 +217,16 @@ struct AskOverlay: View {
                                 .klNote()
                         }
                         if !sources.isEmpty {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Sources").font(.klMeta.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                ForEach(Array(sources.enumerated()), id: \.offset) { _, src in
-                                    Button { openNote("\(vault)/\(src.path)") } label: {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "doc.text").font(.system(size: 10)).accessibilityHidden(true)
-                                            Text(src.path).font(.klMeta).underline()
-                                            Spacer(minLength: 0)
-                                        }
-                                    }
-                                    .buttonStyle(.plain).foregroundStyle(.blue)
-                                    .accessibilityLabel("Read \(src.path)")
-                                    .help("Read this note")
+                            // Pills: kind + the note's own title (AskSources.swift). Until the
+                            // heads are read they show the folder's guess and the file name.
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Sources").font(.klMeta).foregroundStyle(.secondary)
+                                    .accessibilityAddTraits(.isHeader)
+                                SourcePills(sources: sources.map { resolved[$0.path] ?? AskSources.describe(path: $0.path, head: nil) }) {
+                                    openNote("\(vault)/\($0.path)")
                                 }
                             }
+                            .task(id: sources.map(\.path)) { await resolve(sources.map(\.path)) }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -268,7 +263,7 @@ struct AskOverlay: View {
         // becoming key, and focus set that early doesn't stick. async lands it after.
         .onAppear {
             DispatchQueue.main.async { focused = true }
-            if let q = ProcessInfo.processInfo.environment["PLASMIE_ASK_DEMO_Q"], inNotch { query = q; run() }  // verification only
+            if let q = ProcessInfo.processInfo.environment["PLASMIE_ASK_DEMO_Q"] { query = q; run() }  // verification only
         }
         .onExitCommand(perform: onClose)   // Esc closes
     }
@@ -295,7 +290,7 @@ struct AskOverlay: View {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty, !busy else { return }
         clearOutcome?.cancel(); outcome = nil
-        busy = true; answer = ""; status = ""; answerHeight = 0; gapLogged = false
+        busy = true; answer = ""; status = ""; answerHeight = 0; gapLogged = false; resolved = [:]
         AskActivity.shared.answering = true
         // Plasmie's own Python (never /usr/bin/python3, a stub on a fresh Mac); answers come
         // from Apple's on-device model through the bundled plasmie-fm helper.
@@ -315,6 +310,17 @@ struct AskOverlay: View {
                          }
                          announceDone()
                      })
+    }
+
+    /// Titles and kinds from the notes' heads, read on a background thread (a few KB each).
+    private func resolve(_ paths: [String]) async {
+        let todo = paths.filter { resolved[$0] == nil }
+        guard !todo.isEmpty else { return }
+        let vault = vault
+        let found = await Task.detached(priority: .userInitiated) {
+            todo.map { AskSources.resolve(path: $0, vault: vault) }
+        }.value
+        for s in found { resolved[s.path] = s }
     }
 
     /// Split ask.py's output into the markdown body and the parsed source list.

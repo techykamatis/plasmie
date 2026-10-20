@@ -33,3 +33,6 @@ app/build.old.*
 
 # Owner-specific terms for test_no_personal.py (local only, never published)
 .personal-deny.txt
+
+# local browser-tool logs
+.gstack/

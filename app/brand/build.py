@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Build the Plasmie brand sheet: template + shapes + live trophy report + theme toggle.
+"""Build the Plasmie brand sheet: template + shapes + trophy report + theme toggle.
 
-  python3 app/brand/build.py   # -> app/brand/plasmie-brand.html
+  python3 app/brand/build.py          # sample stats (sample-report.json): safe to commit
+  python3 app/brand/build.py --live   # your own stats, for looking at locally; don't commit that output
 """
 import json
 import subprocess
@@ -16,8 +17,12 @@ def main():
     t = (HERE / "plasmie-brand.template.html").read_text()
     shapes = json.loads((HERE / "plasmie-shapes.json").read_text())
     py = LOOP / ".venv/bin/python3"
-    report = json.loads(subprocess.run([str(py if py.exists() else sys.executable), str(LOOP / "plasmie-achievements.py")],
-                                       capture_output=True, text=True, check=True).stdout)
+    if "--live" in sys.argv[1:]:
+        report = json.loads(subprocess.run([str(py if py.exists() else sys.executable), str(LOOP / "plasmie-achievements.py")],
+                                           capture_output=True, text=True, check=True).stdout)
+        print("built with your own stats: don't commit plasmie-brand.html", file=sys.stderr)
+    else:
+        report = json.loads((HERE / "sample-report.json").read_text())
     sys.path.insert(0, str(LOOP))
     import importlib.util
     spec = importlib.util.spec_from_file_location("ach", LOOP / "plasmie-achievements.py")

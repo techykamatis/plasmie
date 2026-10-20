@@ -102,6 +102,17 @@ mkdir -p "$RES/pytmp" && tar xzf "$PYTGZ" -C "$RES/pytmp"
 mv "$RES/pytmp/python" "$RES/python" && rm -rf "$RES/pytmp"
 # setup reads the version from here instead of running the bundled binary (app-setup.sh step 2)
 printf '%s\n' "$PYVER" > "$RES/python/.plasmie-pyver"
+# Licenses for what this Python build links (OpenSSL, SQLite, libffi, ...): the install_only
+# tarball leaves them out, so app/licenses/python holds them verbatim from the same release's
+# "full" archive (python/licenses/), plus the licenses of pip's vendored packages (from pip's
+# own source at the pip version this build ships). Refresh both when PYTAG changes.
+LICENSES_PYTAG="20250612"; LICENSES_PIP="24.3.1"
+[ "$PYTAG" = "$LICENSES_PYTAG" ] || { echo "app/licenses/python is from $LICENSES_PYTAG, not $PYTAG: refresh it"; exit 1; }
+[ -d "$RES/python/lib/python3.12/site-packages/pip-${LICENSES_PIP}.dist-info" ] \
+  || { echo "bundled pip is not $LICENSES_PIP: refresh app/licenses/pip-*"; exit 1; }
+mkdir -p "$RES/python/licenses"
+cp "$SELF/licenses/python/"* "$RES/python/licenses/"
+cp -R "$SELF/licenses/pip-${LICENSES_PIP}" "$RES/python/licenses/pip-${LICENSES_PIP}"
 
 # standalone Node 22 LTS for vault search (qmd is a Node CLI): pinned, checksum-verified
 # against nodejs.org's SHASUMS256, cached. Setup installs qmd with it into
@@ -119,9 +130,14 @@ if [ ! -f "$NODETGZ" ]; then
 fi
 mkdir -p "$RES/nodetmp" && tar xzf "$NODETGZ" -C "$RES/nodetmp"
 mv "$RES/nodetmp/$NODENAME" "$RES/node" && rm -rf "$RES/nodetmp"
-rm -rf "$RES/node/include" "$RES/node/share" "$RES/node"/*.md "$RES/node/LICENSE"   # headers + docs: not needed to run
+rm -rf "$RES/node/include" "$RES/node/share" "$RES/node"/*.md   # headers + docs: not needed to run
+[ -f "$RES/node/LICENSE" ] || { echo "Node's LICENSE is missing"; exit 1; }   # kept: Node and its deps' licenses
 say "bundled Node $("$RES/node/bin/node" -v)"
 say "bundled Python $("$RES/python/bin/python3" -V 2>&1 | awk '{print $2}')"
+
+# Plasmie's own license and the third-party notices (each bundled component also keeps its own
+# license file in place: python/lib/python3.12/LICENSE.txt, python/licenses/, node/LICENSE)
+cp "$LOOP/LICENSE" "$LOOP/THIRD_PARTY_NOTICES.md" "$RES/"
 
 # Plasmie (idle pose, coloured) -> AppIcon.icns; uses the app's own PlasmieShapes anchors
 ICONSET="$SELF/build/AppIcon.iconset"

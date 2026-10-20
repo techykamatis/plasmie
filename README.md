@@ -314,6 +314,9 @@ Plasmie is free software: you can redistribute it and/or modify it under the ter
 GNU General Public License as published by the Free Software Foundation, version 3 or
 (at your option) any later version. See [LICENSE](LICENSE).
 
+Plasmie bundles, installs and downloads third-party components under their own licenses; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 The name "Plasmie" and the blob mascot are not covered by that license. See
 [TRADEMARK.md](TRADEMARK.md).
 

@@ -35,11 +35,13 @@ SITE_DIR = os.path.join(os.path.dirname(ROOT), "plasmie-site")
 SITE_FILES = ("index.html", "404.html")
 SITE_SPAN = re.compile(r"(<span data-plasmie-version>)([^<]*)(</span>)")
 # Download buttons: <a href=".../releases/download/v<ver>/Plasmie-<ver>.dmg" data-plasmie-download>
-SITE_DL = re.compile(r'(href=")https://github\.com/[^"]+/releases/download/v([0-9.]+)/Plasmie-([0-9.]+)\.dmg(" data-plasmie-download)')
+GITHUB = "https://github.com/"
+SITE_DL = re.compile(r'(href=")' + re.escape(GITHUB)
+                     + r'[^"]+/releases/download/v([0-9.]+)/Plasmie-([0-9.]+)\.dmg(" data-plasmie-download)')
 
 
 def download_url(ver):
-    return f"https://github.com/{RELEASE_REPO}/releases/download/v{ver}/Plasmie-{ver}.dmg"
+    return f"{GITHUB}{RELEASE_REPO}/releases/download/v{ver}/Plasmie-{ver}.dmg"
 
 
 def run(*cmd, check=False):

@@ -256,3 +256,218 @@ def test_prompt_drops_frontmatter_and_asks_for_facts():
     p = ask.build_prompt("what happened to bungee", [(0.9, doc)], budget_chars=4000)
     assert "type: Area" not in p and "Seen 2026-06-23." in p
     assert "Never answer by repeating a note's opening description." in p
+
+
+# ---- summary questions: routing (ADR 0007) ----------------------------------
+
+@pytest.mark.parametrize("q,kind", [
+    ("any major decisions lately?", "decisions"),
+    ("what did we decide this week?", "decisions"),
+    ("what's blocking me?", "blockers"),
+    ("am I blocked on anything?", "blockers"),
+    ("what did I do last week?", "recap"),
+    ("what have I been working on?", "recap"),
+    ("catch me up", "recap"),
+    ("anything new today?", "recap"),
+    ("what changed in the release process?", "changes"),
+    ("any gotchas lately?", "gotchas"),
+    ("what runbooks do I have?", "howtos"),
+])
+def test_summary_questions_are_recognised(q, kind):
+    got = ask.classify(q, MON)
+    assert got and got["kind"] == kind and got["summary"], (q, got)
+
+
+@pytest.mark.parametrize("q", [
+    "what's the datadog api host?", "how do I shrink rds storage", "what port does staging use?",
+    "who owns the billing service", "where is the vpn config", "latest updates to the helm chart",
+])
+def test_direct_lookups_are_not_summaries(q):
+    assert ask.classify(q, MON) is None
+
+
+def test_topical_gotcha_or_howto_keeps_the_precise_answer():
+    # the answer IS the fix or the steps: no rewording, but that kind of note first
+    for q in ("any gotchas with npm?", "show me the runbooks for releases"):
+        got = ask.classify(q, MON)
+        assert got["topic"] and got["summary"] is False, (q, got)
+    assert ask.classify("what did we decide about the license?", MON)["topic"] == "license"
+
+
+# ---- summary questions: sources ---------------------------------------------
+
+def _note(root, rel, typ, day, title=None, tags="", body="Body."):
+    f = root / rel
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(f'---\ntype: {typ}\ntitle: "{title or f.stem}"\ntags: [{tags}]\n'
+                 f"timestamp: {day}T00:00:00Z\n---\n\n# {title or f.stem}\n\n{body}\n")
+    return f
+
+
+def _log(root, src, day, text):
+    f = root / "raw" / src / f"{day}.md"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(text)
+
+
+def test_decisions_read_filed_decision_notes_newest_first(tmp_path):
+    _note(tmp_path, "wiki/a.md", "decision", "2026-06-20")
+    _note(tmp_path, "wiki/b.md", "decision", "2026-06-27")
+    _note(tmp_path, "wiki/c.md", "note", "2026-06-28", tags="decision")          # tagged counts
+    _note(tmp_path, "wiki/old.md", "decision", "2026-04-01")                     # out of range
+    _note(tmp_path, "wiki/g.md", "gotcha", "2026-06-28")                         # other kind
+    _note(tmp_path, "raw/claude/x.md", "decision", "2026-06-28")                 # raw: never
+    _note(tmp_path, "archive/z.md", "decision", "2026-06-28")
+    label, docs = ask.gather("any decisions lately?", str(tmp_path),
+                             ask.classify("any decisions lately?", MON), MON)
+    assert [d["path"] for _, d in docs] == ["wiki/c.md", "wiki/b.md", "wiki/a.md"]
+    assert label == "the past month"
+
+
+def test_a_later_merge_counts_as_recent(tmp_path):
+    f = _note(tmp_path, "wiki/a.md", "decision", "2026-03-01")
+    f.write_text(f.read_text() + "\n- **2026-06-28 (follow-up):** kept it.\n")
+    assert ask.filed_notes(str(tmp_path), "decision", "2026-06-01", "2026-06-29")
+
+
+def test_few_decision_notes_are_filled_from_the_day_logs(tmp_path, monkeypatch):
+    monkeypatch.setattr(ask, "qmd_hits", lambda *a, **k: pytest.fail("no retrieval needed"))
+    _note(tmp_path, "wiki/a.md", "decision", "2026-06-27")
+    _log(tmp_path, "claude", "2026-06-28", "decided things")
+    _, docs = ask.gather("any decisions lately?", str(tmp_path),
+                         ask.classify("any decisions lately?", MON), MON)
+    assert [d["path"] for _, d in docs] == ["wiki/a.md", "raw/claude/2026-06-28.md"]
+
+
+def test_enough_decision_notes_skip_the_logs(tmp_path):
+    for i in range(ask.GAP_FILL_BELOW):
+        _note(tmp_path, f"wiki/d{i}.md", "decision", "2026-06-2" + str(i + 1))
+    _log(tmp_path, "claude", "2026-06-28", "noise")
+    _, docs = ask.gather("any decisions lately?", str(tmp_path),
+                         ask.classify("any decisions lately?", MON), MON)
+    assert all(d["path"].startswith("wiki/") for _, d in docs)
+
+
+def test_topical_decision_question_retrieves_and_puts_decisions_first(tmp_path, monkeypatch):
+    other = (0.9, {"path": "wiki/x.md", "title": "x", "text": "---\ntype: note\n---\nx"})
+    dec = (0.5, {"path": "wiki/d.md", "title": "d", "text": "---\ntype: decision\n---\nd"})
+    monkeypatch.setattr(ask, "qmd_hits", lambda *a, **k: [other, dec])
+    q = "what did we decide about the license?"
+    _, docs = ask.gather(q, str(tmp_path), ask.classify(q, MON), MON)
+    assert [d["path"] for _, d in docs] == ["wiki/d.md", "wiki/x.md"]
+
+
+def test_summary_prompt_reads_notes_before_logs():
+    docs = [(None, {"path": "raw/claude/2026-06-28.md", "title": "claude/2026-06-28", "text": "L" * 50_000}),
+            (None, {"path": "wiki/d.md", "title": "Releases go local", "text": "---\ntype: decision\n---\nN" * 1})]
+    p = ask.build_summary_prompt("any decisions?", "decisions", "the past month", docs, budget_chars=4000)
+    assert len(p) <= 4000 and "--- NOTE: Releases go local ---\nN" in p
+    assert "type: decision" not in p and "decisions I made" in p
+    assert "commit IDs" in p and "Never invent" in p and p.rstrip().endswith("=== SUMMARY ===")
+
+
+# ---- summary questions: the two passes --------------------------------------
+
+@pytest.fixture
+def two_pass(backends, tmp_path, monkeypatch):
+    """Summary vault + a model that answers each call from a queue."""
+    _note(tmp_path, "wiki/rel.md", "decision", "2026-06-27", title="Releases go local",
+          body="Releases are built on this Mac behind /release (ed2a994). Owner wants sign-off.")
+    queue = []
+
+    def gen(prompt, timeout=None, max_tokens=0, on_chunk=None, guard=True, **_k):
+        backends["fm"] += 1
+        backends["prompts"].append(prompt)
+        backends.setdefault("streamed", []).append(on_chunk is not None)
+        return queue.pop(0) if queue else None
+
+    monkeypatch.setattr(ask.fm, "generate", gen)
+    monkeypatch.setattr(ask, "classify", lambda q, today=None: {
+        "kind": "decisions", "window": None, "topic": "", "summary": True})
+    monkeypatch.setattr(ask.datetime, "date", type("D", (datetime.date,), {
+        "today": classmethod(lambda cls: MON)}))
+    backends["queue"], backends["vault"] = queue, str(tmp_path)
+    return backends
+
+
+NOISY = ("- Real decisions: ed2a994 moved releases to this Mac via `package.sh` behind /release; "
+         "test_release_gate passes.\n- Committed 7903a4c to main.")
+
+
+def test_noisy_draft_is_reworded_and_shown_once(two_pass):
+    two_pass["queue"] += [NOISY, "- You moved releases to this Mac, behind a release step you run."]
+    got = []
+    answer, docs = ask.ask("any major decisions lately?", two_pass["vault"], on_chunk=got.append)
+    assert answer == "- You moved releases to this Mac, behind a release step you run."
+    assert got == [answer]                                   # never the draft, one emit
+    assert two_pass["fm"] == 2 and two_pass["streamed"] == [False, False]
+    rephrase = two_pass["prompts"][1]
+    assert "doesn't code" in rephrase and "ed2a994" not in rephrase and "test_release" not in rephrase
+    assert "Putting it in plain words…" in two_pass["say"]
+    assert [d["path"] for _, d in docs] == ["wiki/rel.md"]    # Sources: the real note
+    assert ask.LAST_TIMING["path"] == "rephrased"
+
+
+def test_plain_draft_skips_the_second_pass(two_pass):
+    two_pass["queue"] += ["- You moved releases to this Mac so nothing ships without your OK."]
+    answer, _ = ask.ask("any major decisions lately?", two_pass["vault"])
+    assert two_pass["fm"] == 1 and answer.startswith("- You moved releases")
+    assert ask.LAST_TIMING["path"] == "draft-plain"
+
+
+def test_rewrite_that_adds_a_name_falls_back_to_the_cleaned_draft(two_pass):
+    two_pass["queue"] += [NOISY, "- You moved 4 releases to Jenkins."]
+    answer, _ = ask.ask("any major decisions lately?", two_pass["vault"])
+    assert "Jenkins" not in answer and "ed2a994" not in answer and "test_release" not in answer
+    assert answer.startswith("- Moved releases to this Mac")
+    assert ask.LAST_TIMING["path"].startswith("fallback:added")
+
+
+def test_no_rewrite_falls_back_to_the_cleaned_draft(two_pass):
+    two_pass["queue"] += [NOISY]                             # second call returns None
+    answer, _ = ask.ask("any major decisions lately?", two_pass["vault"])
+    assert "Moved releases to this Mac" in answer and "7903a4c" not in answer
+
+
+def test_rewrite_that_drops_everything_is_refused(two_pass):
+    two_pass["queue"] += [NOISY + "\n- You switched the license to GPL.", "Nothing major happened."]
+    answer, _ = ask.ask("any major decisions lately?", two_pass["vault"])
+    assert "license" in answer and ask.LAST_TIMING["path"] == "fallback:dropped-everything"
+
+
+def test_summary_with_no_model_says_why_and_lists_sources(two_pass):
+    got = []
+    answer, docs = ask.ask("any major decisions lately?", two_pass["vault"], on_chunk=got.append)
+    assert "couldn't generate an answer" in answer and got == [answer]
+    assert [d["path"] for _, d in docs] == ["wiki/rel.md"]
+
+
+def test_direct_lookup_is_unchanged(backends, vault):
+    backends["state"]["chunks"] = ["Use `api.datadoghq.eu` ", "(see ed2a994)."]
+    backends["state"]["fm"] = "Use `api.datadoghq.eu` (see ed2a994)."
+    got = []
+    answer, _ = ask.ask("what's the datadog api host?", vault, on_chunk=got.append)
+    assert answer == "Use `api.datadoghq.eu` (see ed2a994)."     # no cleanup on lookups
+    assert got == ["Use `api.datadoghq.eu` ", "(see ed2a994)."]  # still streamed
+    assert backends["fm"] == 1
+
+
+def test_cli_prints_answer_then_sources(tmp_path):
+    """End to end through fm.py with a stand-in model helper: the app's output contract."""
+    import os
+    import subprocess
+    import sys
+    helper = tmp_path / "fake-fm"
+    helper.write_text("#!/bin/sh\n"
+                      'if [ "$1" = "--probe" ]; then echo \'{"status":"available","context_size":4096}\'; exit 0; fi\n'
+                      "cat >/dev/null\n"
+                      'echo \'{"text":"- You moved releases to this Mac."}\'\n')
+    helper.chmod(0o755)
+    v = tmp_path / "v"
+    _note(v, "wiki/rel.md", "decision", datetime.date.today().isoformat())
+    env = dict(os.environ, PLASMIE_FM_BIN=str(helper), PLASMIE_HOME=str(tmp_path / "h"),
+               PLASMIE_LOGS=str(tmp_path / "l"))
+    r = subprocess.run([sys.executable, ask.__file__, "any major decisions lately?", str(v)],
+                       capture_output=True, text=True, env=env, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout == "- You moved releases to this Mac.\n\nSources:\n  · wiki/rel.md\n"

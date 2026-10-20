@@ -4,14 +4,14 @@
 Retrieve the most relevant notes with **qmd** (vector search — measured best on
 this vault; see eval.py), then answer using ONLY those notes. Synthesis runs
 on Apple's on-device Foundation Model via fm.py (no model load, streams
-immediately; ADR 0025 made it the only backend). The prompt is budgeted to the
+immediately; the only backend, ADR 0002). The prompt is budgeted to the
 live context window, question last. If the model can't answer — Apple
 Intelligence off, still downloading, or a failure before any text — it says why
 and shows the matching notes, so you still get an answer.
 
 The model is never asked to cite: the UI shows the real retrieved Sources list
 (printed from retrieval, not from model output), and a model-written citation
-was the one thing FM fabricated in the A/B (ADR 0004).
+was the one thing FM fabricated in the A/B (ADR 0002).
 
 qmd owns retrieval (see the vault's CLAUDE.md); ask.py owns the private
 synthesis and the promote/improve loops that depend on it. Retrieval
@@ -19,6 +19,11 @@ is over the **wiki** collection (Plasmie's curated notes) and the **vault** coll
 (the user's own notes, in whatever folders they keep) — raw/ is immutable source
 material, not an answer source. If vector search can't run yet (models still downloading), it
 falls back to BM25 `qmd search`.
+
+Summary questions ("any decisions lately?", "what's blocking me?", a time window) take
+their own path (ADR 0007): filed notes of the asked-for kind first, day logs to fill gaps
+(the only time raw/ is read), a draft, a plain-English rewording pass and plain.cleanup().
+They print in one piece instead of streaming. Direct lookups are untouched by any of it.
 
 Two output channels so a UI can show live progress:
   stdout = the answer text (streamed), then a "Sources:" list
@@ -34,10 +39,12 @@ import json
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import fm
 import paths
+import plain
 from mapreduce import fair_shares  # noqa: F401  (re-exported; tests use ask.fair_shares)
 
 TOP_K = 4             # notes fed as context
@@ -54,6 +61,14 @@ DIGESTS = f"{paths.META}/digests"   # meta/digests/YYYY-MM-DD.md — short on-de
 RECAP_TOKENS = 320    # 8 short bullets; a recap ran 26 bullets / 25s on the shared 600 cap
 RECAP_CHARS = 12000   # recap prompts stay well under the window: prefill time scales with it
 LONG_WINDOW_DAYS = 2  # recaps spanning more days read digests, not raw logs
+# Summary questions ("any decisions lately?", "what's blocking me?") — ADR 0007
+SUMMARY_NOTES = 5         # filed notes of the asked-for kind in one summary prompt
+NOTE_CHARS = 1500         # ceiling on one filed note there (notes are read before logs)
+FILED_LOOKBACK_DAYS = 30  # "lately" for filed notes: promoted nightly, so a week is thin
+GAP_FILL_BELOW = 3        # fewer filed notes than this: fill in from the day logs
+REPHRASE_TOKENS = 220     # 5 one-sentence bullets
+REPHRASE_TIMEOUT = 20     # the plain-words pass; on timeout the cleaned draft is shown
+LAST_TIMING = {}          # the last summary answer's timings (eval and diagnostics)
 
 QMD = paths.qmd_bin()   # Plasmie's own qmd first, then any installed one
 QMD_TIMEOUT = 60
@@ -183,7 +198,7 @@ def log_usage(vault, question, hits):
     path = Path(vault).expanduser() / USAGE
     qh = hashlib.sha1(" ".join(question.split()).lower().encode()).hexdigest()[:8]
     today = datetime.date.today().isoformat()
-    rows = "".join(f"{today}\t{qh}\t{i}\t{score}\t{doc['path']}\n"
+    rows = "".join(f"{today}\t{qh}\t{i}\t{'' if score is None else score}\t{doc['path']}\n"
                    for i, (score, doc) in enumerate(hits, 1))
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -331,38 +346,268 @@ def recap_files(vault, dates):
     return files
 
 
-def build_recap_prompt(question, label, files, budget_chars=None):
-    head = (f"These are my work logs for {label}. Summarise concisely what I worked on "
-            "and what happened. Reply with at most 8 short bullets grouped by theme (not by "
-            "source file), merge duplicates, and skip chatter and empty sections.\n"
-            f"{RULES}\n\n")
+def log_docs(vault, files):
+    """Day logs/digests as answer docs: (None, {path, title, text}) — no qmd score."""
+    vp = Path(vault).expanduser()
+    return [(None, {"path": str(f.relative_to(vp)), "title": f"{f.parent.name}/{f.stem}",
+                    "text": f.read_text(errors="replace")}) for f in files]
+
+
+# ---- summary questions (ADR 0007) -------------------------------------------
+# "Any major decisions lately?" wants a few plain sentences, not the logs' commit IDs
+# and test names. Such a question gets its own sources (filed notes of the asked-for
+# kind first, day logs to fill gaps), a draft under tighter rules, a rewording-only
+# plain-English pass, and a deterministic cleanup (plain.py). Direct lookups ("what's
+# the datadog api host?") never come here: they keep the precise, streamed answer.
+
+_INTENTS = (
+    ("blockers", r"\bblockers?\b|\bwhat(?:'s|s| is| are)?\s+(?:blocking|holding\s+up|holding)\s+"
+                 r"(?:me|us)\b|\b(?:am i|are we|i'm|im|we're)\s+(?:blocked|stuck)\b|"
+                 r"\bwhat(?:'s|s| is)\s+stuck\b|\banything\s+(?:blocking|stuck)\b|\bblocked on\b"),
+    ("decisions", r"\bdecisions?\b|\bdecided\b|\bwhat did (?:i|we) (?:decide|choose|pick)\b"),
+    ("gotchas", r"\bgotchas?\b|\bpitfalls?\b|\blessons? learn(?:ed|t)\b"),
+    ("howtos", r"\bhow-?tos\b|\brunbooks\b"),
+    ("recap", r"\bwhat (?:did|have|has) (?:i|we) (?:do|done|work(?:ed)? on|get done|got done|"
+              r"ship(?:ped)?|been (?:doing|working on|up to))\b|\bwhat (?:was|were) (?:i|we) "
+              r"(?:doing|working on)\b|\b(?:summar(?:y|ise|ize)|recap|overview|highlights)\b|"
+              r"\bcatch me up\b|\bwhat happened\b"),
+    ("changes", r"\bwhat(?:'s|s| has| have)?\s+changed\b|\b(?:recent|latest|new)\s+changes\b"),
+)
+# Words that say what KIND of answer is wanted, never what it is about. Whatever is
+# left after removing them is the question's topic ("the release process").
+_NOT_TOPIC = set("""
+a an the i we me us my our you your it its this that these those what what's whats which
+who when where why how any anything something some all major big key important main
+notable significant recent recently lately latest new past few last week weeks month
+months today yesterday day days so far been be is are was were am do does did done doing
+have has had made make making get got go going decision decisions decided decide choose
+chose chosen pick picked blocker blockers blocking blocked block holding stuck gotcha
+gotchas pitfall pitfalls lesson lessons learned learnt how-to how-tos howto howtos runbook
+runbooks changed change changes happen happened happening summary summarise summarize
+recap overview highlights catch up work worked working on ship shipped to of in for with
+about there there's please tell show give list still now currently right just been
+""".split())
+_KIND_TYPES = {"decisions": "decision", "gotchas": "gotcha", "howtos": "how-to"}
+_TASK = {
+    "decisions": "List the decisions I made: what I chose and why. Skip routine work that wasn't a choice.",
+    "blockers": "List what is still blocked or failing, and why, going by the latest entries. Skip anything that got fixed.",
+    "gotchas": "List the traps I ran into and how to avoid each.",
+    "howtos": "List the procedures I wrote down and what each one is for.",
+    "changes": "Summarise what changed and why.",
+    "recap": "Summarise what I worked on and what happened, most important first.",
+}
+SUMMARY_RULES = """Rules:
+- State only what the notes and logs say. Never upgrade a status: a plan, request or attempt stays one.
+- Never invent people, dates, numbers, reasons or follow-up work.
+- At most 5 bullets starting with "- ", one sentence each, most important first. Merge entries about the same thing.
+- Write for a reader who doesn't code: say what changed and why, addressing me as "you". Keep real names as written. Never write commit IDs, file names, test names, branch names or backticks.
+- No headings or labels; don't repeat these instructions.
+- If nothing fits the question, say so in one sentence."""
+
+
+def _topic(q):
+    words = re.findall(r"[a-z0-9][a-z0-9'-]*", q.lower())
+    return " ".join(w for w in words if w not in _NOT_TOPIC)
+
+
+def classify(question, today=None):
+    """A summary-style question -> {kind, window, topic, summary}; None for a direct lookup.
+
+    summary=False only for a topical gotcha/how-to ("the how-to for releases"): that
+    answer IS the steps or the fix, so it keeps the precise path, retrieved by kind.
+    """
+    q = question.lower()
+    window = detect_window(question, today)
+    kind = next((k for k, rx in _INTENTS if re.search(rx, q)), None)
+    if kind is None and window is None:
+        return None
+    kind = kind or "recap"
+    topic = _topic(q)
+    return {"kind": kind, "window": window, "topic": topic,
+            "summary": not (topic and kind in ("gotchas", "howtos"))}
+
+
+def _frontmatter(text):
+    m = re.match(r"\A---\n(.*?)\n---\n", text, re.S)
+    if not m:
+        return {}
+    out = {}
+    for line in m.group(1).splitlines():
+        k, sep, v = line.partition(":")
+        if sep and not k.startswith((" ", "\t", "-")):
+            out[k.strip().lower()] = v.strip().strip("'\"")
+    return out
+
+
+def _is_kind(meta, want):
+    tags = re.findall(r"[\w-]+", meta.get("tags", "").lower())
+    return meta.get("type", "").lower() == want or want in tags
+
+
+def _note_day(meta, text, p):
+    """A filed note's latest day: its timestamp/date, or a later promote merge, else mtime."""
+    days = [m for k in ("timestamp", "updated", "date", "created")
+            if (m := re.match(r"\d{4}-\d\d-\d\d", meta.get(k, "")))]
+    days = [d.group(0) for d in days] + re.findall(r"^- \*\*(\d{4}-\d\d-\d\d) \(", text, re.M)
+    if days:
+        return max(days)
+    return datetime.date.fromtimestamp(p.stat().st_mtime).isoformat()
+
+
+def filed_notes(vault, want, since, until):
+    """Notes whose frontmatter says `type: <want>` (or carry the tag), dated in
+    [since, until], newest first. Skips raw/, meta/, archive/ and generated maps."""
+    vp = Path(vault).expanduser()
+    skip = {paths.RAW, paths.META, paths.ARCHIVE}
+    found = []
+    for p in vp.rglob("*.md"):
+        rel = p.relative_to(vp)
+        if (rel.parts[0] in skip or any(x.startswith(".") for x in rel.parts)
+                or rel.name == paths.INDEX or rel.as_posix().startswith(paths.MOCS + "/")):
+            continue
+        try:
+            with p.open(errors="replace") as fh:
+                head = fh.read(2048)
+        except OSError:
+            continue
+        meta = _frontmatter(head)
+        if not _is_kind(meta, want):
+            continue
+        text = p.read_text(errors="replace")
+        day = _note_day(meta, text, p)
+        if since <= day <= until:
+            found.append((day, {"path": rel.as_posix(), "title": meta.get("title") or p.stem,
+                                "text": text}))
+    found.sort(key=lambda x: x[0], reverse=True)
+    return [(None, doc) for _, doc in found]
+
+
+def _is_log(rel):
+    return rel.startswith((paths.RAW + "/", DIGESTS + "/"))
+
+
+def _span(today, days):
+    return [(today - datetime.timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
+
+
+def gather(question, vault, intent, today=None):
+    """Sources for a summary question -> (label, docs). docs may be empty."""
+    today = today or datetime.date.today()
+    kind, window, topic = intent["kind"], intent["window"], intent["topic"]
+    want = _KIND_TYPES.get(kind)
+    if topic:       # about something: retrieve it, notes of the asked-for kind first
+        hits = qmd_hits(question, vault, k=TOP_K * 2 if want else TOP_K,
+                        collection=["wiki", "vault"])
+        if want:
+            hits = sorted(hits, key=lambda h: not _is_kind(_frontmatter(h[1]["text"]), want))
+        return "your notes", hits[:TOP_K]
+    label, log_days = window or ("the past week", _span(today, 7))
+    docs = []
+    if want:
+        # an explicit window is honoured; "lately" means the past month for filed notes
+        explicit = window and window[0] in ("today", "yesterday", "this week", "last week")
+        days = window[1] if explicit else _span(today, FILED_LOOKBACK_DAYS)
+        docs = filed_notes(vault, want, days[0], days[-1])[:SUMMARY_NOTES]
+        if not explicit:
+            label = "the past month"
+    if not want or len(docs) < GAP_FILL_BELOW:
+        docs += log_docs(vault, recap_files(vault, log_days))
+    return label, docs
+
+
+def build_summary_prompt(question, kind, label, docs, budget_chars=None):
+    """Filed notes first, each up to NOTE_CHARS; day logs share what is left."""
+    head = (f"Below are my notes and work logs for {label}. {_TASK[kind]}\n"
+            f"{SUMMARY_RULES}\n\n")
     tail = f"\n\n=== QUESTION ===\n{question}\n\n=== SUMMARY ===\n"
     budget = min(prompt_char_budget(), RECAP_CHARS) if budget_chars is None else budget_chars
-    labels = [f"--- {f.parent.name}/{f.stem} ---\n" for f in files]
-    texts = [f.read_text(errors="replace") for f in files]
-    room = budget - len(head) - len(tail) - sum(map(len, labels)) - 2 * len(files)
-    caps = fair_shares([min(len(t), JOURNAL_CHARS) for t in texts], room)
+    is_log = [_is_log(d["path"]) for _, d in docs]
+    labels = [f"--- {d['title']} ---\n" if log else f"--- NOTE: {d['title']} ---\n"
+              for (_, d), log in zip(docs, is_log)]
+    texts = [re.sub(r"\A---\n.*?\n---\n", "", d["text"], flags=re.S) for _, d in docs]
+    room = budget - len(head) - len(tail) - sum(map(len, labels)) - 2 * len(docs)
+    notes = [i for i, log in enumerate(is_log) if not log]
+    logs = [i for i, log in enumerate(is_log) if log]
+    caps = [0] * len(docs)
+    for i, c in zip(notes, fair_shares([min(len(texts[i]), NOTE_CHARS) for i in notes], room)):
+        caps[i] = c
+    left = room - sum(caps)
+    for i, c in zip(logs, fair_shares([min(len(texts[i]), JOURNAL_CHARS) for i in logs], left)):
+        caps[i] = c
     ctx = "\n\n".join(lab + t[:c] for lab, t, c in zip(labels, texts, caps))
     return f"{head}{ctx}{tail}"
 
 
+def build_recap_prompt(question, label, files, budget_chars=None):
+    """A time-window recap over day logs (kept for callers that have files, not docs)."""
+    docs = [(None, {"path": f"{paths.RAW}/{f.parent.name}/{f.name}",
+                    "title": f"{f.parent.name}/{f.stem}",
+                    "text": f.read_text(errors="replace")}) for f in files]
+    return build_summary_prompt(question, "recap", label, docs, budget_chars)
+
+
+def plain_answer(question, prompt, docs):
+    """Draft, then plain words. Returns the answer, or None if the model gave nothing.
+
+    The draft is not streamed: it is about to be reworded, and a person shouldn't
+    watch commit IDs appear and then vanish. Pass 2 is skipped when the draft is
+    already short and plain, and its output is only used when it adds no number or
+    name the draft and sources lack (ADR 0006); otherwise the cleaned draft is shown.
+    """
+    t0 = time.monotonic()
+    _say("Answering on-device…")
+    draft = fm.generate(prompt, max_tokens=RECAP_TOKENS, timeout=FM_TIMEOUT, guard=False)
+    timing = {"draft_s": round(time.monotonic() - t0, 2), "rephrase_s": None}
+    LAST_TIMING.update(timing, path="none")
+    if not draft:
+        return None
+    cleaned = plain.cleanup(draft)
+    path, final = "draft-plain", cleaned
+    if not plain.is_plain(draft):
+        _say("Putting it in plain words…")
+        t1 = time.monotonic()
+        out = fm.generate(plain.rephrase_prompt(cleaned or draft), max_tokens=REPHRASE_TOKENS,
+                          timeout=REPHRASE_TIMEOUT, guard=False)
+        timing["rephrase_s"] = round(time.monotonic() - t1, 2)
+        rc = plain.trim_nothing(plain.cleanup(out or ""))
+        bad = plain.introduced(rc, draft, question, *(d.get("text", "") for _, d in docs))
+        if not rc:
+            path = "fallback:no-rewrite"
+        elif bad:
+            path = f"fallback:added {', '.join(bad[:5])}"
+        elif plain.says_nothing(rc) and len(plain.bullets(cleaned)) >= 2:
+            path = "fallback:dropped-everything"
+        else:
+            path, final = "rephrased", rc
+    final = final or "Nothing major in your notes for that stretch."
+    LAST_TIMING.update(timing, path=path, draft=draft)
+    return final
+
+
+def summary_answer(question, vault, intent, on_chunk, done, unavailable, today=None):
+    """Answer a summary question. None when there are no sources (let retrieval try)."""
+    label, docs = gather(question, vault, intent, today)
+    if not docs:
+        return None
+    notes = [h for h in docs if not _is_log(h[1]["path"])]
+    n_notes, n_logs = len(notes), len(docs) - len(notes)
+    parts = ([f"{n_notes} note{'s' if n_notes != 1 else ''}"] if n_notes else []) + \
+            ([f"{n_logs} log{'s' if n_logs != 1 else ''}"] if n_logs else [])
+    _say(f"Reading {' and '.join(parts)} — {label}…")
+    if notes:
+        log_usage(vault, question, notes)
+    prompt = build_summary_prompt(question, intent["kind"], label, docs)
+    answer = plain_answer(question, prompt, docs)
+    if not answer:
+        return done(unavailable() if callable(unavailable) else unavailable, docs)
+    on_chunk(answer)
+    return answer, docs
+
+
 def recap_journal(question, vault, window, on_chunk, done, unavailable):
     """Answer a temporal question from the logs/digests. None if none in range."""
-    label, dates = window
-    vp = Path(vault).expanduser()
-    files = recap_files(vault, dates)
-    if not files:
-        return None                                  # nothing logged → let retrieval try
-    n = len(files)
-    kind = "digests" if len(dates) > LONG_WINDOW_DAYS else "logs"
-    _say(f"Reading {kind} — {label} ({n} file{'s' if n != 1 else ''})…")
-    prompt = build_recap_prompt(question, label, files)
-    hits = [(None, {"path": str(f.relative_to(vp)), "title": f"{f.parent.name}/{f.stem}"})
-            for f in files]
-    answer = synthesize(prompt, on_chunk, RECAP_TOKENS)
-    if not answer:
-        return done(unavailable() if callable(unavailable) else unavailable, hits)
-    return answer, hits
+    intent = {"kind": "recap", "window": window, "topic": "", "summary": True}
+    return summary_answer(question, vault, intent, on_chunk, done, unavailable)
 
 
 def ask(question, vault=None, on_chunk=None):
@@ -373,11 +618,13 @@ def ask(question, vault=None, on_chunk=None):
         on_chunk(msg)
         return msg, hits
 
-    window = detect_window(question)
-    if window:               # temporal question → read the raw logs, not retrieval
-        result = recap_journal(question, vault, window, on_chunk, done, unavailable_notice)
+    LAST_TIMING.clear()
+    intent = classify(question)
+    if intent and intent["summary"]:
+        # summary question → its own sources, a draft, then plain words (ADR 0007)
+        result = summary_answer(question, vault, intent, on_chunk, done, unavailable_notice)
         if result is not None:
-            return result    # else nothing in range — fall through to retrieval
+            return result    # else nothing to read — fall through to retrieval
 
     _say("Searching your notes…")
     # Answer from notes: Plasmie's curated wiki/ and the user's own notes (the "vault"
@@ -385,13 +632,17 @@ def ask(question, vault=None, on_chunk=None):
     # material to be synthesized INTO wiki (via promote), and can contradict curated
     # guidance. A weak/empty result is a coverage GAP to fill, not a reason to read raw.
     hits = qmd_hits(question, vault, collection=["wiki", "vault"])
+    want = _KIND_TYPES.get(intent["kind"]) if intent else None
+    if want:                 # "the how-to for releases": that kind of note first
+        hits = sorted(hits, key=lambda h: not _is_kind(_frontmatter(h[1]["text"]), want))
     if not hits:
         if log_gap(vault, question, 0.0, "(none)"):
             _say("Nothing in your notes covers this — logged a coverage gap.")
         return done("Nothing in your notes covers this yet — I'll learn more as I gather and file your work.", [])
     # qmd's top score gauges coverage — a low one means nothing really matches (gap).
-    weak = hits[0][0] < COVERAGE_MIN
-    if weak and log_gap(vault, question, hits[0][0], hits[0][1]["path"]):
+    top = max(hits, key=lambda h: h[0])
+    weak = top[0] < COVERAGE_MIN
+    if weak and log_gap(vault, question, top[0], top[1]["path"]):
         _say("No strong match — answering tentatively and logging a coverage gap.")
     log_usage(vault, question, hits)
     titles = ", ".join(doc["title"] for _, doc in hits[:3])

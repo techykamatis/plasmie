@@ -156,9 +156,8 @@ Show the user, in the conversation:
 2. The plan: push `main` if it's ahead (say by how many commits), create and push the
    annotated tag `v<VERSION>`, create a **draft** release in `$REPO` titled
    `Plasmie <VERSION>`, and upload these three files (with their sizes):
-   `Plasmie-<VERSION>.dmg`, `Plasmie-<VERSION>.dmg.sha256`, and `Plasmie.dmg`, an
-   identical copy under a fixed name, so that `releases/latest/download/Plasmie.dmg`
-   always points at the newest build once downloads are public.
+   `Plasmie-<VERSION>.dmg` and `Plasmie-<VERSION>.dmg.sha256`. The file name always
+   carries the version; the website's download buttons link to it by name.
 3. That the repo is **private**, so the download works only for people with access to
    the repo (see "Private repo" below).
 4. The question: "Push, tag and create the draft release? (yes / no, or edit the notes
@@ -180,15 +179,12 @@ Then, one command at a time, checking each before the next:
 git push origin main                                     # only if ahead of origin
 git tag -a v<VERSION> -m "Plasmie <VERSION>"
 git push origin v<VERSION>
-UP="$(mktemp -d)" && cp app/build/Plasmie-<VERSION>.dmg "$UP/Plasmie.dmg"
 gh release create v<VERSION> -R "$REPO" --verify-tag --draft \
   --title "Plasmie <VERSION>" --notes-file <notes file> \
-  app/build/Plasmie-<VERSION>.dmg app/build/Plasmie-<VERSION>.dmg.sha256 "$UP/Plasmie.dmg"
+  app/build/Plasmie-<VERSION>.dmg app/build/Plasmie-<VERSION>.dmg.sha256
 ```
 
-`--verify-tag` makes `gh` refuse to invent a tag on GitHub if the push didn't land. The
-fixed-name copy goes in a temp folder, not `app/build`, so the build output stays as
-`make-release.sh` left it. (If `$REPO` is ever a separate releases repo, the tag has to
+`--verify-tag` makes `gh` refuse to invent a tag on GitHub if the push didn't land. (If `$REPO` is ever a separate releases repo, the tag has to
 exist there too. Push it to that repo as well, or drop `--verify-tag` and pass
 `--target <commit>`, and say which you did.)
 Print the draft's URL (`gh release view v<VERSION> -R "$REPO" --json url -q .url`) and ask:
@@ -259,12 +255,6 @@ A half-uploaded asset can be replaced with `gh release upload v<VERSION> -R "$RE
 
 ## Private repo
 
-`techykamatis/plasmie` is private. Release pages and asset downloads work only for people
-signed in to GitHub with access to the repo. Everyone else gets a 404. So the website's
-**Download for Mac** buttons (`plasmie-site/index.html`, marked `TODO(download)`) can't
-point at a release here for the public. Mention this at the confirmation step every
-time. The ways out are the user's choice, not this skill's: make the repo public, publish
-releases from a separate public repo (change `RELEASE_REPO`), or host the DMG on the
-site. Every release already carries a `Plasmie.dmg` copy, so a link to
-`https://github.com/<REPO>/releases/latest/download/Plasmie.dmg` works as soon as the
-release repo is public.
+If `RELEASE_REPO` is private, release pages and downloads work only for people signed in
+with access; everyone else gets a 404, including from the website's download buttons.
+Check visibility at the confirmation step and say so plainly if it's private.

@@ -34,6 +34,12 @@ RELEASE_REPO = "techykamatis/plasmie"
 SITE_DIR = os.path.join(os.path.dirname(ROOT), "plasmie-site")
 SITE_FILES = ("index.html", "404.html")
 SITE_SPAN = re.compile(r"(<span data-plasmie-version>)([^<]*)(</span>)")
+# Download buttons: <a href=".../releases/download/v<ver>/Plasmie-<ver>.dmg" data-plasmie-download>
+SITE_DL = re.compile(r'(href=")https://github\.com/[^"]+/releases/download/v([0-9.]+)/Plasmie-([0-9.]+)\.dmg(" data-plasmie-download)')
+
+
+def download_url(ver):
+    return f"https://github.com/{RELEASE_REPO}/releases/download/v{ver}/Plasmie-{ver}.dmg"
 
 
 def run(*cmd, check=False):
@@ -360,6 +366,8 @@ def site_versions():
         if not spans and name == "index.html":
             problems.append("index.html has no <span data-plasmie-version> (the version is unmarked)")
         found |= {v.strip() for _, v, _ in spans}
+        for m in SITE_DL.finditer(open(path, encoding="utf-8").read()):
+            found |= {m.group(2), m.group(3)}
     return found, problems
 
 
@@ -382,6 +390,7 @@ def site_version(ver, check):
             continue
         old = open(path, encoding="utf-8").read()
         new = SITE_SPAN.sub(lambda m: m.group(1) + ver + m.group(3), old)
+        new = SITE_DL.sub(lambda m: m.group(1) + download_url(ver) + m.group(4), new)
         if new != old:
             changed = True
             with open(path, "w", encoding="utf-8") as f:

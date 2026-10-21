@@ -4,12 +4,13 @@
 # env, background loops, and the menu-bar app. (Dev path; friends use the DMG.) Interactive (prompts with defaults).
 # Idempotent and re-runnable — every step detects what's already done and each is skippable.
 set -uo pipefail
-SELF="$(cd "$(dirname "$0")" && pwd)"
+SELF="$(cd "$(dirname "$0")" && pwd)"   # the repo checkout
+ENGINE="$SELF/engine"
 PY312="$(command -v python3.12 || echo /opt/homebrew/opt/python@3.12/bin/python3.12)"
 VENV_PY="$SELF/.venv/bin/python"
 # the user-visible name lives in plasmie-env.sh (read, not sourced: no side effects here)
-APP_NAME="$(sed -n 's/^PLASMIE_APP_NAME="\(.*\)"$/\1/p' "$SELF/plasmie-env.sh")"
-APP_ID="$(sed -n 's/^PLASMIE_APP_ID="\(.*\)"$/\1/p' "$SELF/plasmie-env.sh")"
+APP_NAME="$(sed -n 's/^PLASMIE_APP_NAME="\(.*\)"$/\1/p' "$ENGINE/plasmie-env.sh")"
+APP_ID="$(sed -n 's/^PLASMIE_APP_ID="\(.*\)"$/\1/p' "$ENGINE/plasmie-env.sh")"
 
 say()  { printf '\n\033[1m== %s ==\033[0m\n' "$1"; }
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
@@ -69,13 +70,15 @@ while :; do
   warn "Please pick a regular folder on your Mac."
 done
 # upsert, never overwrite: config.env also holds the app's connector On/Off switches
-{ grep -v '^VAULT_DIR=' "$SELF/config.env" 2>/dev/null || true; printf 'VAULT_DIR="%s"\n' "$VAULT"; } > "$SELF/config.env.tmp" \
-  && mv "$SELF/config.env.tmp" "$SELF/config.env"   # quoted: safe for paths with spaces
+CONFIG="${PLASMIE_HOME:-$HOME/Library/Application Support/$APP_NAME}/config.env"   # paths.CONFIG
+mkdir -p "$(dirname "$CONFIG")"
+{ grep -v '^VAULT_DIR=' "$CONFIG" 2>/dev/null || true; printf 'VAULT_DIR="%s"\n' "$VAULT"; } > "$CONFIG.tmp" \
+  && mv "$CONFIG.tmp" "$CONFIG"   # quoted: safe for paths with spaces
 ok "vault → $VAULT  (saved to config.env)"
 
 # 3) scaffold vault -----------------------------------------------------------
 say "3/8 · Scaffold vault"
-"$SELF/scaffold-vault.sh" "$VAULT"
+"$ENGINE/scaffold-vault.sh" "$VAULT"
 
 # 4) secrets ------------------------------------------------------------------
 say "4/8 · Secrets (Slack ingest)"
@@ -84,7 +87,7 @@ if /usr/bin/security find-generic-password -s "$APP_NAME" -a SLACK_USER_TOKEN >/
   ok "SLACK_USER_TOKEN already in the Keychain"
 elif yes "Add a Slack user token now? (enables Slack ingest)"; then
   tok="$(ask "Paste SLACK_USER_TOKEN (xoxp-…)" "")"
-  [ -n "$tok" ] && printf '%s\n' "$tok" | "$PY312" "$SELF/keychain.py" set SLACK_USER_TOKEN \
+  [ -n "$tok" ] && printf '%s\n' "$tok" | "$PY312" "$ENGINE/keychain.py" set SLACK_USER_TOKEN \
     && ok "saved to the Keychain"
 else
   warn "skipped — add it later in $APP_NAME's Settings (Slack card)"
@@ -115,16 +118,16 @@ command -v qmd >/dev/null && ok "qmd present" \
 say "7/8 · Background loops (launchd)"
 DOMAIN="gui/$(id -u)"; loaded=0
 total=0   # launchd/*.plist IS the manifest — never a hand-kept list
-for t in "$SELF"/launchd/*.plist; do
+for t in "$ENGINE"/launchd/*.plist; do
   total=$((total + 1))
   launchctl print "$DOMAIN/$(basename "$t" .plist)" >/dev/null 2>&1 && loaded=$((loaded + 1))
 done
 if [ "$loaded" -ge "$total" ]; then
   ok "agents already installed ($loaded/$total loaded)"
-  yes "Refresh them (re-point to this install)?" && { "$SELF/launchd/install.sh" && ok "refreshed"; }
+  yes "Refresh them (re-point to this install)?" && { "$ENGINE/launchd/install.sh" && ok "refreshed"; }
 elif yes "Install the background agents ($loaded/$total currently loaded)?"; then
-  "$SELF/launchd/install.sh" && ok "agents installed"
-else warn "skipped — run launchd/install.sh later"; fi
+  "$ENGINE/launchd/install.sh" && ok "agents installed"
+else warn "skipped — run engine/launchd/install.sh later"; fi
 
 # 8) menu-bar app — detect existing install -----------------------------------
 say "8/8 · Menu-bar app"

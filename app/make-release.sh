@@ -19,7 +19,7 @@ n="$(cd "$ROOT" && { ruff check . 2>/dev/null || true; } | sed -nE 's/^Found ([0
 n="${n:-0}"
 [ "$n" -le "$RUFF_BASELINE" ] || { echo "ruff: $n errors > baseline $RUFF_BASELINE"; exit 1; }
 echo "ruff: $n (baseline $RUFF_BASELINE)"
-for f in "$ROOT"/*.sh "$ROOT"/launchd/*.sh "$SELF"/*.sh; do bash -n "$f"; done
+for f in "$ROOT"/*.sh "$ROOT"/engine/*.sh "$ROOT"/engine/launchd/*.sh "$SELF"/*.sh; do bash -n "$f"; done
 echo "bash -n: ok"
 rm -rf "$T"
 

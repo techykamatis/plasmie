@@ -232,7 +232,10 @@ HEADINGS = ["New", "Better", "Fixed", "Install"]
 
 def deny_terms():
     """The owner terms test_no_personal.py reads from .personal-deny.txt, its generic terms, and every commit author name and email."""
-    spec = importlib.util.spec_from_file_location("tnp", os.path.join(ROOT, "test_no_personal.py"))
+    tests = os.path.join(ROOT, "tests")
+    if tests not in sys.path:
+        sys.path.insert(0, tests)                 # the scan imports tests/support.py
+    spec = importlib.util.spec_from_file_location("tnp", os.path.join(tests, "repo", "test_no_personal.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     found = mod._deny_terms() if hasattr(mod, "_deny_terms") else (list(getattr(mod, "DENY", [])), [])

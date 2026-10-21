@@ -48,11 +48,11 @@ app/make-release.sh          # quality gates, then app/build/Plasmie-<VERSION>.d
 `com.plasmie.dev-*` launchd agents in `~/Library/LaunchAgents`. The shipped app instead
 registers its own `com.plasmie.<job>` jobs (SMAppService), which run the engine bundled inside
 the app. **Never run both sets**: ingest appends, so two sets would capture everything twice.
-The app refuses to register its jobs while any dev-path agent is present (`launchd/install.sh uninstall` removes them).
+The app refuses to register its jobs while any dev-path agent is present (`engine/launchd/install.sh uninstall` removes them).
 
 ### What first-run setup does
 
-The app drives [`app-setup.sh`](app-setup.sh). It is idempotent and resumable, and
+The app drives [`app-setup.sh`](engine/app-setup.sh). It is idempotent and resumable, and
 `Run setup again…` re-runs it safely.
 
 1. **Prerequisite check.** Apple silicon, Apple Intelligence, disk, network, the bundled
@@ -66,13 +66,13 @@ The app drives [`app-setup.sh`](app-setup.sh). It is idempotent and resumable, a
    - Cloud-synced folders are refused.
    - A restore point is taken.
    - An existing Plasmie vault is adopted untouched.
-   - Any other folder only gains the missing pieces from `vault-template/`; nothing there is overwritten.
+   - Any other folder only gains the missing pieces from `engine/vault-template/`; nothing there is overwritten.
 5. **Search engine.** Installs qmd, pinned to `@tobilu/qmd@2.5.3`, using the bundled Node.
    It is reinstalled if it is missing, the wrong version, or fails to load under that Node.
 6. **Search collections.** Points `raw`, `wiki` and `vault` at the chosen vault, repointing
    any that were left elsewhere *in place*, so hand-written contexts and ignores survive.
    Then it downloads the models and embeds.
-7. **Suggested links.** [`related.py`](related.py) finds each note's text neighbours across the
+7. **Suggested links.** [`related.py`](engine/related.py) finds each note's text neighbours across the
    vault. That takes a few seconds, and nothing is written to a note. Most vaults people bring
    are mostly unlinked (one measured 75%), and this gives the map structure from the first open.
 8. **First crawl** (no prior state only). GitHub and Confluence history, plus 30 days of
@@ -102,15 +102,15 @@ The app drives [`app-setup.sh`](app-setup.sh). It is idempotent and resumable, a
  daily 00:47   plasmie-snapshot.sh: git-commit the vault (push if a remote exists)
 ```
 
-**The model.** Every model call goes through [`fm.py`](fm.py) to `plasmie-fm`, a small Swift
+**The model.** Every model call goes through [`fm.py`](engine/fm.py) to `plasmie-fm`, a small Swift
 helper over the system FoundationModels framework ([ADR 0002](docs/decisions/0002-apple-on-device-model.md)).
 Nothing is downloaded and there is no network call. The on-device context window is small
 and is always read live, so promote and long digests **map-reduce**
-([`mapreduce.py`](mapreduce.py)): chunk to the budget, extract, merge. Background calls
+([`mapreduce.py`](engine/mapreduce.py)): chunk to the budget, extract, merge. Background calls
 defer when the Mac is hot, loaded or short on memory (`fm.machine_busy`). Interactive Ask
 doesn't defer.
 
-**Time limits.** Each job runs under [`plasmie-job.sh`](plasmie-job.sh). It gets a hard limit (ingest 50 min,
+**Time limits.** Each job runs under [`plasmie-job.sh`](engine/plasmie-job.sh). It gets a hard limit (ingest 50 min,
 promote 120 min) and runs in its own process group, so a job stuck on the network or the
 model is stopped instead of hanging.
 
@@ -123,13 +123,13 @@ search with a BM25 fallback, over three collections:
 | `vault` | `<vault>` minus `raw/`, `wiki/`, `meta/` | Ask: your own notes, in whatever folders you keep |
 | `raw` | `<vault>/raw` | Recaps of a time window; never an answer source for open questions |
 
-[`ask.py`](ask.py) answers only from the retrieved notes, under rules that forbid upgrading a
+[`ask.py`](engine/ask.py) answers only from the retrieved notes, under rules that forbid upgrading a
 status or inventing specifics ([ADR 0006](docs/decisions/0006-faithfulness-guard.md)). The
 Sources list comes from retrieval, never from model output. Weak matches are logged to
 `meta/coverage-gaps.md` so coverage can grow.
 Summary questions ("any decisions lately?", "what's blocking me?", "what did I do last
 week?") read filed notes of that kind first, then get a plain-English rewording pass and a
-cleanup that strips commit IDs, file names and test names ([`plain.py`](plain.py),
+cleanup that strips commit IDs, file names and test names ([`plain.py`](engine/plain.py),
 [ADR 0007](docs/decisions/0007-plain-summary-answers.md)). Direct lookups stay exact.
 
 ---
@@ -140,7 +140,7 @@ cleanup that strips commit IDs, file names and test names ([`plain.py`](plain.py
 |---|---|
 | Notch / menu bar | Status as Plasmie's shape, a daily fun fact, quick actions |
 | Ask (⌃⌥⌘K, anywhere) | Streamed on-device answer with clickable sources |
-| Map | The vault as a graph (all notes except `raw/` and `meta/`), in your folders as they are, with `[[wikilinks]]` and Markdown links as edges ([`plasmie-graph.py`](plasmie-graph.py)). Suggested links are drawn faint and dashed |
+| Map | The vault as a graph (all notes except `raw/` and `meta/`), in your folders as they are, with `[[wikilinks]]` and Markdown links as edges ([`plasmie-graph.py`](engine/plasmie-graph.py)). Suggested links are drawn faint and dashed |
 | Reader | Opens any note beside the map, see below |
 | Settings | Connectors with Test, vault, iCloud mirror, diagnostics, re-run setup |
 | Trophies | Evolution stage and first-year trophies earned from vault history |
@@ -157,7 +157,7 @@ anywhere in the app render natively in the map window.
 - **Read-only:** `raw/`, the bundled docs, and any note too large to show in full.
 - **Related notes** under each note list its suggested neighbours.
 
-**Suggested links** ([`related.py`](related.py)). Each note's nearest neighbours by TF-IDF
+**Suggested links** ([`related.py`](engine/related.py)). Each note's nearest neighbours by TF-IDF
 over its title and description (or opening text), across the whole vault, minus `raw/` and
 `meta/`. The floor is 0.25 and there are at most 4 per note. They are cached in `related.json`,
 keyed by every note's mtime and size, and computed, never written. **Settings › Vault ›
@@ -197,7 +197,7 @@ files. Its watermark still advances, so switching it back on does not backfill t
 period. Each source keeps its own watermark in `.loop-state.json`. A failing source holds
 its watermark, so the next run re-covers the gap.
 
-[`plasmie-doctor.py [source]`](plasmie-doctor.py) prints per-connector reachability and freshness as
+[`plasmie-doctor.py [source]`](engine/plasmie-doctor.py) prints per-connector reachability and freshness as
 JSON. It is what **Test** in Settings runs.
 
 ---
@@ -217,7 +217,7 @@ JSON. It is what **Test** in Settings runs.
 
 The vault defaults to `~/knowledge` and must be on local disk. macOS blocks background
 helpers from reading iCloud and OneDrive folders, and offloaded files read as empty. The
-optional iCloud mirror ([`plasmie-icloud.py`](plasmie-icloud.py), [ADR 0025](docs/decisions/0025-icloud-mirror.md))
+optional iCloud mirror ([`plasmie-icloud.py`](engine/plasmie-icloud.py), [ADR 0025](docs/decisions/0025-icloud-mirror.md))
 copies notes and digests one way, Mac to iCloud, for reading on iPhone. It never copies
 raw captures.
 
@@ -240,7 +240,7 @@ in `/usr/local` often shadows native tools on `PATH`. Without Rosetta those copi
   venv, the app and `plasmie-env.sh` fall back to the bundled runtime, never `/usr/bin/python3`
   (a 3.9 stub that also triggers a developer-tools prompt).
 - **External tools** (`git`, `gh`) are resolved by what the binary *is*, not by where `PATH`
-  finds it first. [`paths.native_tool`](paths.py) reads the Mach-O header (thin or universal)
+  finds it first. [`paths.native_tool`](engine/paths.py) reads the Mach-O header (thin or universal)
   and checks, in order: the recorded path, then `PATH`, then `/opt/homebrew/bin`,
   `~/.local/bin` and `/usr/bin`. The shell equivalent is `plasmie_native` in `plasmie-env.sh`.
 - **Setup** keeps `/usr/local/bin` off its own `PATH` on arm64.
@@ -256,7 +256,7 @@ Full user-facing statement: [`docs/PRIVACY.md`](docs/PRIVACY.md).
   network.
 - **Model:** on-device only. Every call is recorded in a transcript log, so what reached the
   model can be checked.
-- **Scrubbing:** [`scrub.py`](scrub.py) is the single redactor. It removes tokens, keys,
+- **Scrubbing:** [`scrub.py`](engine/scrub.py) is the single redactor. It removes tokens, keys,
   connection-string passwords, PEM blocks and high-entropy secrets after credential words
   before anything is written. Promote also strips emails.
 - **Model output is untrusted:** `promote-apply.py` confines every path to the vault, scrubs
@@ -268,24 +268,44 @@ Full user-facing statement: [`docs/PRIVACY.md`](docs/PRIVACY.md).
 ## Development
 
 ```bash
-.venv/bin/python -m pytest -q        # full suite (~25 s); fake_fm stands in for plasmie-fm
+.venv/bin/python -m pytest -q        # full suite (~35 s); fake_fm stands in for plasmie-fm
 ruff check .                          # must not exceed RUFF_BASELINE in app/make-release.sh
-bash -n *.sh launchd/*.sh app/*.sh    # every shell script parses
+bash -n *.sh engine/*.sh engine/launchd/*.sh app/*.sh    # every shell script parses
 app/make-app.sh                       # Swift build (swiftc, no Xcode project)
 ```
 
-- **Layout:** the engine lives at the repo root, one script per job. `paths.py` is the single
-  source of layout, config and tool resolution, and `fm.py` is the single model chokepoint.
-  The app is in `app/Sources` (one file per surface); `app/fm/main.swift` is `plasmie-fm`.
-- **Tests:** they run without Apple Intelligence or network. `conftest.py` provides
-  `fake_fm`, an executable fake, so the subprocess path is tested for real. The setup tests
-  (`test_setup_vault.py`) need a built app and are skipped otherwise.
+### Repository layout
+
+```
+engine/            the background engine: one script per job, Python stdlib + bash
+  launchd/         dev-path job templates (com.plasmie.dev-*) and their installer
+  vault-template/  what setup copies into a new vault
+app/               the macOS app
+  Sources/         Swift, one file per surface (notch, Ask, map, setup...)
+  fm/              plasmie-fm, the bridge to Apple's on-device model
+  brand/           icon, brand sheet and hero renders
+  licenses/        third-party licenses shipped inside the app
+  make-*.sh        build, DMG and release scripts
+tests/             pytest suite for the engine; conftest.py has the fakes, support.py the paths
+  repo/            checks over the whole repo: names, brand, network hosts, personal data
+docs/              Quickstart and Privacy (shipped in the app) and decisions/ (ADRs)
+install.sh         dev wizard
+```
+
+- **Engine:** `engine/` is copied as-is into `Plasmie.app/Contents/Resources/backend`, so
+  scripts find each other by sitting in the same folder. `paths.py` is the single source of
+  layout, config and tool resolution, and `fm.py` is the single model chokepoint.
+- **Tests:** they run without Apple Intelligence or network. `tests/conftest.py` provides
+  `fake_fm`, an executable fake, so the subprocess path is tested for real, and
+  `tests/support.py` gives `ROOT`, `ENGINE` and `load_script()` for scripts with dashes in
+  their names. The setup tests (`tests/test_setup_vault.py`) need a built app and are
+  skipped otherwise.
 - **Stdlib only:** the engine has no Python dependencies. Keep it that way; the app ships a
   bare interpreter.
 - **Releases:** bump `VERSION` in a `chore: release X.Y.Z (…)` commit, then run
   `app/make-release.sh`. It runs the tests, ruff and `bash -n` as gates before building the
   DMG. Commits follow Conventional Commits.
-- **Data migrations:** versioned and idempotent, in [`plasmie-migrate.py`](plasmie-migrate.py), and run
+- **Data migrations:** versioned and idempotent, in [`plasmie-migrate.py`](engine/plasmie-migrate.py), and run
   at every launch and setup.
 - **Upgrades:** on launch the migrations carry an older install over: data and log folders,
   preferences, Keychain sign-ins and jobs. Settings saved under older key names are moved to
@@ -293,9 +313,9 @@ app/make-app.sh                       # Swift build (swiftc, no Xcode project)
 - **Names:** settings and env vars are `PLASMIE_*` (`PLASMIE_HOME`, `PLASMIE_LOGS`,
   `PLASMIE_VAULT`, `PLASMIE_DISABLED_SOURCES`, `PLASMIE_GIT_ROOTS`, `PLASMIE_KEYCHAIN`…),
   defaults keys `plasmie.*`, the app's jobs `com.plasmie.<job>` and a dev checkout's jobs
-  (`launchd/install.sh`) `com.plasmie.dev-<job>`
+  (`engine/launchd/install.sh`) `com.plasmie.dev-<job>`
   ([ADR 0024](docs/decisions/0024-background-jobs.md)).
-- **Reset:** `plasmie-reset.sh [--dry-run]` removes jobs, data and logs, **never the vault**.
+- **Reset:** `engine/plasmie-reset.sh [--dry-run]` removes jobs, data and logs, **never the vault**.
 
 ### Troubleshooting
 
@@ -304,7 +324,7 @@ app/make-app.sh                       # Swift build (swiftc, no Xcode project)
 | A connector says "Failed last run" | `tail ~/Library/Application\ Support/Plasmie/feed.log`; the last line's `*-ERR` names it. `plasmie-doctor.py <source>` shows why. The status clears on the next successful ingest |
 | Nothing filed overnight | `~/Library/Logs/Plasmie/audit-*.log`, and whether Apple Intelligence is on |
 | Search misses your notes | `qmd collection list`: all three collections should point inside the vault. Re-run setup to repoint |
-| Sending a bug report | The Plasmie window › **Copy diagnostics**: a scrubbed report with no notes or secrets ([`plasmie-diagnostics.py`](plasmie-diagnostics.py)) |
+| Sending a bug report | The Plasmie window › **Copy diagnostics**: a scrubbed report with no notes or secrets ([`plasmie-diagnostics.py`](engine/plasmie-diagnostics.py)) |
 
 ## License
 

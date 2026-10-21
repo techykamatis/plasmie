@@ -28,25 +28,25 @@ swiftc -O -parse-as-library -target "${ARCH}-apple-macos13.0" \
 "$SELF/build-fm.sh" "$APP/Contents/MacOS/$FM_NAME"
 
 # --- bundle the backend so the app can self-install on first run -------------
-LOOP="$(cd "$SELF/.." && pwd)"
+ROOT="$(cd "$SELF/.." && pwd)"
+ENGINE="$ROOT/engine"
 RES="$APP/Contents/Resources"
 say() { printf '%s\n' "$1"; }
 
-# backend scripts + templates (everything the loops need; not the dev cruft).
-# Globs are anchored to $LOOP — a bare *.sh would expand against app/ (cwd).
+# backend: the engine's scripts and templates, flat in Contents/Resources/backend (the
+# path every installed job and the app use). Only these; never __pycache__ or test leftovers.
 BACKEND="$RES/backend"
 mkdir -p "$BACKEND"
 shopt -s nullglob
-for m in "$LOOP"/*.py "$LOOP"/*.sh "$LOOP"/launchd "$LOOP"/vault-template; do
+for m in "$ENGINE"/*.py "$ENGINE"/*.sh "$ENGINE"/launchd "$ENGINE"/vault-template; do
   cp -R "$m" "$BACKEND/"
 done
 shopt -u nullglob
-rm -f "$BACKEND"/test_*.py "$BACKEND/conftest.py" "$BACKEND/install.sh"   # dev-only / brew-based
 say "bundled backend ($(ls "$BACKEND" | wc -l | tr -d ' ') items)"
 # the friend docs ship inside the app too (Plasmie window > Help), read in Plasmie's own reader
 mkdir -p "$RES/docs"
-cp "$LOOP/docs/QUICKSTART.md" "$RES/docs/Quickstart.md"
-cp "$LOOP/docs/PRIVACY.md" "$RES/docs/Privacy.md"
+cp "$ROOT/docs/QUICKSTART.md" "$RES/docs/Quickstart.md"
+cp "$ROOT/docs/PRIVACY.md" "$RES/docs/Privacy.md"
 
 # background jobs, owned by the app: registered with SMAppService.agent at launch (Login
 # Items lists them; they go away with the app). They run the bundled engine in place and
@@ -137,7 +137,7 @@ say "bundled Python $("$RES/python/bin/python3" -V 2>&1 | awk '{print $2}')"
 
 # Plasmie's own license and the third-party notices (each bundled component also keeps its own
 # license file in place: python/lib/python3.12/LICENSE.txt, python/licenses/, node/LICENSE)
-cp "$LOOP/LICENSE" "$LOOP/THIRD_PARTY_NOTICES.md" "$RES/"
+cp "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$RES/"
 
 # Plasmie (idle pose, coloured) -> AppIcon.icns; uses the app's own PlasmieShapes anchors
 ICONSET="$SELF/build/AppIcon.iconset"

@@ -141,7 +141,7 @@ Rules, and why:
 python3 $R check-notes <notes file> --sha <hex from the .sha256>   # omit --sha in a dry run
 ```
 
-This runs the `DENY` list from `test_no_personal.py`, every commit author's name and
+This runs the `DENY` list from `tests/repo/test_no_personal.py`, every commit author's name and
 email, and the repo owner's login against the text. It also flags slop words, developer
 words, file names, hashes, dashes, question marks, unknown headings, empty groups, a
 missing or wrong SHA-256, and missing install steps. Fix every hit and re-run until it

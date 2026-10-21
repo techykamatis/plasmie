@@ -1,0 +1,9 @@
+# Dev tooling only. Plasmie isn't a Python package: the engine is a folder of scripts
+# that ships as-is inside Plasmie.app (app/make-app.sh copies engine/ into backend/).
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# engine/ so tests can `import paths`, `import fm` like the scripts do; tests/ for support.py
+pythonpath = ["engine", "tests"]
+addopts = "-p no:cacheprovider"
+

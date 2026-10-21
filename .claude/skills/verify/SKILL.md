@@ -13,18 +13,18 @@ Run from the repo root. Stop at the first failure and report the exact error, fi
 
        PLASMIE_HOME=$(mktemp -d) PLASMIE_LOGS=$(mktemp -d) python3 -m pytest -q $ARGUMENTS
 
-   `test_no_personal.py` is part of this. It reads the owner's terms from the git-ignored
+   `tests/repo/test_no_personal.py` is part of this. It reads the owner's terms from the git-ignored
    `.personal-deny.txt`; if that file is missing the owner scan skips with a notice, which is
    expected on a fresh clone.
 
-2. **Shell syntax.** `bash -n` on `*.sh`, `launchd/*.sh` and `app/*.sh` (skip globs that match nothing).
+2. **Shell syntax.** `bash -n` on `*.sh`, `engine/*.sh`, `engine/launchd/*.sh` and `app/*.sh` (skip globs that match nothing).
 
-3. **Python compiles.** `python3 -m py_compile *.py .claude/skills/*/scripts/*.py`
+3. **Python compiles.** `python3 -m py_compile engine/*.py tests/*.py tests/repo/*.py .claude/skills/*/scripts/*.py`
 
 4. **Lint.** `ruff check .` must not report more errors than `RUFF_BASELINE` in
    `app/make-release.sh`. If ruff isn't installed, say so; don't fail on it.
 
-5. **App builds.** Only when Swift, the bundle, `make-app.sh` or bundled runtimes changed:
+5. **App builds.** Only when Swift, the bundle, `make-app.sh`, the engine's file layout or bundled runtimes changed:
 
        app/make-app.sh
        codesign --verify --deep --strict app/build/Plasmie.app
@@ -32,7 +32,7 @@ Run from the repo root. Stop at the first failure and report the exact error, fi
    `make-app.sh` wipes `app/build`, including any installer the user is testing. Say so before
    running it if `app/build/Plasmie.dmg` exists.
 
-6. **No traces.** Covered by `test_no_personal.py` in step 1. It allows the owner's public
+6. **No traces.** Covered by `tests/repo/test_no_personal.py` in step 1. It allows the owner's public
    name (the `allow:` lines in `.personal-deny.txt`) only in LICENSE, README.md, TRADEMARK.md
    and CONTRIBUTING.md. If that test was skipped because the file is missing, say so.
 

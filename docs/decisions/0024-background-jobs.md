@@ -17,7 +17,7 @@ at once duplicate data.
   engine (through `plasmie-job.sh`), and stop when the app is deleted. Reset unregisters them.
 - **Logs:** a plist inside a bundle can't name a log path in the user's home, so jobs pass
   `PLASMIE_JOB_LOG` and `plasmie-env.sh` sends their output to `~/Library/Logs/Plasmie`.
-- **Never two sets at once.** The dev path, `launchd/install.sh`, runs jobs from a checkout
+- **Never two sets at once.** The dev path, `engine/launchd/install.sh`, runs jobs from a checkout
   as `com.plasmie.dev-<job>`. The app registers its own only when no dev agent and no job
   from an older install is loaded (`BackgroundJobs.legacyPresent`, via `LegacyJobs`), and
   `run-ingest.sh` also takes a lock.
@@ -25,7 +25,7 @@ at once duplicate data.
   bundle id can't be unregistered by this app, so `plasmie-migrate.py` boots them out
   (`launchctl bootout gui/$UID/<label>`) and fails, to be retried, while one is still loaded.
   The app runs that again on its own (`--retire-old-jobs`) if one comes back after a login.
-  `launchd/install.sh retire` (also run by `install.sh` and `uninstall`, before installing
+  `engine/launchd/install.sh retire` (also run by `install.sh` and `uninstall`, before installing
   `dev-*`) boots out and removes any dev agent under an older label and leaves
   `com.plasmie.dev-*` alone.
 - **Approval:** if macOS holds the jobs for approval, the island and the window say so, with

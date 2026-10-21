@@ -68,13 +68,13 @@ spec and the checklist for verifying a seeded install.
    These two scripts do not read `PLASMIE_DISABLED_SOURCES`; the connector On/Off switch
    gates only the hourly ingest, so skip them by hand for a source that is Off.
 
-4. **Run the seeded ingest:** `./run-ingest.sh` (sources `.env`, sets `PLASMIE_VAULT`,
+4. **Run the seeded ingest:** `engine/run-ingest.sh` (sources `.env`, sets `PLASMIE_VAULT`,
    writes per-source `raw/<source>/YYYY-MM-DD.md` + a `log.md` line; sources listed in
    `PLASMIE_DISABLED_SOURCES` are skipped).
 
 5. **Condense + promote the seed:**
-   - `./summarize.sh` → rolling `meta/digests/<today>.md`
-   - `./promote.sh` → drafts durable notes, auto-files confident ones into `wiki/`
+   - `engine/summarize.sh` → rolling `meta/digests/<today>.md`
+   - `engine/promote.sh` → drafts durable notes, auto-files confident ones into `wiki/`
      (holds the uncertain for review). This is what fills `wiki/` on day one.
 
 6. **Index for retrieval:**

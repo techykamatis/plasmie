@@ -24,7 +24,7 @@ Before anything is written, a redactor strips things that look like passwords, A
 ## Network use
 
 - Each connector you switch on talks only to its own service (Slack, GitHub, your Atlassian site, Microsoft for Outlook) to read your own account. A connector that's off makes no calls.
-- First setup downloads, once: the search engine (qmd, from npm) and its search models (from Hugging Face).
+- First setup downloads, once: the search engine (qmd, from npm at registry.npmjs.org) and its search models (from Hugging Face).
 - That's all. No telemetry, no analytics, no crash reports, nothing uploaded. (Plasmie's code is checked for this: a test fails if a new network address appears without being listed here.)
 
 ## The AI

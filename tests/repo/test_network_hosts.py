@@ -12,7 +12,7 @@ ALLOWED = {
     "slack.com", "api.github.com", "github.com", "login.microsoftonline.com",
     "graph.microsoft.com", "your-site.atlassian.net",
     # one-time setup downloads
-    "huggingface.co", "nodejs.org",
+    "huggingface.co", "nodejs.org", "registry.npmjs.org",
     # links the user clicks (opened in their browser), never fetched by Plasmie
     "obsidian.md", "claude.com", "brew.sh",
     # local only

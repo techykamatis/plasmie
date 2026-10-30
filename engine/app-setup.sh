@@ -183,12 +183,26 @@ if [ -x "$NODE_BIN/node" ]; then
      || ! PATH="$NODE_BIN:$PATH" "$QMD" collection list >/dev/null 2>&1; then
     p 30 "Installing the search engine…"
     rm -rf "$PLASMIE_HOME/qmd"
-    PATH="$NODE_BIN:$PATH" npm_config_build_from_source=false npm_config_update_notifier=false \
-      "$NODE_BIN/npm" install -g --prefix "$PLASMIE_HOME/qmd" "@tobilu/qmd@$QMD_VERSION" >/dev/null 2>&1 \
-      || fail "couldn't install the search engine; check the internet connection and try again"
-    [ "$(qmd_ver)" = "$QMD_VERSION" ] || fail "the search engine didn't install correctly; try again"
+    # npm runs sealed off from the user's own npm setup: a ~/.npm cache left root-owned by
+    # `sudo npm` fails with EACCES, and a ~/.npmrc naming a work registry fails with
+    # ENOTFOUND, both while the internet is fine. Its output is kept in setup.log.
+    NPM_LOG="$PLASMIE_LOGS/setup.log"; SEE_LOG="details are in ${NPM_LOG/#$HOME/~}"
+    : > "$PLASMIE_HOME/npmrc"
+    if ! PATH="$NODE_BIN:$PATH" npm_config_build_from_source=false npm_config_update_notifier=false \
+         npm_config_cache="$PLASMIE_HOME/npm-cache" npm_config_userconfig="$PLASMIE_HOME/npmrc" \
+         npm_config_registry=https://registry.npmjs.org/ \
+         "$NODE_BIN/npm" install -g --prefix "$PLASMIE_HOME/qmd" "@tobilu/qmd@$QMD_VERSION" >"$NPM_LOG" 2>&1; then
+      code="$(sed -nE 's/^npm (error|ERR!) code (E[A-Z_]+).*/\2/p' "$NPM_LOG" | head -1)"
+      case "$code" in
+        ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNREFUSED|ECONNRESET|ENETUNREACH)
+          fail "couldn't reach registry.npmjs.org to download the search engine; check the internet connection (or VPN) and try again" ;;
+        *) fail "couldn't install the search engine (${code:-npm failed}); $SEE_LOG" ;;
+      esac
+    fi
+    [ "$(qmd_ver)" = "$QMD_VERSION" ] || fail "the search engine didn't install correctly; $SEE_LOG"
   fi
   export PATH="$NODE_BIN:$PLASMIE_HOME/qmd/bin:$PATH"
+  [ "${PLASMIE_SETUP_UNTIL:-}" = search ] && { echo "DONE"; exit 0; }   # tests stop here (no index, no models)
 else
   QMD="$(command -v qmd || true)"
   [ -n "$QMD" ] || fail "Search needs Node.js 22+ (this build has none bundled). Install Node, then try again."

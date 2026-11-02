@@ -28,6 +28,7 @@ Usage:
   promote-apply.py --selfcheck
 """
 import hashlib
+import os
 import re
 import shutil
 import sys
@@ -62,6 +63,11 @@ def _in_vault(vroot, relpath):
     return p if (p == vroot or vroot in p.parents) else None
 
 
+# The hold page explains each item to the person reviewing it. These lines are never
+# part of an item: parse() skips them, so Approve files only the item itself.
+_EXPLAIN = re.compile(r"^> \*\*(?:If you approve|Why it's waiting|Also close):\*\*")
+
+
 def parse(text):
     """Split a draft into items: {title, fields{}, body}."""
     items = []
@@ -70,6 +76,8 @@ def parse(text):
         title = lines[0].strip() if lines else ""
         fields, body = {}, []
         for ln in lines[1:]:
+            if _EXPLAIN.match(ln):
+                continue                                 # the hold page's words for people
             m = re.match(r"^(Action|Target|Merge-into|File|Source|Near|Description):\s*(.*)$", ln)
             if m:
                 fields[m.group(1)] = m.group(2).strip()  # Near is informational (from dedupe); kept out of body
@@ -232,6 +240,74 @@ def _near_score(fields):
 
 
 
+def _note_title(vault, rel):
+    """A note's title from its frontmatter, else its file name."""
+    try:
+        head = (vault / rel).read_text(errors="replace")[:2048]
+    except OSError:
+        head = ""
+    m = re.search(r"^title:\s*(.+)$", head, re.MULTILINE)
+    return m.group(1).strip().strip("'\"") if m else Path(rel).stem.replace("-", " ")
+
+
+def _link(vault, rel, holdpath):
+    """A markdown link from the hold page to a note in the vault."""
+    href = os.path.relpath(vault / rel, holdpath.parent).replace(" ", "%20")
+    return f"[{_note_title(vault, rel)}]({href})"
+
+
+def _others(vault, fields, holdpath):
+    """The other near matches dedupe found, as linked titles with how alike they are."""
+    out = []
+    for path, sc in re.findall(r"(\S+\.md) \(([0-9.]+)\)", fields.get("Near", ""))[1:]:
+        if (vault / path).exists():
+            out.append(f"{_link(vault, path, holdpath)} ({round(float(sc) * 100)}% alike)")
+    return ", ".join(out)
+
+
+def _held(it, reason, vault, holdpath):
+    """Why an item waits for a person, and what Approve would then do.
+
+    Returns (fields, why, if_approved), with fields changed where the original action
+    could never apply (so Approve does what the page says), or None when there is
+    nothing to review (the item was already filed).
+    """
+    f = dict(it["fields"])
+    act = f.get("Action", "").lower()
+    pct = round(_near_score(f) * 100)
+    tgt = f.get("Merge-into", "")
+    if reason == "already merged (idempotent)":
+        return None
+    if act == "merge" and reason == "":                 # below AUTO_MERGE_AT
+        return (f, (f"It may belong in {_link(vault, tgt, holdpath)}, but they're only {pct}% alike, "
+                    "so it could be a separate topic."),
+                (f"it's added to the end of {_link(vault, tgt, holdpath)}. "
+                 "To make it a new note instead, change `Action: merge` to `Action: create`."))
+    if act == "merge" and reason.startswith("merge target missing"):
+        f["Action"] = "create"; f.pop("Merge-into", None); f.setdefault("Target", paths.WIKI)
+        return (f, f"The note it matched ({tgt}) isn't in your notes any more.",
+                "it becomes a new note.")
+    if act == "merge":                                  # no target, or one outside the notes folder
+        f["Action"] = "create"; f.pop("Merge-into", None); f.setdefault("Target", paths.WIKI)
+        why = (f"The note it matched is outside your notes folder, which {paths.APP_NAME} never writes to."
+               if "escapes" in reason else "It didn't say which note to add it to.")
+        return (f, why, "it becomes a new note.")
+    if act == "create" and reason.startswith("already exists"):
+        rel = reason.split(": ", 1)[1].split(" (")[0]
+        f["Action"] = "merge"; f["Merge-into"] = rel
+        return (f, f"A note with this name already exists: {_link(vault, rel, holdpath)}.",
+                f"it's added to the end of {_link(vault, rel, holdpath)}.")
+    if act == "create":                                 # a place outside the notes folder
+        f["Target"] = paths.WIKI
+        return (f, f"It named a place outside your notes folder, which {paths.APP_NAME} never writes to.",
+                "it becomes a new note in your notes folder.")
+    if act == "move":
+        return (f, f"The file it wanted to file ({f.get('File', '?')}) "
+                   + ("is no longer in your inbox." if "missing" in reason else "can't be moved there."),
+                "nothing is filed; the item is dropped.")
+    return (f, f"{paths.APP_NAME} couldn't tell what to do with it.", "nothing is filed; the item is dropped.")
+
+
 def _norm_create_target(t):
     """Every note lands flat in wiki/. The model can no longer invent a directory."""
     return paths.resolve_target(t)
@@ -241,15 +317,21 @@ def _norm_move_target(t):
     return paths.resolve_target(t)
 
 
-def _serialize(it):
+def _serialize(it, why="", if_approved="", others=""):
     lines = [f"## {it['title']}"]
-    for k in ("Action", "Merge-into", "Target", "File", "Near"):
-        if it["fields"].get(k):
-            lines.append(f"{k}: {it['fields'][k]}")
+    if if_approved:
+        lines += [f"> **If you approve:** {if_approved}", ">",
+                  f"> **Why it's waiting:** {why}"]
+        if others:
+            lines += [">", f"> **Also close:** {others}"]
+        lines.append("")
     if it["body"]:
         lines.append(it["body"])
     if it["fields"].get("Source"):
         lines.append(f"Source: {it['fields']['Source']}")
+    for k in ("Action", "Merge-into", "Target", "File", "Near"):
+        if it["fields"].get(k):
+            lines.append(f"{k}: {it['fields'][k]}")
     return "\n".join(lines)
 
 
@@ -263,7 +345,18 @@ def auto(draft_path, vault):
     if "✅ auto-applied" in raw:
         print("already auto-applied"); return 0, 0
 
+    base = dp.stem
+    holdpath = dp.with_name(f"{base}.hold.md")
     applied, held = [], []
+
+    def hold(it, reason=""):
+        h = _held(it, reason, vault, holdpath)
+        if h is None:
+            print(f"[SKIP] {it['title']} (already filed)"); return
+        fields, why, if_approved = h
+        held.append((dict(it, fields=fields), why, if_approved, _others(vault, it["fields"], holdpath)))
+        print(f"[HOLD] {it['title']} ({reason or 'borderline'})")
+
     for it in parse(raw):
         act = it["fields"].get("Action", "").lower()
         decided = {"title": it["title"], "body": it["body"], "fields": dict(it["fields"])}
@@ -274,7 +367,7 @@ def auto(draft_path, vault):
         elif act == "move":
             decided["fields"]["Target"] = _norm_move_target(decided["fields"].get("Target"))
         else:
-            held.append(it); print(f"[HOLD] {it['title']} (borderline)"); continue
+            hold(it); continue
 
         verb, detail, do, reason = plan(decided, vault)
         if do:
@@ -285,17 +378,24 @@ def auto(draft_path, vault):
             do(); applied.append((verb, detail, decided["fields"].get("Source", "")))
             print(f"[AUTO {verb.upper()}] {detail}")
         else:
-            held.append(it); print(f"[HOLD] {it['title']} ({reason or 'refused'})")
+            hold(it, reason or "refused")
 
-    base = dp.stem
     today = date.today()
-    holdpath = dp.with_name(f"{base}.hold.md")
     if held:
-        body = "\n\n".join(_serialize(h) for h in held)
+        n = len(held)
+        body = "\n\n".join(_serialize(*h) for h in held)
         holdpath.write_text(
             f"---\ntype: note\ntitle: held {base}\ntags: [promotion-hold]\ntimestamp: {today}T00:00:00Z\n---\n\n"
-            f"# Held for review — {base}\n_Auto-apply was unsure (borderline duplicate vs new). "
-            f"Approve as-is, or edit the Action lines, then Apply._\n\n{body}\n")
+            f"# Held for review — {base}\n\n"
+            f"{paths.APP_NAME} filed what it learned from your work on its own, except "
+            f"{'this item' if n == 1 else f'these {n} items'}: "
+            f"it wasn't sure where {'it belongs' if n == 1 else 'they belong'}. "
+            f"{'It says' if n == 1 else 'Each one says'} what approving does and why it waited.\n\n"
+            f"**Your choices**, in {paths.APP_NAME}'s panel:\n\n"
+            f"- **Approve all** files every item as its \"If you approve\" line says.\n"
+            f"- **Dismiss** files nothing and drops {'it' if n == 1 else 'them'}.\n"
+            f"- To change one item first, edit its `Action:` line here (`merge` adds it to an "
+            f"existing note, `create` makes a new one), then Approve all.\n\n{body}\n")
     elif holdpath.exists():
         holdpath.unlink()
 

@@ -438,10 +438,10 @@ struct Panel: View {
                 }
                 .controlSize(.small).buttonStyle(.bordered)
             } else {
-                Text("Auto-apply was unsure — approve, edit, or dismiss.").klNote()
+                Text("\(Brand.name) wasn't sure where these belong. Review shows what approving does for each, and why it waited.").klNote()
                 HStack(spacing: 8) {
                     Button { openNote(m.s.pendingFile) } label: { Label("Review", systemImage: "pencil") }
-                        .help("Open the held items to inspect or change their action before applying.")
+                        .help("Open the held items: each says what approving does and why it waited.")
                     Button { confirm = .approve } label: { Label("Approve all", systemImage: "checkmark.circle.fill") }
                         .tint(.orange)
                         .help("File all held items using the suggested merge/create, then clear them.")

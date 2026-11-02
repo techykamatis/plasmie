@@ -21,8 +21,10 @@ Run from the repo root. Stop at the first failure and report the exact error, fi
 
 3. **Python compiles.** `python3 -m py_compile engine/*.py tests/*.py tests/repo/*.py .claude/skills/*/scripts/*.py`
 
-4. **Lint.** `ruff check .` must not report more errors than `RUFF_BASELINE` in
-   `app/make-release.sh`. If ruff isn't installed, say so; don't fail on it.
+4. **Lint.** `uvx ruff@<RUFF_VERSION> check .` (the version pinned in `app/make-release.sh`;
+   the rules are pinned in `pyproject.toml`) must not report more errors than
+   `RUFF_BASELINE` there. Without uv, use an installed `ruff` and say which version. If
+   neither exists, say so: the release gate will refuse to build.
 
 5. **App builds.** Only when Swift, the bundle, `make-app.sh`, the engine's file layout or bundled runtimes changed:
 

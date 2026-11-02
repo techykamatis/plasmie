@@ -7,7 +7,8 @@ set -euo pipefail
 SELF="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SELF/.." && pwd)"
 VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
-RUFF_BASELINE=29
+RUFF_BASELINE=33
+RUFF_VERSION=0.17.3                  # rules pinned in pyproject.toml
 APP_NAME="Plasmie"                   # matches app/make-app.sh (test_brand.py checks)
 PY="$ROOT/.venv/bin/python3"
 say() { printf '\n== %s ==\n' "$1"; }
@@ -15,8 +16,15 @@ say() { printf '\n== %s ==\n' "$1"; }
 say "$APP_NAME $VERSION: quality gates"
 T="$(mktemp -d)"
 ( cd "$ROOT" && PLASMIE_HOME="$T/home" PLASMIE_LOGS="$T/logs" "$PY" -m pytest -q ) | tail -1
-n="$(cd "$ROOT" && { ruff check . 2>/dev/null || true; } | sed -nE 's/^Found ([0-9]+) errors?\./\1/p')"
-n="${n:-0}"
+# A missing ruff used to count as 0 errors, so the gate passed without linting anything.
+# uv runs the pinned version; an installed ruff is the fallback; neither stops the release.
+if command -v uvx >/dev/null; then RUFF=(uvx "ruff@$RUFF_VERSION")
+elif command -v ruff >/dev/null; then RUFF=(ruff)
+else echo "ruff: not found (install uv or ruff); the lint gate can't run"; exit 1; fi
+lint="$(cd "$ROOT" && "${RUFF[@]}" check . 2>&1 || true)"
+if grep -q '^All checks passed' <<<"$lint"; then n=0
+else n="$(sed -nE 's/^Found ([0-9]+) errors?\./\1/p' <<<"$lint")"; fi
+[ -n "$n" ] || { echo "ruff didn't run:"; tail -5 <<<"$lint"; exit 1; }
 [ "$n" -le "$RUFF_BASELINE" ] || { echo "ruff: $n errors > baseline $RUFF_BASELINE"; exit 1; }
 echo "ruff: $n (baseline $RUFF_BASELINE)"
 for f in "$ROOT"/*.sh "$ROOT"/engine/*.sh "$ROOT"/engine/launchd/*.sh "$SELF"/*.sh; do bash -n "$f"; done

@@ -284,17 +284,21 @@ def _held(it, reason, vault, holdpath):
                 (f"it's added to the end of {_link(vault, tgt, holdpath)}. "
                  "To make it a new note instead, change `Action: merge` to `Action: create`."))
     if act == "merge" and reason.startswith("merge target missing"):
-        f["Action"] = "create"; f.pop("Merge-into", None); f.setdefault("Target", paths.WIKI)
+        f["Action"] = "create"
+        f.pop("Merge-into", None)
+        f.setdefault("Target", paths.WIKI)
         return (f, f"The note it matched ({tgt}) isn't in your notes any more.",
                 "it becomes a new note.")
     if act == "merge":                                  # no target, or one outside the notes folder
-        f["Action"] = "create"; f.pop("Merge-into", None); f.setdefault("Target", paths.WIKI)
+        f["Action"] = "create"
+        f.pop("Merge-into", None)
+        f.setdefault("Target", paths.WIKI)
         why = (f"The note it matched is outside your notes folder, which {paths.APP_NAME} never writes to."
                if "escapes" in reason else "It didn't say which note to add it to.")
         return (f, why, "it becomes a new note.")
     if act == "create" and reason.startswith("already exists"):
         rel = reason.split(": ", 1)[1].split(" (")[0]
-        f["Action"] = "merge"; f["Merge-into"] = rel
+        f["Action"], f["Merge-into"] = "merge", rel
         return (f, f"A note with this name already exists: {_link(vault, rel, holdpath)}.",
                 f"it's added to the end of {_link(vault, rel, holdpath)}.")
     if act == "create":                                 # a place outside the notes folder
@@ -352,7 +356,8 @@ def auto(draft_path, vault):
     def hold(it, reason=""):
         h = _held(it, reason, vault, holdpath)
         if h is None:
-            print(f"[SKIP] {it['title']} (already filed)"); return
+            print(f"[SKIP] {it['title']} (already filed)")
+            return
         fields, why, if_approved = h
         held.append((dict(it, fields=fields), why, if_approved, _others(vault, it["fields"], holdpath)))
         print(f"[HOLD] {it['title']} ({reason or 'borderline'})")

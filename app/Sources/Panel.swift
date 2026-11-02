@@ -98,8 +98,6 @@ struct Panel: View {
     @AppStorage(ICloudSync.key) private var icloudOn = false
     @State private var atLogin = LoginItem.isOn
     @State private var loginNeedsOK = LoginItem.needsApproval   // read once, not per render (XPC to smd)
-    private enum Confirm { case approve, dismiss }
-    @State private var confirm: Confirm?
     @AppStorage(NotchPrefs.key) private var notchOn = true
     private var working: Bool { m.s.state == "running" || m.busy }
     @State private var egg = OriginEgg()
@@ -212,7 +210,7 @@ struct Panel: View {
         if m.s.state == "error", !m.s.reason.isEmpty {
             banner(m.s.reason, symbol: "exclamationmark.triangle.fill", tint: .red) { SettingsController.shared.show() }
         }
-        if m.s.pending > 0 { held }
+        if m.s.pendingItems > 0 { held }
         if m.jobsNeedApproval {
             banner(NotchRootText.jobsNotice, symbol: "gearshape.fill", tint: .orange) { BackgroundJobs.openLoginItems() }
         }
@@ -422,34 +420,15 @@ struct Panel: View {
 
     private var held: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Label("\(m.s.pendingItems) held for review", systemImage: "tray.full.fill")
+            Label("\(m.s.pendingItems) waiting for your OK", systemImage: "tray.full.fill")
                 .font(.klHeading).foregroundStyle(.orange)
-            if let c = confirm {
-                Text(c == .approve ? "Approve all \(m.s.pendingItems) held items? They're filed as suggested."
-                                   : "Dismiss \(m.s.pendingItems) held items? Nothing is filed; this can't be undone.")
-                    .klNote()
-                HStack(spacing: 8) {
-                    Button("Cancel") { confirm = nil }
-                    Button(c == .approve ? "Approve all" : "Dismiss") {
-                        if c == .approve { m.approveHeld() } else { m.dismissHeld() }
-                        confirm = nil
-                    }
-                    .tint(c == .approve ? .orange : .red)
-                }
-                .controlSize(.small).buttonStyle(.bordered)
-            } else {
-                Text("\(Brand.name) wasn't sure where these belong. Review shows what approving does for each, and why it waited.").klNote()
-                HStack(spacing: 8) {
-                    Button { openNote(m.s.pendingFile) } label: { Label("Review", systemImage: "pencil") }
-                        .help("Open the held items: each says what approving does and why it waited.")
-                    Button { confirm = .approve } label: { Label("Approve all", systemImage: "checkmark.circle.fill") }
-                        .tint(.orange)
-                        .help("File all held items using the suggested merge/create, then clear them.")
-                    Button { confirm = .dismiss } label: { Label("Dismiss", systemImage: "xmark.circle") }
-                        .help("Discard the held items without filing anything.")
-                }
-                .controlSize(.small).buttonStyle(.bordered)
+            Text("\(Brand.name) wants your OK before filing \(m.s.pendingItems == 1 ? "this" : "these"). "
+                 + "Review asks about each one, and you decide.").klNote()
+            Button { ReviewController.shared.show(vault: m.s.vault) } label: {
+                Label("Review", systemImage: "rectangle.stack")
             }
+            .tint(.orange).buttonStyle(.borderedProminent).controlSize(.small)
+            .help("Decide each held item: add it to a note, make a new note, or discard it.")
         }
         .padding(.horizontal, 12).padding(.bottom, 9)
     }

@@ -41,7 +41,7 @@ The model only *proposes*; deterministic Python does the rest, so Apple's small 
 3. `promote-apply.py --auto`: confident merge (cosine >= 0.45) merges into the nearest note; new notes are created **flat in `wiki/`** (the draft's `Target:` becomes a tag, `Source:` is carried into the note); borderline merges and refusals are **held** in `<date>.hold.md`. Then `reindex.py`.
 4. A notification reads `auto-promoted N · M held`.
 
-**Held drafts must be reviewed.** They sit in `meta/promotion-drafts/` until resolved (a ✅ marker moves them to `archive/`). The menu-bar app shows pending drafts: Approve all, Review, or Dismiss; by hand: `promote-apply.py <draft> --apply`.
+**Held drafts must be reviewed.** They sit in `meta/promotion-drafts/` until resolved (a ✅ marker moves them to `archive/`). The app asks about each held item in Review (the panel or the notch): merge it, keep it separate, or drop it. By hand: `review.py list` and `review.py decide`.
 
 Safe by construction: paths confined to the vault, bodies scrubbed (emails too), `create` never overwrites, `merge` is idempotent (content-hash marker), nothing is deleted. Weak link is the 4B proposer, which mis-targets and restates known facts, hence the hold path. Adversarial suite: `test_pipeline.py`.
 

@@ -86,11 +86,11 @@ struct PlasmieApp: App {
         } label: {
             HStack(spacing: 3) {
                 Image(nsImage: m.menuImage)          // Plasmie, template glyph; frames swap while busy
-                if m.s.pending > 0 { Text("\(m.s.pending)") }
+                if m.s.pendingItems > 0 { Text("\(m.s.pendingItems)") }
             }
             .foregroundStyle(tint)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(m.s.pending > 0 ? "\(m.plasmie.label), \(m.s.pending) held" : m.plasmie.label)
+            .accessibilityLabel(m.s.pendingItems > 0 ? "\(m.plasmie.label), \(m.s.pendingItems) waiting for your OK" : m.plasmie.label)
         }
         .menuBarExtraStyle(.window)
     }

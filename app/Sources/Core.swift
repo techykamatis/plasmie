@@ -224,6 +224,10 @@ final class Model: ObservableObject {
     @Published var plasmie: PlasmieState = .idle       // what Plasmie is doing, derived from status
     @Published var menuImage: NSImage = PlasmieGlyph.still(.idle)   // menu-bar template glyph
     @Published var runningJobs: Set<String> = []   // labels of launchd jobs we kicked and are following
+    @Published var heldNext: HeldItem? = nil       // the first held item, asked in the notch
+    @Published var heldBusy = false                // a Yes/No is being filed
+    @Published var heldReply: String? = nil        // what happened, shown in the notch for a moment
+    private var heldCount = -1                     // pendingItems heldNext was loaded for
     private var poll: Timer?            // adaptive state poll (fast while active, slow idle)
     private var anim: Timer?            // 8fps glyph frame swap, alive only while a busy state runs
     private var cancellables = Set<AnyCancellable>()
@@ -366,6 +370,7 @@ final class Model: ObservableObject {
             let approval = BackgroundJobs.needsApproval
             DispatchQueue.main.async {
                 self.s = new
+                self.loadHeldNext()
                 if self.jobsNeedApproval != approval { self.jobsNeedApproval = approval }
                 self.allOff = Connector.all.allSatisfy { off.contains($0.id) }
                 self.minSourceAge = Connector.all.filter { !off.contains($0.id) }
@@ -500,6 +505,38 @@ final class Model: ObservableObject {
         }
     }
 
+    /// Load the first held item when the held count changes (not on every poll).
+    func loadHeldNext(force: Bool = false) {
+        let n = s.pendingItems
+        guard force || n != heldCount else { return }
+        heldCount = n
+        if n == 0 { heldNext = nil; return }
+        let vault = s.vault
+        DispatchQueue.global().async {
+            let first = HeldReview.list(vault: vault).first
+            DispatchQueue.main.async { self.heldNext = first }
+        }
+    }
+
+    /// Yes or No to the notch's question about the first held item.
+    /// The question stays up while it files (no flicker back to a count), then the notch
+    /// says what happened for a few seconds, failures included, before the next question.
+    func answerHeld(yes: Bool) {
+        guard let it = heldNext, !heldBusy else { return }
+        heldBusy = true
+        let vault = s.vault
+        DispatchQueue.global().async {
+            let r = HeldReview.decide(it, yes ? it.yesChoice : it.noChoice, vault: vault)
+            DispatchQueue.main.async {
+                self.heldBusy = false
+                self.heldReply = r.ok ? r.message : "I couldn't do that, so it's still waiting. Open Review to see why."
+                self.heldCount = -1                    // reload the next one after the refresh
+                self.refresh()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.heldReply = nil }
+            }
+        }
+    }
+
     func reindexCheck() { capture([PlasmiePaths.script("reindex.py"), "--check", s.vault], "Reindex") }
 
     /// ask a natural-language question against the vault (local RAG via ask.py)
@@ -507,36 +544,6 @@ final class Model: ObservableObject {
         let query = q.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return }
         capture([PlasmiePaths.script("ask.py"), query, s.vault], "Asking")
-    }
-
-    /// mark a held draft resolved so it clears from the pending count
-    private func markResolved(_ path: String) {
-        if let cur = try? String(contentsOfFile: path, encoding: .utf8) {
-            try? (cur + "\n\n✅ resolved\n").write(toFile: path, atomically: true, encoding: .utf8)
-        }
-    }
-
-    /// approve all held items (apply their suggested action), then resolve the file
-    func approveHeld() {
-        let hold = s.pendingFile
-        guard !hold.isEmpty else { return }
-        busy = true; note = "Approving…"; output = ""; recomputePlasmie(); updateAnimation()
-        DispatchQueue.global().async {
-            let o = runCapture(self.py, [PlasmiePaths.script("promote-apply.py"), hold, "--apply"])
-            self.markResolved(hold)
-            DispatchQueue.main.async {
-                self.busy = false
-                self.output = o.trimmingCharacters(in: .whitespacesAndNewlines)
-                self.note = "Approved"; self.recomputePlasmie(); self.updateAnimation(); self.refresh()
-            }
-        }
-    }
-
-    /// dismiss held items without applying (resolve the file as-is)
-    func dismissHeld() {
-        guard !s.pendingFile.isEmpty else { return }
-        markResolved(s.pendingFile)
-        note = "Dismissed"; output = ""; refresh()
     }
 }
 
@@ -561,7 +568,7 @@ extension PlasmieState {
         if act.contains("busy") { return .busy }     // "Skipped — machine busy": jobs deferred, not failed
         if s.state == "error" { return .error }
         if success { return .success }
-        if s.state == "pending" || s.pending > 0 { return .held }
+        if s.state == "pending" || s.pendingItems > 0 { return .held }
         if let age = minSourceAgeHours, age > quietAfterHours { return .quiet }
         return .idle
     }

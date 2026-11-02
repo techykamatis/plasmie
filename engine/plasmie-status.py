@@ -37,9 +37,14 @@ def read(p):
         return ""
 
 
-pending = [f for f in sorted(glob.glob(f"{DRAFTS}/*.md"), reverse=True) if "✅" not in read(f)]
+# waiting on a person: items nightly filing held, and recurring patterns (review.py).
+# A nightly draft is filed on its own, so it never counts.
+pending = [f for f in sorted(glob.glob(f"{DRAFTS}/*.md"), reverse=True)
+           if f.endswith((".hold.md", "-patterns.md")) and "✅" not in read(f)]
 pfile = pending[0] if pending else ""
-pitems = len(re.findall(r"(?m)^## ", read(pfile))) if pfile else 0
+# items, not files, across every unresolved held file: the notch, the panel and the Review
+# window all show this one number
+pitems = sum(len(re.findall(r"(?m)^## ", read(f))) for f in pending)
 
 try:
     subprocess.check_output(["pgrep", "-f", "promote.sh|run-ingest.sh|loop-ingest.py"])
@@ -175,7 +180,7 @@ elif is_stale:
     hours = max(1, round(stale_min / 60))
     reason = (f"I haven't caught anything for {hours} hour{'s' if hours != 1 else ''}. If your Mac was "
               f"awake, open {paths.APP_NAME} and choose Run setup again.")
-elif pending:
+elif pitems:
     state = "pending"
 # a promote skipped because the Mac was busy retries on its own: not an error
 

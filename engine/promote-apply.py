@@ -108,8 +108,13 @@ def note_type(target):
     return paths.TARGET_TYPES.get(paths.target_tag(target) or "", "note")
 
 
-def plan(item, vault):
-    """Return (verb, detail, do_callable_or_None, reason). Pure — no side effects."""
+def plan(item, vault, unique=False):
+    """Return (verb, detail, do_callable_or_None, reason). Pure — no side effects.
+
+    unique: a created note whose name is taken gets the next free name (title-2.md)
+    instead of being refused. Review passes it when a person chose "a new note"; nightly
+    filing never does, so a name clash there is held for a person to decide.
+    """
     f = item["fields"]
     action = f.get("Action", "skip").lower()
     vroot = vault.resolve()
@@ -147,6 +152,10 @@ def plan(item, vault):
             return ("skip", item["title"], None, f"path escapes vault: {tgt}")
         # an explicit file stays explicit (and is never overwritten); a folder flattens into wiki/
         path = t if t.suffix else vroot / paths.WIKI / f"{slug(item['title'])}.md"
+        n = 2
+        while unique and not t.suffix and path.exists():
+            path = vroot / paths.WIKI / f"{slug(item['title'])}-{n}.md"
+            n += 1
         # the draft is untrusted: a created file may only ever land inside wiki/ — never in
         # meta/ (a planted "draft"), raw/, archive/ or the vault root
         wiki_root = (vroot / paths.WIKI).resolve()
@@ -278,23 +287,26 @@ def _held(it, reason, vault, holdpath):
     tgt = f.get("Merge-into", "")
     if reason == "already merged (idempotent)":
         return None
+    if act == "merge" and reason == "" and _near_score(f) >= AUTO_MERGE_AT:   # held earlier, fine now
+        return (f, (f"They share a lot of words ({pct}% alike), but shared words can be a "
+                    "coincidence, so I'd like you to check they're about the same thing."),
+                f"it's added to the end of {_link(vault, tgt, holdpath)}.")
     if act == "merge" and reason == "":                 # below AUTO_MERGE_AT
-        return (f, (f"It may belong in {_link(vault, tgt, holdpath)}, but they're only {pct}% alike, "
-                    "so it could be a separate topic."),
+        return (f, f"They're only {pct}% alike, so this might be its own topic.",
                 (f"it's added to the end of {_link(vault, tgt, holdpath)}. "
                  "To make it a new note instead, change `Action: merge` to `Action: create`."))
     if act == "merge" and reason.startswith("merge target missing"):
         f["Action"] = "create"
         f.pop("Merge-into", None)
         f.setdefault("Target", paths.WIKI)
-        return (f, f"The note it matched ({tgt}) isn't in your notes any more.",
+        return (f, f"It matched \"{Path(tgt).stem.replace('-', ' ')}\", which isn't in your notes any more.",
                 "it becomes a new note.")
     if act == "merge":                                  # no target, or one outside the notes folder
         f["Action"] = "create"
         f.pop("Merge-into", None)
         f.setdefault("Target", paths.WIKI)
-        why = (f"The note it matched is outside your notes folder, which {paths.APP_NAME} never writes to."
-               if "escapes" in reason else "It didn't say which note to add it to.")
+        why = ("It pointed outside your notes folder, which I never write to."
+               if "escapes" in reason else "I couldn't tell which note it belongs in.")
         return (f, why, "it becomes a new note.")
     if act == "create" and reason.startswith("already exists"):
         rel = reason.split(": ", 1)[1].split(" (")[0]
@@ -303,13 +315,13 @@ def _held(it, reason, vault, holdpath):
                 f"it's added to the end of {_link(vault, rel, holdpath)}.")
     if act == "create":                                 # a place outside the notes folder
         f["Target"] = paths.WIKI
-        return (f, f"It named a place outside your notes folder, which {paths.APP_NAME} never writes to.",
+        return (f, "It pointed outside your notes folder, which I never write to.",
                 "it becomes a new note in your notes folder.")
     if act == "move":
         return (f, f"The file it wanted to file ({f.get('File', '?')}) "
                    + ("is no longer in your inbox." if "missing" in reason else "can't be moved there."),
                 "nothing is filed; the item is dropped.")
-    return (f, f"{paths.APP_NAME} couldn't tell what to do with it.", "nothing is filed; the item is dropped.")
+    return (f, "I couldn't tell what to do with it.", "nothing is filed; the item is dropped.")
 
 
 def _norm_create_target(t):
@@ -396,11 +408,8 @@ def auto(draft_path, vault):
             f"{'this item' if n == 1 else f'these {n} items'}: "
             f"it wasn't sure where {'it belongs' if n == 1 else 'they belong'}. "
             f"{'It says' if n == 1 else 'Each one says'} what approving does and why it waited.\n\n"
-            f"**Your choices**, in {paths.APP_NAME}'s panel:\n\n"
-            f"- **Approve all** files every item as its \"If you approve\" line says.\n"
-            f"- **Dismiss** files nothing and drops {'it' if n == 1 else 'them'}.\n"
-            f"- To change one item first, edit its `Action:` line here (`merge` adds it to an "
-            f"existing note, `create` makes a new one), then Approve all.\n\n{body}\n")
+            f"**To decide**, open Review from {paths.APP_NAME}'s panel or the notch. It asks about "
+            f"each item and you answer yes or no.\n\n{body}\n")
     elif holdpath.exists():
         holdpath.unlink()
 

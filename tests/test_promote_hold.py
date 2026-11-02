@@ -36,7 +36,7 @@ def test_borderline_merge_explains_itself(tmp_path):
         f"Near: {paths.WIKI}/db-storage.md (0.31) · {paths.WIKI}/deploys.md (0.12)\n"
         "Restore a snapshot into a smaller instance.\nSource: claude 2026-11-01")])
     assert held == 1
-    assert "**Your choices**" in page and "Approve all" in page and "Dismiss" in page
+    assert "**To decide**, open Review" in page
     assert "> **If you approve:** it's added to the end of [Database storage only grows](" in page
     assert "only 31% alike" in page
     assert "> **Also close:** [Deploy checklist](" in page and "(12% alike)" in page

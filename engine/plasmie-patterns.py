@@ -11,7 +11,7 @@ decision already covers are skipped. The on-device model names each group; a nam
 description with a number or identifier not found in the items is rejected, and that
 group is skipped rather than drafted badly. Drafts go to meta/promotion-drafts/ as an
 ordinary pending draft (Action: create, Target: pattern), so nothing reaches the wiki
-until you approve it in the menu-bar panel. Dismissed patterns aren't re-proposed for
+until you say yes to it in Review (review.py; the panel or the notch). Dismissed patterns aren't re-proposed for
 SNOOZE_DAYS.
 """
 import datetime as dt
@@ -200,7 +200,7 @@ def run(vault, today=None, state=None, force=False):
         return None, new_state
     head = (f"---\ntype: note\ntitle: patterns {today}\ntags: [promotion-draft, patterns]\n"
             f"timestamp: {today}T00:00:00Z\n---\n\n# Patterns {paths.APP_NAME} noticed · {today}\n"
-            "_Recurring across your last four weeks. Approve to file them as pattern notes._\n\n")
+            "_Recurring across your last four weeks. Open Review in the panel or the notch to save or skip each one._\n\n")
     return head + "\n".join(found), new_state
 
 

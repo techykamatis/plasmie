@@ -23,5 +23,6 @@ evidence. Nothing should reach the wiki on a guess.
   facts ([0010](0010-fun-facts.md)).
 
 ## Known gaps
-Single-link grouping can merge an event thread with a habit ("Orbit demo"). The panel has
-no per-item approve yet: it offers Approve all, or Review in Obsidian.
+Single-link grouping can merge an event thread with a habit ("Orbit demo"). Each pattern
+is approved on its own in Review (`engine/review.py`, the Review window and the notch's
+yes/no question).

@@ -105,11 +105,14 @@ struct NotchInfo {
     var activity = ""
     var celebrating: String? = nil
     var pending = 0                   // items held for review
+    var question: String? = nil       // the first held item, asked in one line (Review.swift)
+    var asking = false                // Yes/No are on offer (not while filing or replying)
+    var answering = false             // a Yes/No is being filed: buttons dimmed
     var tourStep: Int? = nil          // the first-run tour, when it's showing
     /// Something the user should act on, in plain words, or nil when all is well.
     var attention: String? {
         if status == "error" { return reason.isEmpty ? "Something stopped working. Open \(Brand.name) to see what." : reason }
-        if pending > 0 { return "\(pending) item\(pending == 1 ? " is" : "s are") waiting for your review." }
+        if pending > 0 { return question ?? "\(pending) item\(pending == 1 ? " is" : "s are") waiting for your review." }
         return notice.isEmpty ? nil : notice
     }
     var isNotice: Bool { status != "error" && pending == 0 && !notice.isEmpty }
@@ -145,6 +148,9 @@ struct NotchActions {
     var nextFact: () -> Void = {}
     var map: () -> Void = {}          // Plasmie's map (MapWindow.swift)
     var openApp: () -> Void = {}      // the Plasmie window: every other option + settings
+    var review: () -> Void = {}       // the Review window: held items, one decision each
+    var heldYes: () -> Void = {}      // answer the notch's question about the first held item
+    var heldNo: () -> Void = {}
     var quit: () -> Void = {}
     var closeAsk: () -> Void = {}
     var answered: (Bool) -> Void = { _ in }
@@ -292,7 +298,7 @@ struct NotchView: View {
                     NotchChip(title: "Ask", symbol: "sparkle.magnifyingglass", label: "Ask \(Brand.name)", action: actions.ask)
                     if info.pending > 0 {
                         NotchChip(title: "Review \(info.pending)", symbol: "tray.full", label: "Review \(info.pending) held items",
-                                  action: actions.openApp)
+                                  action: actions.review)
                     } else {
                         NotchChip(title: "Ingest", symbol: "tray.and.arrow.down", label: "Ingest now", action: actions.ingest)
                     }
@@ -322,9 +328,20 @@ struct NotchView: View {
                 NotchChip(title: "Fix", symbol: info.noticeIsJobs ? "gearshape" : "key",
                           label: info.noticeIsJobs ? "Open Login Items" : "Open Keychain Access",
                           action: info.noticeIsJobs ? BackgroundJobs.openLoginItems : openKeychainAccess)
+            } else if info.status != "error" && info.question != nil {
+                if info.asking {
+                    HStack(spacing: 6) {
+                        NotchChip(title: "Yes", symbol: "checkmark", label: "Yes: \(info.question ?? "")", action: actions.heldYes)
+                        NotchChip(title: "No", symbol: "xmark", label: "No", action: actions.heldNo)
+                    }
+                    .fixedSize()
+                    .disabled(info.answering)
+                    .opacity(info.answering ? 0.4 : 1)
+                }
             } else {
                 NotchChip(title: info.status == "error" ? "Fix" : "Review", symbol: "arrow.up.forward.app",
-                          label: info.status == "error" ? "Open \(Brand.name) to fix this" : "Open \(Brand.name) to review", action: actions.openApp)
+                          label: info.status == "error" ? "Open \(Brand.name) to fix this" : "Review the held items",
+                          action: info.status == "error" ? actions.openApp : actions.review)
             }
         }
         .accessibilityElement(children: .combine)
@@ -478,7 +495,8 @@ private struct NotchRoot: View {
     var body: some View {
         let info = NotchInfo(hero: m.heroPlasmie, pipeline: m.plasmie, status: m.s.state, reason: m.s.reason,
                              stageName: m.stage?.name, accessory: m.stage?.accessory, fact: m.funFact,
-                             activity: m.s.activity, celebrating: nm.bannerText, pending: m.s.pending, tourStep: nm.tourStep,
+                             activity: m.s.activity, celebrating: nm.bannerText, pending: m.s.pendingItems, question: m.heldReply ?? m.heldNext?.shortQuestion,
+                             asking: m.heldReply == nil && m.heldNext != nil, answering: m.heldBusy, tourStep: nm.tourStep,
                              vault: m.s.vault, notes: m.s.notes,
                              notice: m.jobsNeedApproval ? Self.jobsNotice : (m.s.notice ?? ""),
                              noticeIsJobs: m.jobsNeedApproval)
@@ -578,6 +596,9 @@ final class NotchController {
             nextFact: { [weak model] in model?.nextFunFact() },
             map: { [weak model] in if let model { MapController.shared.show(model) } },
             openApp: { SettingsController.shared.show() },
+            review: { [weak model] in if let model { ReviewController.shared.show(vault: model.s.vault) } },
+            heldYes: { [weak model] in model?.answerHeld(yes: true) },
+            heldNo: { [weak model] in model?.answerHeld(yes: false) },
             quit: { NSApp.terminate(nil) },
             closeAsk: { [weak self] in self?.closeAsk() },
             answered: { [weak self] in self?.nm.answered = $0 },

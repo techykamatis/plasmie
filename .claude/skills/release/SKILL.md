@@ -150,18 +150,31 @@ never seen the code.
 
 ## 4. Show, then stop
 
-Show the user, in the conversation:
+The user may have been away while you built. Write the approval request so it can be
+decided cold, without scrolling back. A list of checks you ran and steps you'll take is
+not a review request: say what is being decided and what they need to look at. In order:
 
-1. The notes, in full.
-2. The plan: push `main` if it's ahead (say by how many commits), create and push the
-   annotated tag `v<VERSION>`, create a **draft** release in `$REPO` titled
-   `Plasmie <VERSION>`, and upload these three files (with their sizes):
-   `Plasmie-<VERSION>.dmg` and `Plasmie-<VERSION>.dmg.sha256`. The file name always
-   carries the version; the website's download buttons link to it by name.
-3. That the repo is **private**, so the download works only for people with access to
-   the repo (see "Private repo" below).
-4. The question: "Push, tag and create the draft release? (yes / no, or edit the notes
+1. **The decision**, as the heading: "Approve releasing Plasmie <VERSION> to the public?"
+2. **Why this release**, in two or three plain sentences: what was wrong or missing for
+   people using Plasmie, and what changes for them now. Name who it affects.
+3. **What you're reviewing**, numbered, each with why it needs their eyes:
+   - the notes, in full, saying they appear on the public release page;
+   - what ships: every change since the last release in a line each, marking any that
+     don't affect the app, so they can say whether it's the right moment to ship.
+4. **Already checked**, in one short list (tests, installer verify, the fix inside the
+   built app), so they know what they don't need to recheck.
+5. **What yes does**, and how undoable it is: push `main` (say how many commits),
+   create and push the tag `v<VERSION>`, a **draft** release in `$REPO` titled
+   `Plasmie <VERSION>` with `Plasmie-<VERSION>.dmg` and its `.sha256` (with sizes). A
+   draft is hidden and deletable; publishing and the website each need their own yes.
+   Say whether the repo is public or **private** (a private repo's download works only
+   for people with access, see "Private repo" below).
+6. The question: "Push, tag and create the draft release? (yes / no, or edit the notes
    or the tag name)". The tag is `v<VERSION>` unless they ask for another name now.
+
+Apply the same shape to the later questions: before "Publish it now?" say what becomes
+public and who gets notified; before "Push the website?" say what changes on the live
+page.
 
 Then end your turn and wait. Only a clear yes from the user continues: "yes", "go",
 "do it". If they edit the notes, re-lint them and show the result again. If they say
